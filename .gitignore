@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest & IDE
+.pytest_cache/
+.vscode/
+.idea/
+
+# Large model weights (auto-downloaded by ultralytics)
+*.pt
+*.onnx
+
+# Database and local temp media (keep directory structure)
+data/*.db
+data/evidence_clips/*.mp4
+data/evidence_clips/*.jpg
+!data/evidence_clips/.gitkeep
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
