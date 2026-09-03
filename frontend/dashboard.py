@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring Dashboard
 Deep Obsidian & Cyan Cyber-Shield Redesign.
-Features WebRTC hardware-decoupled streaming, glassmorphism UI, JetBrains/Plus Jakarta Sans typography, and non-clipping telemetry.
+Features WebRTC hardware-decoupled streaming, glassmorphism UI, JetBrains/Plus Jakarta Sans typography, and advanced interactive sidebar navigation.
 """
 
 from datetime import datetime
@@ -38,7 +38,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Advanced Custom CSS Injection (Deep Obsidian & Cyan Cyber-Shield)
+# Advanced Custom CSS Injection (Deep Obsidian & Cyan Cyber-Shield with Interactive Sidebar)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
@@ -229,14 +229,141 @@ st.markdown("""
         box-shadow: 0 0 24px rgba(16, 185, 129, 0.6) !important;
     }
 
-    /* Sidebar Glassmorphism & Custom Radio Pills */
+    /* Sidebar Glassmorphism & Custom Branding */
     section[data-testid="stSidebar"] {
-        background: rgba(8, 12, 20, 0.88) !important;
-        backdrop-filter: blur(20px) !important;
-        border-right: 1px solid rgba(56, 189, 248, 0.12) !important;
+        background: rgba(8, 12, 20, 0.92) !important;
+        backdrop-filter: blur(24px) !important;
+        border-right: 1px solid rgba(56, 189, 248, 0.14) !important;
     }
-    section[data-testid="stSidebar"] .stRadio > div {
-        gap: 6px;
+    
+    .cyber-shield-badge {
+        background: rgba(15, 23, 42, 0.85);
+        border: 2px solid #38bdf8;
+        border-radius: 14px;
+        padding: 8px;
+        box-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        animation: badgePulse 3s infinite ease-in-out;
+    }
+    @keyframes badgePulse {
+        0%, 100% { box-shadow: 0 0 16px rgba(56, 189, 248, 0.35); border-color: #38bdf8; }
+        50% { box-shadow: 0 0 24px rgba(0, 242, 254, 0.6); border-color: #00f2fe; }
+    }
+    .cyber-brand-title {
+        font-size: 1.4rem;
+        font-weight: 800;
+        background: linear-gradient(90deg, #38bdf8, #818cf8);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+    }
+    .cyber-brand-sub {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: #64748B;
+        letter-spacing: 0.08em;
+    }
+    .cyber-tag {
+        display: inline-block;
+        background: rgba(56, 189, 248, 0.1);
+        border: 1px solid rgba(56, 189, 248, 0.28);
+        color: #38bdf8;
+        border-radius: 20px;
+        padding: 3px 10px;
+        font-size: 0.70rem;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Sidebar Navigation Tile Pills */
+    section[data-testid="stSidebar"] div[role="radiogroup"] {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
+        background: rgba(15, 23, 42, 0.65) !important;
+        border: 1px solid rgba(56, 189, 248, 0.14) !important;
+        border-radius: 12px !important;
+        padding: 10px 14px !important;
+        margin-bottom: 0px !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        cursor: pointer !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
+        transform: translateX(4px) !important;
+        border-color: rgba(56, 189, 248, 0.45) !important;
+        background: rgba(30, 41, 59, 0.75) !important;
+        box-shadow: 0 4px 16px rgba(0, 242, 254, 0.15) !important;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"],
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {
+        background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(99, 102, 241, 0.18)) !important;
+        border: 1px solid #00f2fe !important;
+        box-shadow: 0 0 18px rgba(0, 242, 254, 0.28) !important;
+    }
+
+    /* Session Selector Frosted Card */
+    .sidebar-session-card {
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 14px;
+        margin-top: 10px;
+        margin-bottom: 14px;
+    }
+    .session-live-pill {
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.4);
+        color: #34D399;
+        border-radius: 12px;
+        padding: 2px 8px;
+        font-size: 0.68rem;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* System Health Widget */
+    .system-health-card {
+        background: rgba(10, 15, 29, 0.85);
+        border: 1px solid rgba(56, 189, 248, 0.15);
+        border-radius: 12px;
+        padding: 12px 14px;
+        margin-top: 20px;
+    }
+    .health-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.74rem;
+        margin-bottom: 6px;
+        color: #94A3B8;
+    }
+    .health-val {
+        color: #F1F5F9;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 600;
+        font-size: 0.72rem;
+    }
+    .pulse-dot-green {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        background-color: #10B981;
+        border-radius: 50%;
+        margin-right: 5px;
+        box-shadow: 0 0 8px #10B981;
+        animation: dotPulse 2s infinite;
+    }
+    @keyframes dotPulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.3); opacity: 0.6; }
     }
 
     /* Inputs, Selectboxes, Sliders */
@@ -392,23 +519,33 @@ def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
     return fig
 
 
-# ---------------- SIDEBAR CONTROLS ----------------
+# ---------------- SIDEBAR CONTROLS & CYBER-SHIELD NAVIGATION ----------------
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/shield.png", width=54)
-    st.markdown("### **EviGuard AI**")
-    st.caption("Cyber-Shield Exam Integrity & XAI Verification")
-    st.markdown("---")
+    # Branding & Header Section
+    st.markdown("""
+    <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px; margin-bottom: 6px;">
+        <div class="cyber-shield-badge">
+            <img src="https://img.icons8.com/fluency/96/shield.png" width="34" height="34" style="display: block;" />
+        </div>
+        <div>
+            <div class="cyber-brand-title">EviGuard AI</div>
+            <div class="cyber-brand-sub">ENTERPRISE PROCTOR</div>
+        </div>
+    </div>
+    <div style="margin-top: 6px; margin-bottom: 18px;">
+        <span class="cyber-tag">v1.0 • Phase 1 Enterprise Edition</span>
+    </div>
+    """, unsafe_allow_html=True)
 
+    # Navigation Tiles
     menu_option = st.radio(
-        "Navigation",
+        "Navigation Modules",
         ["📹 Live Proctoring", "🔍 Incident Vault", "📊 Analytics & Reports", "⚙️ Settings & Sensitivity"],
-        index=0
+        index=0,
+        label_visibility="collapsed"
     )
 
-    st.markdown("---")
-    st.subheader("Session Selector")
-
-    # Session Selector or Creator
+    # Session Selector Card
     all_sessions = db_manager.get_all_sessions()
     session_ids = [s["session_id"] for s in all_sessions]
 
@@ -420,14 +557,23 @@ with st.sidebar:
             db_manager.create_session(default_id, "STD-101", "Alex Johnson", "CS401: Advanced AI Exam")
             st.session_state.active_session_id = default_id
 
+    st.markdown("""
+    <div class="sidebar-session-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 0.74rem; font-weight: 700; color: #94A3B8; text-transform: uppercase;">Active Session</span>
+            <span class="session-live-pill">● LIVE EXAM</span>
+        </div>
+    """, unsafe_allow_html=True)
+
     selected_session = st.selectbox(
-        "Active Session",
+        "Active Session Select",
         session_ids if session_ids else [st.session_state.active_session_id],
-        index=0 if not session_ids else (session_ids.index(st.session_state.active_session_id) if st.session_state.active_session_id in session_ids else 0)
+        index=0 if not session_ids else (session_ids.index(st.session_state.active_session_id) if st.session_state.active_session_id in session_ids else 0),
+        label_visibility="collapsed"
     )
     st.session_state.active_session_id = selected_session
 
-    with st.expander("➕ Start New Session"):
+    with st.expander("➕ Start New Exam Session"):
         new_s_id = st.text_input("Session ID", f"EXAM_{datetime.now().strftime('%H%M%S')}")
         new_c_id = st.text_input("Candidate ID", "STD-102")
         new_c_name = st.text_input("Candidate Name", "Jane Doe")
@@ -438,8 +584,26 @@ with st.sidebar:
             st.success(f"Session {new_s_id} active!")
             st.rerun()
 
-    st.markdown("---")
-    st.caption("EviGuard v1.0.0 | Final Year Project")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Bottom System Health Widget
+    st.markdown("""
+    <div class="system-health-card">
+        <div style="font-size: 0.70rem; font-weight: 700; color: #64748B; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.06em;">System Status & Telemetry</div>
+        <div class="health-row">
+            <span>AI Engine</span>
+            <span class="health-val">YOLOv8 + MediaPipe</span>
+        </div>
+        <div class="health-row">
+            <span>FPS / Stream</span>
+            <span class="health-val" style="color: #00f2fe;">30 FPS • WebRTC</span>
+        </div>
+        <div class="health-row" style="margin-bottom: 0px;">
+            <span>Database</span>
+            <span class="health-val"><span class="pulse-dot-green"></span>Connected</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ---------------- TAB 1: LIVE PROCTORING ----------------
