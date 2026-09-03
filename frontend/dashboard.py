@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring Dashboard
-Ultra-Resilient Midnight Slate Enterprise UI.
-Features crash-proof WebRTC video callback boundaries, async 3-frame stride, direct VideoProcessor polling, and non-blocking telemetry synchronization.
+Ultra-Resilient Midnight Slate Enterprise UI with Continuous WebRTC Stream Persistence.
+Decouples Streamlit reactive fragments from the WebRTC asyncio event loop to ensure zero stream disconnects, zero auto-close bugs, and instant telemetry updates.
 """
 
 from datetime import datetime
@@ -297,7 +297,48 @@ db_manager = get_db_manager()
 pipeline = get_pipeline()
 
 
-# ---------------- WEBRTC VIDEO PROCESSOR WITH RESILIENT ERROR BOUNDARIES ----------------
+# ---------------- THREAD-SAFE GLOBAL TELEMETRY BRIDGE ----------------
+TELEMETRY_LOCK = threading.Lock()
+LATEST_TELEMETRY: Dict[str, Any] = {
+    "risk_score": 0.0,
+    "risk_level": "LOW",
+    "active_violations": [],
+    "person_count": 1,
+    "yaw": 0.0,
+    "pitch": 0.0,
+    "roll": 0.0,
+    "gaze_direction": "Direct (Screen)",
+    "phone_detected": False,
+    "is_absent": False,
+    "flagged": False,
+    "fps": 30.0,
+    "last_update_ts": time.time()
+}
+
+def update_live_telemetry(output: PipelineOutput):
+    """Safely updates global state on every video frame without interfering with WebRTC."""
+    with TELEMETRY_LOCK:
+        LATEST_TELEMETRY["risk_score"] = float(output.risk.smoothed_score)
+        LATEST_TELEMETRY["risk_level"] = str(output.risk.risk_level)
+        LATEST_TELEMETRY["active_violations"] = list(output.risk.active_violations)
+        LATEST_TELEMETRY["person_count"] = int(output.pose_gaze.face_count if output.pose_gaze.face_detected else len(output.detections))
+        LATEST_TELEMETRY["yaw"] = float(output.pose_gaze.yaw)
+        LATEST_TELEMETRY["pitch"] = float(output.pose_gaze.pitch)
+        LATEST_TELEMETRY["roll"] = float(output.pose_gaze.roll)
+        LATEST_TELEMETRY["gaze_direction"] = str(output.pose_gaze.gaze_direction) if output.pose_gaze.face_detected else "No Face"
+        LATEST_TELEMETRY["phone_detected"] = "PHONE_DETECTED" in output.risk.active_violations
+        LATEST_TELEMETRY["is_absent"] = bool(output.pose_gaze.is_absent)
+        LATEST_TELEMETRY["flagged"] = bool(output.risk.is_incident_triggered or len(output.risk.active_violations) > 0 or output.risk.smoothed_score >= 70.0)
+        LATEST_TELEMETRY["fps"] = float(output.fps)
+        LATEST_TELEMETRY["last_update_ts"] = time.time()
+
+def get_live_telemetry() -> Dict[str, Any]:
+    """Retrieves a thread-safe copy of the latest telemetry state."""
+    with TELEMETRY_LOCK:
+        return dict(LATEST_TELEMETRY)
+
+
+# ---------------- WEBRTC VIDEO PROCESSOR WITH CRASH GUARDS ----------------
 RTC_CONFIGURATION = RTCConfiguration(
     {"iceServers": [
         {"urls": ["stun:stun.l.google.com:19302"]},
@@ -308,26 +349,13 @@ RTC_CONFIGURATION = RTCConfiguration(
 
 
 class ProctorVideoProcessor(VideoProcessorBase):
-    """Crash-proof WebRTC video processor with direct instance telemetry polling and error guards."""
+    """Crash-proof WebRTC video processor with error boundaries and global state dispatch."""
 
     def __init__(self):
         self.pipeline = get_pipeline()
         self.session_id = "default_session"
         self.candidate_name = "Alex Johnson"
-        self.latest_output: Optional[PipelineOutput] = None
         self.lock = threading.Lock()
-
-        # Direct Instance Telemetry Attributes for Streamlit Polling
-        self.risk_score: float = 0.0
-        self.risk_level: str = "LOW"
-        self.person_count: int = 1
-        self.yaw: float = 0.0
-        self.pitch: float = 0.0
-        self.roll: float = 0.0
-        self.gaze: str = "Direct (Screen)"
-        self.flagged: bool = False
-        self.active_violations: List[str] = []
-        self.phone_detected: bool = False
 
     def set_session_info(self, session_id: str, candidate_name: str):
         self.session_id = session_id
@@ -339,7 +367,7 @@ class ProctorVideoProcessor(VideoProcessorBase):
             if img is None or img.size == 0:
                 return frame
 
-            # Rescale to standard inference resolution if needed
+            # Rescale to target resolution for fast inference
             if img.shape[1] != 640 or img.shape[0] != 480:
                 img = cv2.resize(img, (640, 480), interpolation=cv2.INTER_LINEAR)
 
@@ -350,25 +378,14 @@ class ProctorVideoProcessor(VideoProcessorBase):
                 candidate_name=self.candidate_name
             )
 
-            # Safely record telemetry
-            with self.lock:
-                self.latest_output = output
-                self.risk_score = float(output.risk.smoothed_score)
-                self.risk_level = str(output.risk.risk_level)
-                self.person_count = int(output.pose_gaze.face_count if output.pose_gaze.face_detected else len(output.detections))
-                self.yaw = float(output.pose_gaze.yaw)
-                self.pitch = float(output.pose_gaze.pitch)
-                self.roll = float(output.pose_gaze.roll)
-                self.gaze = str(output.pose_gaze.gaze_direction) if output.pose_gaze.face_detected else "No Face"
-                self.active_violations = list(output.risk.active_violations)
-                self.flagged = bool(output.risk.is_incident_triggered or len(output.risk.active_violations) > 0 or output.risk.smoothed_score >= 70.0)
-                self.phone_detected = "PHONE_DETECTED" in output.risk.active_violations
+            # Update global live telemetry safely
+            update_live_telemetry(output)
 
             return av.VideoFrame.from_ndarray(output.annotated_frame, format="bgr24")
 
         except Exception as e:
-            # Resilient fallback: return raw frame so WebRTC media stream never terminates
-            print(f"[WebRTC Safe Guard]: Handled frame exception gracefully: {e}")
+            # Defensive guard: never allow callback exception to terminate WebRTC stream
+            print(f"[WebRTC Safe Guard]: {e}")
             return frame
 
 
@@ -531,18 +548,13 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 
-# ---------------- STREAMLIT FRAGMENTS: DIRECT PROCESSOR POLLING ----------------
-@st.fragment(run_every="300ms")
-def render_live_top_kpis(webrtc_ctx, session_id: str, candidate_name: str, candidate_id: str, exam_title: str):
-    """Polls the VideoProcessor directly every 300ms to update top KPI metrics."""
-    risk_score = 0.0
-    is_flagged = False
-
-    if webrtc_ctx and webrtc_ctx.video_processor:
-        vp = webrtc_ctx.video_processor
-        with vp.lock:
-            risk_score = float(vp.risk_score)
-            is_flagged = bool(vp.flagged)
+# ---------------- DECOUPLED STREAMLIT FRAGMENTS ----------------
+@st.fragment(run_every="500ms")
+def render_live_top_kpis(session_id: str, candidate_name: str, candidate_id: str, exam_title: str):
+    """Renders top 4 KPI cards polled from the thread-safe global telemetry state."""
+    telemetry = get_live_telemetry()
+    risk_score = telemetry.get("risk_score", 0.0)
+    is_flagged = telemetry.get("flagged", False)
 
     incidents = db_manager.get_session_incidents(session_id)
     total_incidents = len(incidents)
@@ -597,29 +609,18 @@ def render_live_top_kpis(webrtc_ctx, session_id: str, candidate_name: str, candi
         """, unsafe_allow_html=True)
 
 
-@st.fragment(run_every="300ms")
-def render_live_threat_panel(webrtc_ctx, session_id: str):
-    """Polls the VideoProcessor directly every 300ms to update Plotly gauge and telemetry items."""
-    risk_score = 0.0
-    risk_level = "LOW"
-    active_violations = []
-    person_count = 1
-    yaw_val = 0.0
-    pitch_val = 0.0
-    gaze_status = "Direct (Screen)"
-    is_flagged = False
-
-    if webrtc_ctx and webrtc_ctx.video_processor:
-        vp = webrtc_ctx.video_processor
-        with vp.lock:
-            risk_score = float(vp.risk_score)
-            risk_level = str(vp.risk_level)
-            active_violations = list(vp.active_violations)
-            person_count = int(vp.person_count)
-            yaw_val = float(vp.yaw)
-            pitch_val = float(vp.pitch)
-            gaze_status = str(vp.gaze)
-            is_flagged = bool(vp.flagged)
+@st.fragment(run_every="500ms")
+def render_live_threat_panel(session_id: str):
+    """Renders the Threat Analysis telemetry panel polled from the thread-safe global state."""
+    telemetry = get_live_telemetry()
+    risk_score = telemetry.get("risk_score", 0.0)
+    risk_level = telemetry.get("risk_level", "LOW")
+    active_violations = telemetry.get("active_violations", [])
+    person_count = telemetry.get("person_count", 1)
+    yaw_val = telemetry.get("yaw", 0.0)
+    pitch_val = telemetry.get("pitch", 0.0)
+    gaze_status = telemetry.get("gaze_direction", "Direct (Screen)")
+    is_flagged = telemetry.get("flagged", False)
 
     st.markdown("""
     <div class="slate-panel">
@@ -688,8 +689,13 @@ if menu_option == "📹 Live Proctoring":
         "status": "ACTIVE"
     }
 
-    # Layout: Top KPIs container Placeholder
-    kpi_placeholder = st.container()
+    # Render Top 4 KPI Cards in a decoupled fragment
+    render_live_top_kpis(
+        session_id=current_session.get("session_id", "default_session"),
+        candidate_name=current_session.get("candidate_name", "Alex Johnson"),
+        candidate_id=current_session.get("candidate_id", "STD-101"),
+        exam_title=current_session.get("exam_title", "CS401: Advanced AI Exam")
+    )
 
     st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 
@@ -709,7 +715,7 @@ if menu_option == "📹 Live Proctoring":
         """, unsafe_allow_html=True)
 
         webrtc_ctx = webrtc_streamer(
-            key="eviguard-live",
+            key="eviguard_proctor_live_stream",
             mode=WebRtcMode.SENDRECV,
             rtc_configuration=RTC_CONFIGURATION,
             video_processor_factory=ProctorVideoProcessor,
@@ -732,22 +738,9 @@ if menu_option == "📹 Live Proctoring":
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-    with kpi_placeholder:
-        # Render Top 4 KPI Cards polled directly from webrtc_ctx
-        render_live_top_kpis(
-            webrtc_ctx=webrtc_ctx,
-            session_id=current_session.get("session_id", "default_session"),
-            candidate_name=current_session.get("candidate_name", "Alex Johnson"),
-            candidate_id=current_session.get("candidate_id", "STD-101"),
-            exam_title=current_session.get("exam_title", "CS401: Advanced AI Exam")
-        )
-
     with col_right:
-        # Render Live Telemetry and Gauge Panel polled directly from webrtc_ctx
-        render_live_threat_panel(
-            webrtc_ctx=webrtc_ctx,
-            session_id=current_session.get("session_id", "default_session")
-        )
+        # Render Live Telemetry and Gauge Panel in a decoupled fragment
+        render_live_threat_panel(current_session.get("session_id", "default_session"))
 
 
 # ---------------- TAB 2: INCIDENT VAULT & EVIDENCE REVIEW ----------------
