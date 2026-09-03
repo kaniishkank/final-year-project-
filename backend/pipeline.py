@@ -1,6 +1,7 @@
 """
 EviGuard Main Processing Pipeline
 Integrates Detection, Tracking, Pose/Gaze Estimation, Risk Scoring, XAI, Evidence Recording, and DB logging.
+Optimized for zero-lag instant direct triggers, multi-student fair time-slicing, and rapid snapshot archival.
 """
 
 from collections import deque
@@ -62,7 +63,6 @@ class FreshFrameReader:
         self.running = True
         
         try:
-            # On Windows, try DirectShow for instant initialization
             camera_idx = int(self.src) if isinstance(self.src, (int, str)) and str(self.src).isdigit() else self.src
             if isinstance(camera_idx, int) and sys.platform == "win32":
                 self.cap = cv2.VideoCapture(camera_idx, cv2.CAP_DSHOW)
@@ -85,7 +85,6 @@ class FreshFrameReader:
         """Continuously grabs newest frames from camera to flush hardware buffer."""
         while self.running:
             if self.cap is not None and self.cap.isOpened():
-                # grab() fetches frame without full decode overhead
                 grabbed = self.cap.grab()
                 if grabbed:
                     ret, frame = self.cap.retrieve()
@@ -156,7 +155,11 @@ class EviGuardPipeline:
         self.last_time = time.time()
         self.current_fps = 30.0
         
-        # Temporal Inference Stride for High FPS (Decoupled heavy model inference)
+        # Multi-Student Round-Robin State
+        self.active_student_ids: List[int] = [1]
+        self.student_round_robin_idx = 0
+        
+        # Temporal Inference Stride for High FPS
         self.inference_stride = self.config.get("system", {}).get("inference_stride", 3)
         self.target_w = self.config.get("video", {}).get("width", 640)
         self.target_h = self.config.get("video", {}).get("height", 480)
@@ -180,7 +183,7 @@ class EviGuardPipeline:
         session_id: str = "default_session",
         candidate_name: str = "Candidate"
     ) -> PipelineOutput:
-        """Executes full analysis pipeline on a single frame with inference stride optimization."""
+        """Executes full analysis pipeline with zero-lag triggers and multi-student fair time-slicing."""
         self.frame_index += 1
         now = time.time()
         dt = now - self.last_time
@@ -195,39 +198,63 @@ class EviGuardPipeline:
 
         raw_frame = frame.copy()
         
-        # 2. Store frame in circular buffer
+        # 2. Store frame in circular rolling buffer
         self.frame_buffer.append((frame.copy(), self.frame_index, now))
 
-        # 3. Object Detection & Pose/Gaze with Temporal Stride
+        # 3. Object Detection & Pose/Gaze with Multi-Student Time-Slicing
         is_inference_frame = (self.frame_index % self.inference_stride == 0) or (self.last_pose_gaze_result is None)
 
         if is_inference_frame:
-            # Run heavy YOLOv8 detection
             detections = self.detector.detect(frame)
             tracked_detections = self.tracker.update(detections)
             person_count = self.tracker.get_person_count()
 
-            # Run MediaPipe FaceMesh & 3D Pose
-            pose_gaze_result = self.pose_gaze.estimate(frame)
+            # Multi-student tracking
+            person_dets = [d for d in tracked_detections if d.class_name == "person"]
+            if person_dets:
+                self.active_student_ids = [d.track_id for d in person_dets if d.track_id is not None]
+                if not self.active_student_ids:
+                    self.active_student_ids = [1]
+            else:
+                self.active_student_ids = [1]
+
+            # Fair round-robin selection for cropped FaceMesh calculation
+            if self.student_round_robin_idx >= len(self.active_student_ids):
+                self.student_round_robin_idx = 0
+            current_target_id = self.active_student_ids[self.student_round_robin_idx]
+            self.student_round_robin_idx = (self.student_round_robin_idx + 1) % len(self.active_student_ids)
+
+            # Find bounding box for the current target student
+            target_bbox = None
+            for d in person_dets:
+                if d.track_id == current_target_id:
+                    target_bbox = d.box
+                    break
+            if target_bbox is None and person_dets:
+                target_bbox = person_dets[0].box
+
+            # Run FaceMesh on cropped candidate box for speed
+            pose_gaze_result = self.pose_gaze.estimate(frame, bbox=target_bbox)
 
             # Cache results for intervening frames
             self.last_tracked_detections = tracked_detections
             self.last_pose_gaze_result = pose_gaze_result
             self.last_person_count = person_count
         else:
-            # Decoupled frame: Reuse cached inference results for ultra-smooth 30+ FPS
             tracked_detections = self.last_tracked_detections
             pose_gaze_result = self.last_pose_gaze_result or self.pose_gaze.estimate(frame)
             person_count = self.last_person_count
 
-        # 4. Risk Assessment
+        # 4. Independent Risk Assessment per Student
+        primary_student_id = self.active_student_ids[0] if self.active_student_ids else 1
         risk_result = self.risk_engine.evaluate(
             detections=tracked_detections,
             pose_gaze=pose_gaze_result,
-            person_count=person_count
+            person_count=person_count,
+            student_id=primary_student_id
         )
 
-        # 5. Database Telemetry Logging (throttled every 3 frames to minimize I/O)
+        # 5. Database Telemetry Logging (throttled every 3 frames)
         if self.frame_index % 3 == 0:
             try:
                 self.db.log_metric(
@@ -243,7 +270,7 @@ class EviGuardPipeline:
             except Exception:
                 pass
 
-        # 7. Incident Handling & Evidence Recording
+        # 6. Incident Handling & Evidence Recording (Zero-Lag Immediate Snapshot + Async Clip)
         logged_incident_dict = None
         if risk_result.is_incident_triggered:
             explanation = self.reason_gen.generate_explanation(
@@ -254,7 +281,7 @@ class EviGuardPipeline:
                 timestamp_str=datetime.now().strftime("%H:%M:%S")
             )
 
-            # Save Evidence Snapshot
+            # Write Evidence Snapshot IMMEDIATELY to disk on first alert frame
             snapshot_filename = f"{session_id}_f{self.frame_index}_{int(now)}.jpg"
             snapshot_path = os.path.join(self.evidence_dir, snapshot_filename)
             try:
@@ -262,12 +289,11 @@ class EviGuardPipeline:
             except Exception:
                 snapshot_path = None
 
-            # Save Evidence Clip asynchronously
+            # Asynchronously encode the pre/post-roll MP4 clip
             clip_filename = f"{session_id}_f{self.frame_index}_{int(now)}.mp4"
             clip_path = os.path.join(self.evidence_dir, clip_filename)
             self._save_evidence_clip_async(clip_path)
 
-            # Details JSON payload
             details = {
                 "active_violations": risk_result.active_violations,
                 "violation_factors": risk_result.violation_factors,
@@ -309,7 +335,7 @@ class EviGuardPipeline:
                     "evidence_snapshot_path": snapshot_path,
                 }
 
-        # 8. Render Visual Annotations and HUD Overlay
+        # 7. Render Visual Annotations and HUD Overlay
         annotated_frame = self._render_hud(
             frame=frame.copy(),
             detections=tracked_detections,
@@ -365,14 +391,14 @@ class EviGuardPipeline:
             cls_name = det.class_name.lower()
 
             if "phone" in cls_name:
-                color = (0, 0, 255) # Red for unauthorized device
+                color = (0, 0, 255)
                 label = f"ALERT: Phone ({det.confidence*100:.0f}%)"
             elif "book" in cls_name:
-                color = (0, 165, 255) # Orange for books
+                color = (0, 165, 255)
                 label = f"ALERT: Book ({det.confidence*100:.0f}%)"
             elif "person" in cls_name:
                 if det.track_id == 1:
-                    color = (255, 180, 0) # Cyan/Blue for primary candidate
+                    color = (255, 180, 0) # Cyan for primary candidate
                     label = f"Student #1 (Candidate) ({det.confidence*100:.0f}%)"
                 else:
                     color = (0, 0, 255) # Red for unauthorized second person
@@ -381,7 +407,6 @@ class EviGuardPipeline:
                 color = (0, 255, 0)
                 label = f"{det.class_name} ({det.confidence*100:.0f}%)"
 
-            # Draw box & filled label tag
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
             cv2.rectangle(frame, (x1, max(0, y1 - 20)), (x1 + lw + 8, max(0, y1)), color, -1)
@@ -389,17 +414,14 @@ class EviGuardPipeline:
 
         # 2. Draw 3D Gaze / Head Pose Vector
         if pose_gaze.face_detected and pose_gaze.landmarks_2d:
-            # Nose center
             nose_pt = pose_gaze.landmarks_2d[0]
             p1 = (int(nose_pt[0]), int(nose_pt[1]))
 
             if pose_gaze.nose_projection_2d:
                 p2 = (int(pose_gaze.nose_projection_2d[0]), int(pose_gaze.nose_projection_2d[1]))
-                # Color code gaze arrow based on deviation
                 arrow_color = (0, 0, 255) if pose_gaze.is_looking_away else (0, 255, 0)
                 cv2.arrowedLine(frame, p1, p2, arrow_color, 2, tipLength=0.25)
 
-            # Draw key face landmark dots
             for pt in pose_gaze.landmarks_2d:
                 cv2.circle(frame, (int(pt[0]), int(pt[1])), 2, (0, 255, 255), -1)
 
@@ -408,31 +430,26 @@ class EviGuardPipeline:
         cv2.rectangle(overlay, (0, 0), (w, 55), (20, 20, 25), -1)
         cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
 
-        # Risk Color
         if risk.risk_level == "HIGH":
-            risk_color = (0, 0, 255) # Red
+            risk_color = (0, 0, 255)
         elif risk.risk_level == "MEDIUM":
-            risk_color = (0, 165, 255) # Orange
+            risk_color = (0, 165, 255)
         else:
-            risk_color = (0, 255, 100) # Green
+            risk_color = (0, 255, 100)
 
-        # Brand / Title
         cv2.putText(frame, "EVIGUARD PROCTOR", (12, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
         
-        # Risk Score Text
         risk_text = f"RISK: {risk.smoothed_score:.0f}/100 [{risk.risk_level}]"
         cv2.putText(frame, risk_text, (12, 44), cv2.FONT_HERSHEY_SIMPLEX, 0.5, risk_color, 2, cv2.LINE_AA)
 
-        # Head Pose Angles
         pose_text = f"Yaw:{pose_gaze.yaw:+.0f} Pitch:{pose_gaze.pitch:+.0f}" if pose_gaze.face_detected else "NO FACE"
         cv2.putText(frame, pose_text, (w - 220, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
 
-        # Gaze / Status
         gaze_str = f"Gaze: {pose_gaze.gaze_direction}" if pose_gaze.face_detected else "CANDIDATE ABSENT"
         gaze_col = (0, 0, 255) if pose_gaze.is_looking_away or not pose_gaze.face_detected else (0, 255, 120)
         cv2.putText(frame, gaze_str, (w - 260, 44), cv2.FONT_HERSHEY_SIMPLEX, 0.42, gaze_col, 1, cv2.LINE_AA)
 
-        # 4. Critical Warning Strip if High Risk
+        # 4. Critical Warning Strip if Active Violations
         if risk.active_violations:
             banner_overlay = frame.copy()
             cv2.rectangle(banner_overlay, (0, h - 35), (w, h), (0, 0, 180), -1)

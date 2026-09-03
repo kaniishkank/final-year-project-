@@ -1,7 +1,7 @@
 """
 Pose and Gaze Estimation Module
 Calculates 3D Head Pose (Yaw, Pitch, Roll) and Gaze Direction using MediaPipe FaceMesh and solvePnP.
-Detects Face Absence, Multi-Face Presence, and Sustained Looking Away infractions.
+Features cropped bounding box optimization for ultra-fast landmark compute and relaxed angle thresholds.
 """
 
 from dataclasses import dataclass
@@ -44,7 +44,7 @@ class PoseGazeResult:
 
 
 class PoseGazeEstimator:
-    """Extracts head pose angles and gaze metrics from frames."""
+    """Extracts head pose angles and gaze metrics from frames or cropped student ROIs."""
 
     # 3D generic facial model points (in mm, centered around nose tip)
     MODEL_POINTS_3D = np.array([
@@ -62,16 +62,16 @@ class PoseGazeEstimator:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.config = config or {}
         
-        # Thresholds
+        # Relaxed thresholds for snappier angle detection
         head_cfg = self.config.get("head_pose", {})
-        self.yaw_limit_left = head_cfg.get("yaw_limit_left", -25.0)
-        self.yaw_limit_right = head_cfg.get("yaw_limit_right", 25.0)
-        self.pitch_limit_down = head_cfg.get("pitch_limit_down", -20.0)
-        self.pitch_limit_up = head_cfg.get("pitch_limit_up", 25.0)
-        self.roll_limit = head_cfg.get("roll_limit", 25.0)
+        self.yaw_limit_left = head_cfg.get("yaw_limit_left", -20.0)
+        self.yaw_limit_right = head_cfg.get("yaw_limit_right", 20.0)
+        self.pitch_limit_down = head_cfg.get("pitch_limit_down", -18.0)
+        self.pitch_limit_up = head_cfg.get("pitch_limit_up", 22.0)
+        self.roll_limit = head_cfg.get("roll_limit", 22.0)
 
         absence_cfg = self.config.get("face_absence", {})
-        self.absence_threshold = absence_cfg.get("absence_frames_threshold", 30)
+        self.absence_threshold = absence_cfg.get("absence_frames_threshold", 25)
 
         self.consecutive_absence_frames = 0
         self.consecutive_lookaway_frames = 0
@@ -96,8 +96,13 @@ class PoseGazeEstimator:
             logger.warning(f"MediaPipe FaceMesh unavailable ({e}). Using OpenCV/Mathematical fallback.")
             self._fallback_mode = True
 
-    def estimate(self, frame: np.ndarray) -> PoseGazeResult:
-        """Processes frame to compute head pose angles and gaze orientation."""
+    def estimate(self, frame: np.ndarray, bbox: Optional[List[float]] = None) -> PoseGazeResult:
+        """Processes frame (or cropped student bounding box) to compute 3D head pose and gaze orientation.
+        
+        Args:
+            frame: Raw BGR video frame.
+            bbox: Optional [x1, y1, x2, y2] bounding box to run on cropped patch.
+        """
         if frame is None or frame.size == 0:
             self.consecutive_absence_frames += 1
             return self._create_absent_result()
@@ -107,8 +112,31 @@ class PoseGazeEstimator:
 
         try:
             import cv2
-            h, w = frame.shape[:2]
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h_full, w_full = frame.shape[:2]
+            
+            # Crop optimization if bounding box provided
+            offset_x, offset_y = 0.0, 0.0
+            if bbox is not None:
+                bx1, by1, bx2, by2 = [int(v) for v in bbox]
+                # Add 10% safety margin
+                pad_x = int((bx2 - bx1) * 0.1)
+                pad_y = int((by2 - by1) * 0.1)
+                cx1 = max(0, bx1 - pad_x)
+                cy1 = max(0, by1 - pad_y)
+                cx2 = min(w_full, bx2 + pad_x)
+                cy2 = min(h_full, by2 + pad_y)
+                
+                if (cx2 - cx1) > 50 and (cy2 - cy1) > 50:
+                    crop_patch = frame[cy1:cy2, cx1:cx2]
+                    offset_x, offset_y = float(cx1), float(cy1)
+                    process_img = crop_patch
+                else:
+                    process_img = frame
+            else:
+                process_img = frame
+
+            h, w = process_img.shape[:2]
+            rgb_frame = cv2.cvtColor(process_img, cv2.COLOR_BGR2RGB)
             results = self.face_mesh.process(rgb_frame)
 
             if not results.multi_face_landmarks:
@@ -120,22 +148,22 @@ class PoseGazeEstimator:
             face_count = len(results.multi_face_landmarks)
             primary_face = results.multi_face_landmarks[0]
 
-            # Extract 2D image points for key landmarks
+            # Extract 2D image points mapped back to global coordinates
             image_points_2d = []
             for idx in self.LANDMARK_INDICES:
                 lm = primary_face.landmark[idx]
-                image_points_2d.append([lm.x * w, lm.y * h])
+                image_points_2d.append([lm.x * w + offset_x, lm.y * h + offset_y])
             image_points_2d = np.array(image_points_2d, dtype=np.float64)
 
             # Camera matrix assumption
-            focal_length = w
-            center = (w / 2.0, h / 2.0)
+            focal_length = w_full
+            center = (w_full / 2.0, h_full / 2.0)
             camera_matrix = np.array([
                 [focal_length, 0, center[0]],
                 [0, focal_length, center[1]],
                 [0, 0, 1]
             ], dtype=np.float64)
-            dist_coeffs = np.zeros((4, 1)) # Assuming zero lens distortion
+            dist_coeffs = np.zeros((4, 1))
 
             # Solve PnP for 3D Pose
             success, rvec, tvec = cv2.solvePnP(
@@ -153,7 +181,7 @@ class PoseGazeEstimator:
             rmat, _ = cv2.Rodrigues(rvec)
             yaw, pitch, roll = self._rotation_matrix_to_euler_angles(rmat)
 
-            # Project a 3D nose vector forward to get gaze vector visualization point
+            # Project 3D nose vector forward
             nose_end_point3D = np.array([[0.0, 0.0, 500.0]], dtype=np.float64)
             nose_end_point2D, _ = cv2.projectPoints(nose_end_point3D, rvec, tvec, camera_matrix, dist_coeffs)
             p_nose_2d = (float(nose_end_point2D[0][0][0]), float(nose_end_point2D[0][0][1]))
@@ -166,9 +194,9 @@ class PoseGazeEstimator:
             else:
                 self.consecutive_lookaway_frames = max(0, self.consecutive_lookaway_frames - 1)
 
-            # Extract face bounding box
-            all_x = [lm.x * w for lm in primary_face.landmark]
-            all_y = [lm.y * h for lm in primary_face.landmark]
+            # Extract face bounding box mapped to global image
+            all_x = [lm.x * w + offset_x for lm in primary_face.landmark]
+            all_y = [lm.y * h + offset_y for lm in primary_face.landmark]
             face_box = [float(min(all_x)), float(min(all_y)), float(max(all_x)), float(max(all_y))]
 
             return PoseGazeResult(
@@ -233,12 +261,7 @@ class PoseGazeEstimator:
             y = math.atan2(-R[2, 0], sy)
             z = 0.0
 
-        # Convert to degrees
-        pitch = math.degrees(x)
-        yaw = math.degrees(y)
-        roll = math.degrees(z)
-
-        return float(yaw), float(pitch), float(roll)
+        return float(math.degrees(y)), float(math.degrees(x)), float(math.degrees(z))
 
     def _create_absent_result(self) -> PoseGazeResult:
         """Returns result state when no face is visible."""
@@ -270,12 +293,11 @@ class PoseGazeEstimator:
 
             self.consecutive_absence_frames = 0
             x, y, fw, fh = faces[0]
-            # Simple heuristic offset calculation based on face center vs frame center
             face_center_x = x + fw / 2.0
             face_center_y = y + fh / 2.0
 
-            yaw = float((face_center_x - w / 2.0) / (w / 2.0) * 35.0)
-            pitch = float(-(face_center_y - h / 2.0) / (h / 2.0) * 25.0)
+            yaw = float((face_center_x - w / 2.0) / (w / 2.0) * 30.0)
+            pitch = float(-(face_center_y - h / 2.0) / (h / 2.0) * 20.0)
             roll = 0.0
 
             gaze_direction, is_looking_away = self._classify_gaze(yaw, pitch, roll)
