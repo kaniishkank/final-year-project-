@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring Dashboard
 Interactive web interface for real-time exam monitoring, evidence clip playback, explainability review, and session auditing.
-Features threaded background video capture and in-place DOM updates to eliminate scroll-jumping and lag.
+Powered by streamlit-webrtc for zero-latency, hardware-decoupled browser video streaming.
 """
 
 from datetime import datetime
@@ -10,12 +10,14 @@ import os
 import threading
 import time
 from typing import Dict, Any, List, Optional
+import av
 import cv2
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration, WebRtcMode
 import yaml
 
 # Add parent directory to sys.path
@@ -92,85 +94,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ---------------- BUFFERLESS REAL-TIME CAMERA CAPTURE ----------------
-class FreshFrameReader:
-    """Bufferless real-time video capture reader.
-    Continuously runs cap.grab() in a dedicated background thread so only
-    the single latest real-time frame is stored and retrieved, eliminating video latency.
-    """
-    
-    def __init__(self, src: int = 0, width: int = 640, height: int = 480):
-        self.src = src
-        self.width = width
-        self.height = height
-        self.cap = None
-        self.running = False
-        self.thread = None
-        self.latest_frame = None
-        self.lock = threading.Lock()
-
-    def start(self, src: int = 0):
-        if self.running and self.src == src and self.cap is not None and self.cap.isOpened():
-            return
-        self.stop()
-        self.src = src
-        self.running = True
-        try:
-            # On Windows, try DirectShow for immediate hardware connection
-            if sys.platform == "win32":
-                self.cap = cv2.VideoCapture(int(src), cv2.CAP_DSHOW)
-                if not self.cap.isOpened():
-                    self.cap = cv2.VideoCapture(int(src))
-            else:
-                self.cap = cv2.VideoCapture(int(src))
-
-            if self.cap is not None and self.cap.isOpened():
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-                self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        except Exception:
-            self.cap = None
-
-        self.thread = threading.Thread(target=self._grab_worker, daemon=True)
-        self.thread.start()
-
-    def _grab_worker(self):
-        """Continuously pulls latest frames to flush hardware buffer in real-time."""
-        while self.running:
-            if self.cap is not None and self.cap.isOpened():
-                grabbed = self.cap.grab()
-                if grabbed:
-                    ret, frame = self.cap.retrieve()
-                    if ret and frame is not None:
-                        if frame.shape[1] != self.width or frame.shape[0] != self.height:
-                            frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
-                        with self.lock:
-                            self.latest_frame = frame
-                else:
-                    time.sleep(0.005)
-            else:
-                time.sleep(0.02)
-
-    def read(self) -> Optional[np.ndarray]:
-        """Always retrieves single freshest frame and drops all older queued frames."""
-        with self.lock:
-            return self.latest_frame.copy() if self.latest_frame is not None else None
-
-    def stop(self):
-        self.running = False
-        if self.thread is not None:
-            self.thread.join(timeout=0.5)
-            self.thread = None
-        if self.cap is not None:
-            try:
-                self.cap.release()
-            except Exception:
-                pass
-            self.cap = None
-        with self.lock:
-            self.latest_frame = None
-
-
 # ---------------- INITIALIZATION & CACHING ----------------
 @st.cache_resource
 def get_db_manager():
@@ -180,14 +103,52 @@ def get_db_manager():
 def get_pipeline():
     return EviGuardPipeline("config.yaml")
 
-@st.cache_resource
-def get_camera():
-    return FreshFrameReader(src=0, width=640, height=480)
-
-
 db_manager = get_db_manager()
 pipeline = get_pipeline()
-camera = get_camera()
+
+
+# ---------------- WEBRTC VIDEO PROCESSOR ----------------
+RTC_CONFIGURATION = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
+
+
+class ProctorVideoProcessor(VideoProcessorBase):
+    """Asynchronous WebRTC video processor running EviGuard AI pipeline in real-time."""
+
+    def __init__(self):
+        self.pipeline = get_pipeline()
+        self.session_id = "default_session"
+        self.candidate_name = "Alex Johnson"
+        self.latest_output: Optional[PipelineOutput] = None
+        self.lock = threading.Lock()
+
+    def set_session_info(self, session_id: str, candidate_name: str):
+        self.session_id = session_id
+        self.candidate_name = candidate_name
+
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        """Processes each incoming WebRTC video frame through the AI proctoring pipeline."""
+        img = frame.to_ndarray(format="bgr24")
+        if img is None or img.size == 0:
+            return frame
+
+        # Downscale to 640x480 for ultra-fast processing
+        if img.shape[1] != 640 or img.shape[0] != 480:
+            img = cv2.resize(img, (640, 480), interpolation=cv2.INTER_LINEAR)
+
+        # Process through EviGuardPipeline (detection, tracking, pose/gaze, risk scoring, HUD)
+        output: PipelineOutput = self.pipeline.process_frame(
+            frame=img,
+            session_id=self.session_id,
+            candidate_name=self.candidate_name
+        )
+
+        with self.lock:
+            self.latest_output = output
+
+        # Return the annotated frame with HUD back to the browser video element
+        return av.VideoFrame.from_ndarray(output.annotated_frame, format="bgr24")
 
 
 # ---------------- HELPER PLOT FUNCTIONS ----------------
@@ -296,8 +257,6 @@ with st.sidebar:
             st.rerun()
 
     st.markdown("---")
-    # Clean Stream Toggle in Sidebar
-    stream_master_toggle = st.toggle("📹 Camera Streaming Active", value=True, help="Toggle camera stream on/off to inspect charts or logs without live stream re-renders")
     st.caption("EviGuard v1.0.0 | Final Year Project")
 
 
@@ -325,155 +284,136 @@ if menu_option == "📹 Live Proctoring":
 
     st.markdown("---")
 
-    # Source Selection
-    col_src1, col_src2 = st.columns([2, 2])
-    video_source_mode = col_src1.radio(
-        "Video Stream Source",
-        ["📹 Live Physical Webcam (Default: Device 0)", "🧪 Synthetic Avatar Simulator (Demo Mode)"],
+    # Mode Selector
+    video_source_mode = st.radio(
+        "Video Ingestion Engine",
+        ["🌐 WebRTC Live Webcam (Browser Native, Zero Latency)", "🧪 Synthetic Avatar Simulator (Demo Mode)"],
         index=0,
         horizontal=True
     )
-    cam_index = 0
-    if "Webcam" in video_source_mode:
-        cam_index = col_src2.number_input("Webcam Device Index", min_value=0, max_value=4, value=0, step=1)
 
     # Main Live Layout
     col_left, col_right = st.columns([3, 2])
 
     with col_left:
         st.subheader("Live Video Feed & AI HUD")
-        video_placeholder = st.empty()
+        
+        if "WebRTC" in video_source_mode:
+            st.caption("Click **START** below to allow browser webcam access and stream in real-time.")
+            webrtc_ctx = webrtc_streamer(
+                key="eviguard-live",
+                mode=WebRtcMode.SENDRECV,
+                rtc_configuration=RTC_CONFIGURATION,
+                video_processor_factory=ProctorVideoProcessor,
+                media_stream_constraints={
+                    "video": {"width": {"ideal": 640}, "height": {"ideal": 480}},
+                    "audio": False
+                },
+                async_processing=True
+            )
 
-        sim_phone, sim_multi, sim_lookaway, sim_absent = False, False, False, False
-        if "Synthetic" in video_source_mode:
-            st.markdown("##### 🧪 Interactive Violation Simulator (Live Demo Mode)")
+            if webrtc_ctx.video_processor:
+                webrtc_ctx.video_processor.set_session_info(
+                    session_id=current_session.get("session_id", "default_session"),
+                    candidate_name=current_session.get("candidate_name", "Alex Johnson")
+                )
+        else:
+            # Synthetic Demo Simulator
+            video_placeholder = st.empty()
+            st.markdown("##### 🧪 Interactive Violation Simulator (Demo Mode)")
             sim_col1, sim_col2, sim_col3, sim_col4 = st.columns(4)
             sim_phone = sim_col1.button("📱 Phone Detected")
             sim_multi = sim_col2.button("👥 Multiple People")
             sim_lookaway = sim_col3.button("👀 Looking Away")
             sim_absent = sim_col4.button("🚪 Candidate Absent")
 
-    with col_right:
-        st.subheader("Live Threat Analysis")
-        alert_placeholder = st.empty()
-        gauge_placeholder = st.empty()
-        telemetry_placeholder = st.empty()
-        timeline_placeholder = st.empty()
+            # Generate synthetic frame
+            frame_h, frame_w = 480, 640
+            frame = np.zeros((frame_h, frame_w, 3), dtype=np.uint8)
+            frame[:] = (35, 30, 40)
+            cv2.rectangle(frame, (100, 320), (540, 480), (70, 65, 80), -1)
 
-    # In-place Dedicated Streaming Loop (No st.rerun() to prevent scroll jumping!)
-    if stream_master_toggle:
-        if "Webcam" in video_source_mode:
-            camera.start(int(cam_index))
-        else:
-            camera.stop()
-
-        frame_counter = 0
-        
-        # Initial chart placeholders
-        recent_metrics = db_manager.get_session_metrics(st.session_state.active_session_id, limit=50)
-        timeline_fig = create_timeline_chart(recent_metrics)
-        timeline_placeholder.plotly_chart(timeline_fig, width="stretch", key="init_timeline")
-
-        # Smooth In-Place Update Loop
-        while stream_master_toggle:
-            frame = None
-            if "Webcam" in video_source_mode:
-                frame = camera.read()
-                if frame is None:
-                    time.sleep(0.04)
-                    continue
-            else:
-                # Synthetic Avatar Mode
-                frame_h, frame_w = 480, 640
-                frame = np.zeros((frame_h, frame_w, 3), dtype=np.uint8)
-                frame[:] = (35, 30, 40)
-                cv2.rectangle(frame, (100, 320), (540, 480), (70, 65, 80), -1)
-
-                injected_dets: List[DetectionResult] = []
-                if sim_absent:
-                    pass
+            injected_dets: List[DetectionResult] = []
+            if not sim_absent:
+                if sim_lookaway:
+                    cv2.circle(frame, (300, 200), 75, (200, 180, 160), -1)
+                    cv2.circle(frame, (270, 195), 10, (50, 40, 30), -1)
+                    cv2.ellipse(frame, (300, 380), (140, 120), 0, 0, 180, (120, 90, 80), -1)
                 else:
-                    if sim_lookaway:
-                        cv2.circle(frame, (300, 200), 75, (200, 180, 160), -1)
-                        cv2.circle(frame, (270, 195), 10, (50, 40, 30), -1)
-                        cv2.ellipse(frame, (300, 380), (140, 120), 0, 0, 180, (120, 90, 80), -1)
-                    else:
-                        cv2.circle(frame, (320, 200), 75, (220, 190, 170), -1)
-                        cv2.circle(frame, (295, 195), 10, (50, 40, 30), -1)
-                        cv2.circle(frame, (345, 195), 10, (50, 40, 30), -1)
-                        cv2.ellipse(frame, (320, 380), (140, 120), 0, 0, 180, (120, 90, 80), -1)
+                    cv2.circle(frame, (320, 200), 75, (220, 190, 170), -1)
+                    cv2.circle(frame, (295, 195), 10, (50, 40, 30), -1)
+                    cv2.circle(frame, (345, 195), 10, (50, 40, 30), -1)
+                    cv2.ellipse(frame, (320, 380), (140, 120), 0, 0, 180, (120, 90, 80), -1)
 
-                    injected_dets.append(
-                        DetectionResult(box=[180.0, 120.0, 460.0, 460.0], confidence=0.95, class_id=0, class_name="person")
-                    )
+                injected_dets.append(
+                    DetectionResult(box=[180.0, 120.0, 460.0, 460.0], confidence=0.95, class_id=0, class_name="person")
+                )
 
-                if sim_phone:
-                    cv2.rectangle(frame, (420, 340), (490, 440), (20, 20, 20), -1)
-                    cv2.rectangle(frame, (425, 345), (485, 435), (200, 240, 255), -1)
-                    injected_dets.append(
-                        DetectionResult(box=[420.0, 340.0, 490.0, 440.0], confidence=0.92, class_id=67, class_name="cell phone")
-                    )
+            if sim_phone:
+                cv2.rectangle(frame, (420, 340), (490, 440), (20, 20, 20), -1)
+                cv2.rectangle(frame, (425, 345), (485, 435), (200, 240, 255), -1)
+                injected_dets.append(
+                    DetectionResult(box=[420.0, 340.0, 490.0, 440.0], confidence=0.92, class_id=67, class_name="cell phone")
+                )
 
-                if sim_multi:
-                    cv2.circle(frame, (120, 170), 50, (180, 150, 140), -1)
-                    cv2.ellipse(frame, (120, 300), (90, 80), 0, 0, 180, (80, 100, 120), -1)
-                    injected_dets.append(
-                        DetectionResult(box=[40.0, 100.0, 200.0, 380.0], confidence=0.89, class_id=0, class_name="person")
-                    )
+            if sim_multi:
+                cv2.circle(frame, (120, 170), 50, (180, 150, 140), -1)
+                cv2.ellipse(frame, (120, 300), (90, 80), 0, 0, 180, (80, 100, 120), -1)
+                injected_dets.append(
+                    DetectionResult(box=[40.0, 100.0, 200.0, 380.0], confidence=0.89, class_id=0, class_name="person")
+                )
 
-                if hasattr(pipeline.detector, "set_injected_detections"):
-                    pipeline.detector.set_injected_detections(injected_dets)
+            if hasattr(pipeline.detector, "set_injected_detections"):
+                pipeline.detector.set_injected_detections(injected_dets)
 
-            if "Webcam" in video_source_mode and hasattr(pipeline.detector, "set_injected_detections"):
-                pipeline.detector.set_injected_detections([])
-
-            # Process frame through pipeline
-            output: PipelineOutput = pipeline.process_frame(
-                frame=frame,
-                session_id=st.session_state.active_session_id,
-                candidate_name=current_session.get("candidate_name", "Alex Johnson")
-            )
-
-            # Update video frame in-place with JPEG compression (fast & lightweight)
+            output = pipeline.process_frame(frame, session_id=current_session["session_id"], candidate_name=current_session["candidate_name"])
             _, encoded_jpeg = cv2.imencode('.jpg', output.annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             video_placeholder.image(encoded_jpeg.tobytes(), output_format="JPEG", width="stretch")
 
-            # Update alert badge in-place
-            with alert_placeholder.container():
-                if output.risk.active_violations:
-                    st.error(f"🚨 **ACTIVE ALERT**: {' • '.join(output.risk.active_violations)}")
-                    if output.incident_logged:
-                        st.warning(f"**Audit Justification**: {output.incident_logged.get('reason_summary')}")
-                else:
-                    st.success("✅ **Status Normal**: Candidate within compliance limits.")
+    with col_right:
+        st.subheader("Live Threat Analysis")
+        
+        # Read latest risk evaluation from WebRTC processor or pipeline
+        latest_risk_score = 0.0
+        latest_risk_level = "LOW"
+        active_violations = []
+        person_count = 1
+        yaw_val, pitch_val = 0.0, 0.0
 
-            # Update telemetry in-place
-            with telemetry_placeholder.container():
-                t_col1, t_col2, t_col3 = st.columns(3)
-                t_col1.metric("Persons Tracked", output.pose_gaze.face_count if output.pose_gaze.face_detected else len(output.detections))
-                t_col2.metric("Head Yaw (L/R)", f"{output.pose_gaze.yaw:+.1f}°")
-                t_col3.metric("Head Pitch (U/D)", f"{output.pose_gaze.pitch:+.1f}°")
+        if "WebRTC" in video_source_mode and 'webrtc_ctx' in locals() and webrtc_ctx.video_processor:
+            with webrtc_ctx.video_processor.lock:
+                out = webrtc_ctx.video_processor.latest_output
+                if out:
+                    latest_risk_score = out.risk.smoothed_score
+                    latest_risk_level = out.risk.risk_level
+                    active_violations = out.risk.active_violations
+                    person_count = out.pose_gaze.face_count if out.pose_gaze.face_detected else len(out.detections)
+                    yaw_val, pitch_val = out.pose_gaze.yaw, out.pose_gaze.pitch
 
-            # Throttled chart rendering every 10 frames (~2-3 times/sec) to keep UI ultra responsive
-            if frame_counter % 10 == 0:
-                gauge_fig = create_gauge_chart(output.risk.smoothed_score, output.risk.risk_level)
-                gauge_placeholder.plotly_chart(gauge_fig, width="stretch", key=f"live_gauge_{frame_counter % 50}")
+        # Alert Badge
+        if active_violations:
+            st.error(f"🚨 **ACTIVE ALERT**: {' • '.join(active_violations)}")
+        else:
+            st.success("✅ **Status Normal**: Candidate within compliance limits.")
 
-            if frame_counter % 30 == 0:
-                recent_metrics = db_manager.get_session_metrics(st.session_state.active_session_id, limit=50)
-                timeline_fig = create_timeline_chart(recent_metrics)
-                timeline_placeholder.plotly_chart(timeline_fig, width="stretch", key=f"live_timeline_{frame_counter % 50}")
+        # Plotly Gauge Chart
+        gauge_fig = create_gauge_chart(latest_risk_score, latest_risk_level)
+        st.plotly_chart(gauge_fig, width="stretch", key="webrtc_live_gauge")
 
-            frame_counter += 1
-            time.sleep(0.03) # Cap at smooth ~25-30 FPS without CPU hogging
-    else:
-        camera.stop()
-        st.info("⏸️ Video stream paused. Turn on '📹 Camera Streaming Active' in the sidebar to resume live monitoring.")
+        # Telemetry Metrics
+        t_col1, t_col2, t_col3 = st.columns(3)
+        t_col1.metric("Persons Tracked", person_count)
+        t_col2.metric("Head Yaw (L/R)", f"{yaw_val:+.1f}°")
+        t_col3.metric("Head Pitch (U/D)", f"{pitch_val:+.1f}°")
+
+        # Timeline Chart
+        recent_metrics = db_manager.get_session_metrics(st.session_state.active_session_id, limit=50)
+        timeline_fig = create_timeline_chart(recent_metrics)
+        st.plotly_chart(timeline_fig, width="stretch", key="webrtc_timeline")
 
 
 # ---------------- TAB 2: INCIDENT VAULT & EVIDENCE REVIEW ----------------
 elif menu_option == "🔍 Incident Vault":
-    camera.stop()
     st.markdown("## 🔍 Security Incident Vault & Evidence Review")
     st.markdown("Review flagged violations with automated video clips, snapshots, and explainable AI justifications.")
 
@@ -576,7 +516,6 @@ elif menu_option == "🔍 Incident Vault":
 
 # ---------------- TAB 3: SESSION ANALYTICS & REPORTS ----------------
 elif menu_option == "📊 Analytics & Reports":
-    camera.stop()
     st.markdown("## 📊 Proctoring Analytics & Session Audit")
     
     current_session = db_manager.get_session_by_id(st.session_state.active_session_id)
@@ -662,7 +601,6 @@ elif menu_option == "📊 Analytics & Reports":
 
 # ---------------- TAB 4: SETTINGS & SENSITIVITY ----------------
 elif menu_option == "⚙️ Settings & Sensitivity":
-    camera.stop()
     st.markdown("## ⚙️ Proctoring Sensitivity & Threshold Configuration")
     st.markdown("Customize model confidence, gaze tolerance limits, and risk weights dynamically.")
 
