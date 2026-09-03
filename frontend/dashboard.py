@@ -603,7 +603,7 @@ def render_threat_panel(
 
     # Semi-Circular Plotly Risk Meter Gauge directly bound to live risk score
     gauge_fig = create_gauge_chart(risk_score, risk_level)
-    st.plotly_chart(gauge_fig, width="stretch", key=f"threat_gauge_{session_id}")
+    st.plotly_chart(gauge_fig, width="stretch")
 
     # Live Numerical Telemetry Checklist Rows
     st.markdown(f"""
@@ -630,7 +630,7 @@ def render_threat_panel(
     # Continuous Session Integrity Timeline Chart
     recent_metrics = db_manager.get_session_metrics(session_id, limit=50)
     timeline_fig = create_timeline_chart(recent_metrics)
-    st.plotly_chart(timeline_fig, width="stretch", key=f"threat_timeline_{session_id}")
+    st.plotly_chart(timeline_fig, width="stretch")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
