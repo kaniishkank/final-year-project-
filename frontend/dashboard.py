@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring Dashboard
-Deep Obsidian & Cyan Cyber-Shield Redesign.
-Features WebRTC hardware-decoupled streaming, glassmorphism UI, JetBrains/Plus Jakarta Sans typography, and advanced interactive sidebar navigation.
+Minimalist Slate & Soft-Zinc Professional Theme.
+Features WebRTC live video streaming, flat card architecture, muted enterprise color palette, and streamlined XAI audit controls.
 """
 
 from datetime import datetime
@@ -30,364 +30,209 @@ from backend.explainability.reason_generator import ReasonGenerator
 from backend.pipeline import EviGuardPipeline, PipelineOutput
 
 
-# ---------------- PAGE CONFIGURATION & CYBER-SHIELD THEME ----------------
+# ---------------- PAGE CONFIGURATION & MINIMALIST SLATE THEME ----------------
 st.set_page_config(
-    page_title="EviGuard - AI Proctoring & Cyber-Shield",
+    page_title="EviGuard - AI Proctoring System",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Advanced Custom CSS Injection (Deep Obsidian & Cyan Cyber-Shield with Interactive Sidebar)
+# Custom CSS for Minimalist Slate & Soft-Zinc Theme
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-    /* Global Radiant Cyber-Mesh Aurora Theme */
+    /* Global Matte Dark Slate Background */
     html, body, [class*="css"], .stApp {
-        background: 
-            radial-gradient(circle at 15% 15%, rgba(14, 165, 233, 0.20) 0%, transparent 45%),
-            radial-gradient(circle at 85% 20%, rgba(99, 102, 241, 0.25) 0%, transparent 50%),
-            radial-gradient(circle at 50% 85%, rgba(16, 185, 129, 0.15) 0%, transparent 55%),
-            radial-gradient(circle at 80% 80%, rgba(56, 189, 248, 0.18) 0%, transparent 50%),
-            linear-gradient(145deg, #090e1a 0%, #0c152a 45%, #050813 100%) !important;
-        background-attachment: fixed !important;
+        background-color: #0F172A !important;
         color: #F8FAFC !important;
-        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        font-family: 'Inter', sans-serif !important;
     }
 
-    /* Glassmorphism Containers */
-    .cyber-panel {
-        background: linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(11, 18, 33, 0.78)) !important;
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(56, 189, 248, 0.22);
-        border-radius: 16px;
-        padding: 22px;
-        box-shadow: 0 12px 36px 0 rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-        margin-bottom: 20px;
+    /* Flat Clean Container Cards */
+    .slate-card {
+        background-color: #1E293B;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 18px 20px;
+        margin-bottom: 16px;
     }
 
-    /* Top 4 KPI Metric Cards */
-    .kpi-card {
-        background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(11, 18, 33, 0.80)) !important;
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(56, 189, 248, 0.20);
-        border-top: 3px solid #00f2fe;
-        border-radius: 16px;
-        padding: 20px;
-        box-shadow: 0 10px 32px 0 rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        min-height: 120px;
+    /* Top 4 KPI Metric Tiles */
+    .kpi-tile {
+        background-color: #1E293B;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 16px 18px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
+        min-height: 105px;
     }
-    .kpi-card:hover {
-        border-color: rgba(0, 242, 254, 0.6);
-        transform: translateY(-4px);
-        box-shadow: 0 16px 40px 0 rgba(0, 242, 254, 0.22);
-    }
-    .kpi-card.kpi-exam { border-top-color: #818cf8; }
-    .kpi-card.kpi-integrity { border-top-color: #10b981; }
-    .kpi-card.kpi-status { border-top-color: #f59e0b; }
-
-    .kpi-title {
-        font-size: 0.76rem;
-        font-weight: 700;
+    .kpi-label {
+        font-size: 0.75rem;
+        font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.05em;
         color: #94A3B8;
-        display: flex;
-        align-items: center;
-        gap: 6px;
     }
-    .kpi-value {
-        font-size: 1.45rem;
-        font-weight: 800;
-        color: #FFFFFF;
-        line-height: 1.2;
+    .kpi-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #F8FAFC;
         margin-top: 4px;
-        letter-spacing: -0.02em;
+        line-height: 1.2;
     }
-    .kpi-subtext {
-        font-size: 0.76rem;
+    .kpi-meta {
+        font-size: 0.75rem;
         color: #64748B;
         font-family: 'JetBrains Mono', monospace;
         margin-top: 6px;
     }
 
-    /* Dynamic Integrity Colors */
-    .score-green {
-        color: #10B981 !important;
-        text-shadow: 0 0 18px rgba(16, 185, 129, 0.4);
+    /* Soft Integrity Scores */
+    .score-high-safe {
+        color: #34D399 !important;
     }
-    .score-yellow {
-        color: #F59E0B !important;
-        text-shadow: 0 0 18px rgba(245, 158, 11, 0.4);
+    .score-mid-warn {
+        color: #FBBF24 !important;
     }
-    .score-red {
-        color: #EF4444 !important;
-        text-shadow: 0 0 18px rgba(239, 68, 68, 0.5);
+    .score-low-crit {
+        color: #F87171 !important;
     }
 
-    /* Modern Telemetry Grid (Non-clipping values) */
-    .telemetry-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 12px;
-        margin-top: 14px;
-        margin-bottom: 14px;
-    }
-    .telemetry-item {
-        background: rgba(15, 23, 42, 0.7);
-        border: 1px solid rgba(56, 189, 248, 0.12);
-        border-radius: 12px;
-        padding: 12px 14px;
-        text-align: center;
-    }
-    .telemetry-label {
-        font-size: 0.70rem;
-        font-weight: 700;
-        color: #94A3B8;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-    }
-    .telemetry-val {
-        font-size: 1.15rem;
-        font-weight: 700;
-        color: #00f2fe;
-        font-family: 'JetBrains Mono', monospace;
-        margin-top: 4px;
-        white-space: nowrap;
-    }
-
-    /* Status Badges */
-    .status-badge-compliant {
+    /* Muted Status Badges */
+    .badge-safe {
         display: inline-flex;
         align-items: center;
-        background: rgba(16, 185, 129, 0.15);
-        color: #34D399;
-        border: 1px solid rgba(52, 211, 153, 0.35);
-        border-radius: 20px;
-        padding: 4px 14px;
-        font-size: 0.82rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
-    }
-    .status-badge-violation {
-        display: inline-flex;
-        align-items: center;
-        background: rgba(239, 68, 68, 0.2);
-        color: #F87171;
-        border: 1px solid rgba(248, 113, 113, 0.45);
-        border-radius: 20px;
-        padding: 4px 14px;
-        font-size: 0.82rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        animation: pulseAlert 2s infinite;
-        box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
-    }
-
-    @keyframes pulseAlert {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.7; transform: scale(0.98); }
-    }
-
-    /* Button System (Pill Shaped with Cyber Glow) */
-    div.stButton > button {
-        border-radius: 50px !important;
-        font-weight: 700 !important;
-        font-family: 'Plus Jakarta Sans', sans-serif !important;
-        border: 1px solid rgba(0, 242, 254, 0.3) !important;
-        background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)) !important;
-        color: #F9FAFB !important;
-        padding: 10px 26px !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        font-size: 0.82rem !important;
-    }
-    div.stButton > button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 0 20px rgba(0, 242, 254, 0.45) !important;
-        border-color: #00f2fe !important;
-        color: #00f2fe !important;
-    }
-
-    /* Primary / Download Buttons */
-    div.stDownloadButton > button {
-        border-radius: 50px !important;
-        background: linear-gradient(135deg, #059669, #10b981) !important;
-        border: 1px solid rgba(16, 185, 129, 0.5) !important;
-        box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35) !important;
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
-        padding: 10px 26px !important;
-        transition: all 0.3s ease !important;
-    }
-    div.stDownloadButton > button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 0 24px rgba(16, 185, 129, 0.6) !important;
-    }
-
-    /* Sidebar Glassmorphism & Custom Branding */
-    section[data-testid="stSidebar"] {
-        background: rgba(8, 12, 20, 0.92) !important;
-        backdrop-filter: blur(24px) !important;
-        border-right: 1px solid rgba(56, 189, 248, 0.14) !important;
-    }
-    
-    .cyber-shield-badge {
-        background: rgba(15, 23, 42, 0.85);
-        border: 2px solid #38bdf8;
-        border-radius: 14px;
-        padding: 8px;
-        box-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        animation: badgePulse 3s infinite ease-in-out;
-    }
-    @keyframes badgePulse {
-        0%, 100% { box-shadow: 0 0 16px rgba(56, 189, 248, 0.35); border-color: #38bdf8; }
-        50% { box-shadow: 0 0 24px rgba(0, 242, 254, 0.6); border-color: #00f2fe; }
-    }
-    .cyber-brand-title {
-        font-size: 1.4rem;
-        font-weight: 800;
-        background: linear-gradient(90deg, #38bdf8, #818cf8);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        letter-spacing: -0.02em;
-        line-height: 1.1;
-    }
-    .cyber-brand-sub {
-        font-size: 0.68rem;
-        font-weight: 700;
-        color: #64748B;
-        letter-spacing: 0.08em;
-    }
-    .cyber-tag {
-        display: inline-block;
-        background: rgba(56, 189, 248, 0.1);
-        border: 1px solid rgba(56, 189, 248, 0.28);
-        color: #38bdf8;
-        border-radius: 20px;
+        background-color: #064E3B;
+        color: #6EE7B7;
+        border: 1px solid #047857;
+        border-radius: 6px;
         padding: 3px 10px;
-        font-size: 0.70rem;
+        font-size: 0.78rem;
         font-weight: 600;
+    }
+    .badge-alert {
+        display: inline-flex;
+        align-items: center;
+        background-color: #881337;
+        color: #FDA4AF;
+        border: 1px solid #BE123C;
+        border-radius: 6px;
+        padding: 3px 10px;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+    .badge-id {
+        background-color: #334155;
+        color: #94A3B8;
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 0.72rem;
         font-family: 'JetBrains Mono', monospace;
     }
 
-    /* Sidebar Navigation Tile Pills */
-    section[data-testid="stSidebar"] div[role="radiogroup"] {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
-        background: rgba(15, 23, 42, 0.65) !important;
-        border: 1px solid rgba(56, 189, 248, 0.14) !important;
-        border-radius: 12px !important;
-        padding: 10px 14px !important;
-        margin-bottom: 0px !important;
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        cursor: pointer !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
-        transform: translateX(4px) !important;
-        border-color: rgba(56, 189, 248, 0.45) !important;
-        background: rgba(30, 41, 59, 0.75) !important;
-        box-shadow: 0 4px 16px rgba(0, 242, 254, 0.15) !important;
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"],
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {
-        background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(99, 102, 241, 0.18)) !important;
-        border: 1px solid #00f2fe !important;
-        box-shadow: 0 0 18px rgba(0, 242, 254, 0.28) !important;
-    }
-
-    /* Session Selector Frosted Card */
-    .sidebar-session-card {
-        background: rgba(255, 255, 255, 0.03);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 14px;
-        padding: 14px;
-        margin-top: 10px;
-        margin-bottom: 14px;
-    }
-    .session-live-pill {
-        background: rgba(16, 185, 129, 0.15);
-        border: 1px solid rgba(16, 185, 129, 0.4);
-        color: #34D399;
-        border-radius: 12px;
-        padding: 2px 8px;
-        font-size: 0.68rem;
-        font-weight: 700;
-        font-family: 'JetBrains Mono', monospace;
-    }
-
-    /* System Health Widget */
-    .system-health-card {
-        background: rgba(10, 15, 29, 0.85);
-        border: 1px solid rgba(56, 189, 248, 0.15);
-        border-radius: 12px;
-        padding: 12px 14px;
-        margin-top: 20px;
-    }
-    .health-row {
+    /* Itemized Telemetry Checklist */
+    .telemetry-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        font-size: 0.74rem;
-        margin-bottom: 6px;
+        padding: 10px 14px;
+        background-color: #0F172A;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        margin-bottom: 8px;
+    }
+    .telemetry-name {
+        font-size: 0.82rem;
+        font-weight: 500;
         color: #94A3B8;
     }
-    .health-val {
-        color: #F1F5F9;
-        font-family: 'JetBrains Mono', monospace;
+    .telemetry-value {
+        font-size: 0.88rem;
         font-weight: 600;
-        font-size: 0.72rem;
-    }
-    .pulse-dot-green {
-        display: inline-block;
-        width: 7px;
-        height: 7px;
-        background-color: #10B981;
-        border-radius: 50%;
-        margin-right: 5px;
-        box-shadow: 0 0 8px #10B981;
-        animation: dotPulse 2s infinite;
-    }
-    @keyframes dotPulse {
-        0%, 100% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(1.3); opacity: 0.6; }
+        font-family: 'JetBrains Mono', monospace;
+        color: #F8FAFC;
     }
 
-    /* Inputs, Selectboxes, Sliders */
+    /* Minimalist Buttons */
+    div.stButton > button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        font-family: 'Inter', sans-serif !important;
+        border: 1px solid #334155 !important;
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
+        padding: 8px 18px !important;
+        transition: background-color 0.2s ease, border-color 0.2s ease !important;
+    }
+    div.stButton > button:hover {
+        background-color: #334155 !important;
+        border-color: #475569 !important;
+        color: #FFFFFF !important;
+    }
+
+    /* Primary Accent Download Button */
+    div.stDownloadButton > button {
+        border-radius: 8px !important;
+        background-color: #4F46E5 !important;
+        border: 1px solid #4338CA !important;
+        color: #FFFFFF !important;
+        font-weight: 600 !important;
+        padding: 8px 20px !important;
+    }
+    div.stDownloadButton > button:hover {
+        background-color: #4338CA !important;
+    }
+
+    /* Minimalist Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: #0B1120 !important;
+        border-right: 1px solid #1E293B !important;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
+        background-color: transparent !important;
+        border: 1px solid transparent !important;
+        border-radius: 8px !important;
+        padding: 9px 12px !important;
+        color: #94A3B8 !important;
+        transition: background-color 0.15s ease !important;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"],
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {
+        background-color: #1E293B !important;
+        border: 1px solid #334155 !important;
+        border-left: 3px solid #6366F1 !important;
+        color: #F8FAFC !important;
+    }
+
+    /* Inputs, Selects */
     .stSelectbox div[data-baseweb="select"], .stTextInput input {
-        background: rgba(15, 23, 42, 0.75) !important;
-        border: 1px solid rgba(56, 189, 248, 0.2) !important;
-        border-radius: 10px !important;
-        color: #F1F5F9 !important;
+        background-color: #0F172A !important;
+        border: 1px solid #334155 !important;
+        border-radius: 8px !important;
+        color: #F8FAFC !important;
     }
     .stSelectbox div[data-baseweb="select"]:hover, .stTextInput input:focus {
-        border-color: #00f2fe !important;
-        box-shadow: 0 0 12px rgba(0, 242, 254, 0.25) !important;
+        border-color: #6366F1 !important;
     }
 
-    /* Expander Styling */
+    /* Accordion Expanders */
     .streamlit-expanderHeader {
-        background: rgba(15, 23, 42, 0.6) !important;
-        border: 1px solid rgba(56, 189, 248, 0.12) !important;
-        border-radius: 12px !important;
+        background-color: #1E293B !important;
+        border: 1px solid #334155 !important;
+        border-radius: 8px !important;
         font-weight: 600 !important;
     }
 </style>
@@ -414,7 +259,7 @@ RTC_CONFIGURATION = RTCConfiguration(
 
 
 class ProctorVideoProcessor(VideoProcessorBase):
-    """Asynchronous WebRTC video processor running EviGuard AI pipeline in real-time."""
+    """Asynchronous WebRTC video processor running EviGuard AI pipeline."""
 
     def __init__(self):
         self.pipeline = get_pipeline()
@@ -428,16 +273,15 @@ class ProctorVideoProcessor(VideoProcessorBase):
         self.candidate_name = candidate_name
 
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
-        """Processes each incoming WebRTC video frame through the AI proctoring pipeline."""
         img = frame.to_ndarray(format="bgr24")
         if img is None or img.size == 0:
             return frame
 
-        # Downscale to 640x480 for fast real-time inference
+        # Resize for smooth 30 FPS inference
         if img.shape[1] != 640 or img.shape[0] != 480:
             img = cv2.resize(img, (640, 480), interpolation=cv2.INTER_LINEAR)
 
-        # Process through EviGuardPipeline (detection, tracking, pose/gaze, risk scoring, HUD)
+        # Process through EviGuardPipeline
         output: PipelineOutput = self.pipeline.process_frame(
             frame=img,
             session_id=self.session_id,
@@ -447,13 +291,12 @@ class ProctorVideoProcessor(VideoProcessorBase):
         with self.lock:
             self.latest_output = output
 
-        # Return the annotated frame with HUD back to browser video player
         return av.VideoFrame.from_ndarray(output.annotated_frame, format="bgr24")
 
 
 # ---------------- HELPER PLOT FUNCTIONS ----------------
 def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
-    """Renders a modern dark semi-circular Plotly risk gauge with cyan/emerald theme."""
+    """Renders a clean, minimalist Plotly risk meter gauge."""
     color_map = {
         "LOW": "#10B981",
         "MEDIUM": "#F59E0B",
@@ -465,37 +308,37 @@ def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
         mode="gauge+number",
         value=score,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': f"Risk Score: {risk_level}", 'font': {'size': 15, 'color': '#CBD5E1', 'family': 'Plus Jakarta Sans'}},
-        number={'font': {'size': 32, 'color': '#FFFFFF', 'family': 'JetBrains Mono'}},
+        title={'text': f"Risk Score: {risk_level}", 'font': {'size': 14, 'color': '#94A3B8', 'family': 'Inter'}},
+        number={'font': {'size': 30, 'color': '#F8FAFC', 'family': 'JetBrains Mono'}},
         gauge={
             'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#475569"},
-            'bar': {'color': bar_color, 'thickness': 0.35},
-            'bgcolor': "rgba(15, 23, 42, 0.6)",
+            'bar': {'color': bar_color, 'thickness': 0.3},
+            'bgcolor': "#0F172A",
             'borderwidth': 1,
-            'bordercolor': "rgba(56, 189, 248, 0.15)",
+            'bordercolor': "#334155",
             'steps': [
-                {'range': [0, 30], 'color': "rgba(16, 185, 129, 0.12)"},
-                {'range': [30, 70], 'color': "rgba(245, 158, 11, 0.12)"},
-                {'range': [70, 100], 'color': "rgba(239, 68, 68, 0.18)"},
+                {'range': [0, 30], 'color': "rgba(16, 185, 129, 0.1)"},
+                {'range': [30, 70], 'color': "rgba(245, 158, 11, 0.1)"},
+                {'range': [70, 100], 'color': "rgba(239, 68, 68, 0.15)"},
             ],
             'threshold': {
-                'line': {'color': "#EF4444", 'width': 3},
-                'thickness': 0.75,
+                'line': {'color': "#EF4444", 'width': 2},
+                'thickness': 0.7,
                 'value': 70
             }
         }
     ))
-    fig.update_layout(height=195, margin=dict(l=15, r=15, t=25, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+    fig.update_layout(height=180, margin=dict(l=10, r=10, t=25, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     return fig
 
 
 def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
-    """Renders dynamic risk evolution line chart with glowing cyan styling."""
+    """Renders dynamic risk evolution line chart with clean slate styling."""
     if not metrics:
         fig = go.Figure()
         fig.update_layout(
-            title={'text': "Awaiting Telemetry Stream...", 'font': {'color': '#64748B', 'size': 13}},
-            height=195,
+            title={'text': "Awaiting Session Telemetry...", 'font': {'color': '#64748B', 'size': 12}},
+            height=180,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)"
         )
@@ -506,51 +349,44 @@ def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
         df,
         x=df.index,
         y="risk_score",
-        labels={"x": "Time (Frames)", "risk_score": "Risk Index"},
-        title="Continuous Session Risk Timeline"
+        labels={"x": "Frames", "risk_score": "Risk Index"},
+        title="Session Risk Index Timeline"
     )
-    fig.add_hline(y=70, line_dash="dash", line_color="#EF4444", annotation_text="Critical (70+)", annotation_font_color="#EF4444")
-    fig.add_hline(y=30, line_dash="dot", line_color="#F59E0B", annotation_text="Medium (30+)", annotation_font_color="#F59E0B")
-    fig.update_traces(line_color="#00f2fe", line_width=2.5)
+    fig.add_hline(y=70, line_dash="dash", line_color="#EF4444", annotation_text="Alert 70+", annotation_font_color="#EF4444")
+    fig.add_hline(y=30, line_dash="dot", line_color="#F59E0B", annotation_text="Warn 30+", annotation_font_color="#F59E0B")
+    fig.update_traces(line_color="#6366F1", line_width=2)
     fig.update_layout(
-        height=195,
-        margin=dict(l=15, r=15, t=25, b=10),
+        height=180,
+        margin=dict(l=10, r=10, t=25, b=10),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#94A3B8", family="Plus Jakarta Sans"),
-        xaxis=dict(gridcolor="rgba(255, 255, 255, 0.04)"),
-        yaxis=dict(gridcolor="rgba(255, 255, 255, 0.04)", range=[0, 100])
+        font=dict(color="#94A3B8", family="Inter"),
+        xaxis=dict(gridcolor="#334155"),
+        yaxis=dict(gridcolor="#334155", range=[0, 100])
     )
     return fig
 
 
-# ---------------- SIDEBAR CONTROLS & CYBER-SHIELD NAVIGATION ----------------
+# ---------------- SIDEBAR NAVIGATION ----------------
 with st.sidebar:
-    # Branding & Header Section
     st.markdown("""
-    <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px; margin-bottom: 6px;">
-        <div class="cyber-shield-badge">
-            <img src="https://img.icons8.com/fluency/96/shield.png" width="34" height="34" style="display: block;" />
-        </div>
-        <div>
-            <div class="cyber-brand-title">EviGuard AI</div>
-            <div class="cyber-brand-sub">ENTERPRISE PROCTOR</div>
-        </div>
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+        <span style="font-size: 1.4rem;">🛡️</span>
+        <span style="font-size: 1.15rem; font-weight: 700; color: #F8FAFC;">EviGuard</span>
     </div>
-    <div style="margin-top: 6px; margin-bottom: 18px;">
-        <span class="cyber-tag">v1.0 • Phase 1 Enterprise Edition</span>
-    </div>
+    <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 18px;">Automated Exam Proctoring Suite</div>
     """, unsafe_allow_html=True)
 
-    # Navigation Tiles
     menu_option = st.radio(
-        "Navigation Modules",
+        "Navigation Menu",
         ["📹 Live Proctoring", "🔍 Incident Vault", "📊 Analytics & Reports", "⚙️ Settings & Sensitivity"],
         index=0,
         label_visibility="collapsed"
     )
 
-    # Session Selector Card
+    st.markdown("---")
+
+    # Session Selector Container
     all_sessions = db_manager.get_all_sessions()
     session_ids = [s["session_id"] for s in all_sessions]
 
@@ -563,50 +399,35 @@ with st.sidebar:
             st.session_state.active_session_id = default_id
 
     st.markdown("""
-    <div class="sidebar-session-card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="font-size: 0.74rem; font-weight: 700; color: #94A3B8; text-transform: uppercase;">Active Session</span>
-            <span class="session-live-pill">● LIVE EXAM</span>
-        </div>
+    <div style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: #94A3B8; margin-bottom: 6px;">Active Exam Session</div>
     """, unsafe_allow_html=True)
 
     selected_session = st.selectbox(
-        "Active Session Select",
+        "Session Select",
         session_ids if session_ids else [st.session_state.active_session_id],
         index=0 if not session_ids else (session_ids.index(st.session_state.active_session_id) if st.session_state.active_session_id in session_ids else 0),
         label_visibility="collapsed"
     )
     st.session_state.active_session_id = selected_session
 
-    with st.expander("➕ Start New Exam Session"):
+    with st.expander("➕ Create New Session"):
         new_s_id = st.text_input("Session ID", f"EXAM_{datetime.now().strftime('%H%M%S')}")
         new_c_id = st.text_input("Candidate ID", "STD-102")
         new_c_name = st.text_input("Candidate Name", "Jane Doe")
         new_exam = st.text_input("Exam Name", "Final Engineering Assessment")
-        if st.button("Initialize Session", width="stretch"):
+        if st.button("Start Session", width="stretch"):
             db_manager.create_session(new_s_id, new_c_id, new_c_name, new_exam)
             st.session_state.active_session_id = new_s_id
             st.success(f"Session {new_s_id} active!")
             st.rerun()
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # Bottom System Health Widget
+    # Footer System Status
+    st.markdown("---")
     st.markdown("""
-    <div class="system-health-card">
-        <div style="font-size: 0.70rem; font-weight: 700; color: #64748B; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.06em;">System Status & Telemetry</div>
-        <div class="health-row">
-            <span>AI Engine</span>
-            <span class="health-val">YOLOv8 + MediaPipe</span>
-        </div>
-        <div class="health-row">
-            <span>FPS / Stream</span>
-            <span class="health-val" style="color: #00f2fe;">30 FPS • WebRTC</span>
-        </div>
-        <div class="health-row" style="margin-bottom: 0px;">
-            <span>Database</span>
-            <span class="health-val"><span class="pulse-dot-green"></span>Connected</span>
-        </div>
+    <div style="font-size: 0.70rem; color: #64748B; line-height: 1.5;">
+        <div>Engine: <span style="color: #94A3B8;">YOLOv8 + MediaPipe</span></div>
+        <div>Stream: <span style="color: #94A3B8;">WebRTC Live (30 FPS)</span></div>
+        <div>Database: <span style="color: #34D399;">● Connected</span></div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -624,62 +445,61 @@ if menu_option == "📹 Live Proctoring":
 
     # Retrieve session stats
     integrity_score = current_session.get('integrity_index', 100.0)
-    score_class = "score-green" if integrity_score >= 80 else ("score-yellow" if integrity_score >= 50 else "score-red")
-    
+    score_color_cls = "score-high-safe" if integrity_score >= 80 else ("score-mid-warn" if integrity_score >= 50 else "score-low-crit")
     total_inc = current_session.get('total_incidents', 0)
     is_compliant = (total_inc == 0)
 
-    # Top 4 Sleek Glassmorphism KPI Cards with Glowing Top Accents
+    # Top 4 Uniform Flat KPI Tiles
     kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
 
     with kpi_col1:
         st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">👤 Candidate Profile</div>
-            <div class="kpi-value">{current_session.get('candidate_name', 'Alex Johnson')}</div>
-            <div class="kpi-subtext">ID: {current_session.get('candidate_id', 'STD-101')}</div>
+        <div class="kpi-tile">
+            <div class="kpi-label">Candidate</div>
+            <div class="kpi-title">{current_session.get('candidate_name', 'Alex Johnson')}</div>
+            <div class="kpi-meta"><span class="badge-id">{current_session.get('candidate_id', 'STD-101')}</span></div>
         </div>
         """, unsafe_allow_html=True)
 
     with kpi_col2:
         st.markdown(f"""
-        <div class="kpi-card kpi-exam">
-            <div class="kpi-title">📚 Exam Session</div>
-            <div class="kpi-value" style="font-size: 1.15rem;">{current_session.get('exam_title', 'AI Assessment')}</div>
-            <div class="kpi-subtext">Ref: <code>{current_session.get('session_id')}</code></div>
+        <div class="kpi-tile">
+            <div class="kpi-label">Subject & Course</div>
+            <div class="kpi-title" style="font-size: 1.05rem;">{current_session.get('exam_title', 'AI Assessment')}</div>
+            <div class="kpi-meta">Ref: {current_session.get('session_id')}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with kpi_col3:
         st.markdown(f"""
-        <div class="kpi-card kpi-integrity">
-            <div class="kpi-title">🛡️ Live Integrity Score</div>
-            <div class="kpi-value {score_class}">{integrity_score:.1f}%</div>
-            <div class="kpi-subtext">Flagged Incidents: {total_inc}</div>
+        <div class="kpi-tile">
+            <div class="kpi-label">Live Integrity Score</div>
+            <div class="kpi-title {score_color_cls}">{integrity_score:.1f}%</div>
+            <div class="kpi-meta">Incidents: {total_inc}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with kpi_col4:
-        badge_html = '<span class="status-badge-compliant">● COMPLIANT</span>' if is_compliant else '<span class="status-badge-violation">● VIOLATION FLAGGED</span>'
+        badge_html = '<span class="badge-safe">● COMPLIANT</span>' if is_compliant else '<span class="badge-alert">● FLAGGED</span>'
         st.markdown(f"""
-        <div class="kpi-card kpi-status">
-            <div class="kpi-title">🚦 Security Status</div>
+        <div class="kpi-tile">
+            <div class="kpi-label">Session Status</div>
             <div style="margin-top: 4px;">{badge_html}</div>
-            <div class="kpi-subtext">Engine: WebRTC Live</div>
+            <div class="kpi-meta">WebRTC Feed Active</div>
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 
-    # Main Grid Layout: Left 2/3 (Live Stream) and Right 1/3 (Threat Analytics)
-    col_left, col_right = st.columns([2, 1], gap="large")
+    # Main 2-Column Grid: Left 65% (Video Frame), Right 35% (Threat Analysis)
+    col_left, col_right = st.columns([13, 7], gap="medium")
 
     with col_left:
         st.markdown("""
-        <div class="cyber-panel">
+        <div class="slate-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <span style="font-size: 1.05rem; font-weight: 700; color: #FFFFFF;">📹 Real-Time Live Feed & AI HUD</span>
-                <span style="font-size: 0.78rem; color: #00f2fe; font-family: 'JetBrains Mono'; font-weight: 600;">● ZERO-LATENCY STREAM</span>
+                <span style="font-size: 0.95rem; font-weight: 600; color: #F8FAFC;">Live Video Stream & AI HUD</span>
+                <span style="font-size: 0.72rem; color: #64748B; font-family: 'JetBrains Mono';">640x480 • 30 FPS</span>
             </div>
         """, unsafe_allow_html=True)
 
@@ -705,16 +525,17 @@ if menu_option == "📹 Live Proctoring":
 
     with col_right:
         st.markdown("""
-        <div class="cyber-panel">
-            <div style="font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin-bottom: 12px;">⚡ Real-Time Threat Analysis</div>
+        <div class="slate-card">
+            <div style="font-size: 0.95rem; font-weight: 600; color: #F8FAFC; margin-bottom: 10px;">Threat Analysis & Telemetry</div>
         """, unsafe_allow_html=True)
-        
+
         # Read latest risk metrics from WebRTC processor
         latest_risk_score = 0.0
         latest_risk_level = "LOW"
         active_violations = []
         person_count = 1
         yaw_val, pitch_val = 0.0, 0.0
+        gaze_status = "Direct (Screen)"
 
         if 'webrtc_ctx' in locals() and webrtc_ctx.video_processor:
             with webrtc_ctx.video_processor.lock:
@@ -725,36 +546,39 @@ if menu_option == "📹 Live Proctoring":
                     active_violations = out.risk.active_violations
                     person_count = out.pose_gaze.face_count if out.pose_gaze.face_detected else len(out.detections)
                     yaw_val, pitch_val = out.pose_gaze.yaw, out.pose_gaze.pitch
+                    gaze_status = out.pose_gaze.gaze_direction if out.pose_gaze.face_detected else "No Face"
 
-        # Threat Alert Banner
+        # Alert Banner
         if active_violations:
-            st.error(f"🚨 **ACTIVE ALERT**: {' • '.join(active_violations)}")
+            st.error(f"🚨 **VIOLATION**: {' • '.join(active_violations)}")
         else:
-            st.success("✅ **Integrity Compliant**: Candidate within normal bounds.")
+            st.success("✅ **STATUS SAFE**: Candidate within parameters.")
 
-        # Plotly Risk Meter Gauge
+        # Plotly Minimalist Risk Gauge
         gauge_fig = create_gauge_chart(latest_risk_score, latest_risk_level)
         st.plotly_chart(gauge_fig, width="stretch", key="webrtc_live_gauge")
 
-        # Non-clipping Custom Telemetry Grid
+        # Itemized Telemetry Checklist
         st.markdown(f"""
-        <div class="telemetry-grid">
-            <div class="telemetry-item">
-                <div class="telemetry-label">👥 Persons</div>
-                <div class="telemetry-val">{person_count}</div>
-            </div>
-            <div class="telemetry-item">
-                <div class="telemetry-label">🔄 Yaw (L/R)</div>
-                <div class="telemetry-val">{yaw_val:+.1f}°</div>
-            </div>
-            <div class="telemetry-item">
-                <div class="telemetry-label">📐 Pitch (U/D)</div>
-                <div class="telemetry-val">{pitch_val:+.1f}°</div>
-            </div>
+        <div class="telemetry-row">
+            <span class="telemetry-name">👥 Person Count</span>
+            <span class="telemetry-value">{person_count}</span>
+        </div>
+        <div class="telemetry-row">
+            <span class="telemetry-name">🔄 Head Pose Yaw (L/R)</span>
+            <span class="telemetry-value">{yaw_val:+.1f}°</span>
+        </div>
+        <div class="telemetry-row">
+            <span class="telemetry-name">📐 Head Pose Pitch (U/D)</span>
+            <span class="telemetry-value">{pitch_val:+.1f}°</span>
+        </div>
+        <div class="telemetry-row">
+            <span class="telemetry-name">👀 Gaze Tracking</span>
+            <span class="telemetry-value">{gaze_status}</span>
         </div>
         """, unsafe_allow_html=True)
 
-        # Live Session Timeline Chart
+        # Session Timeline Chart
         recent_metrics = db_manager.get_session_metrics(st.session_state.active_session_id, limit=50)
         timeline_fig = create_timeline_chart(recent_metrics)
         st.plotly_chart(timeline_fig, width="stretch", key="webrtc_timeline")
@@ -764,7 +588,7 @@ if menu_option == "📹 Live Proctoring":
 
 # ---------------- TAB 2: INCIDENT VAULT & EVIDENCE REVIEW ----------------
 elif menu_option == "🔍 Incident Vault":
-    st.markdown("## 🔍 Security Incident Vault & Evidence Review")
+    st.markdown("### 🔍 Security Incident Vault & Evidence Review")
     st.caption("Review flagged violations with automated video clips, snapshots, and explainable AI justifications.")
 
     incidents = db_manager.get_session_incidents(st.session_state.active_session_id)
@@ -801,19 +625,19 @@ elif menu_option == "🔍 Incident Vault":
                 inc_col1, inc_col2 = st.columns([3, 2], gap="medium")
 
                 with inc_col1:
-                    st.markdown(f"#### 📄 {inc['reason_summary']}")
+                    st.markdown(f"#### {inc['reason_summary']}")
                     st.write(inc['reason_narrative'])
 
                     # Evidence Media Display
                     if inc.get("evidence_snapshot_path") and os.path.exists(inc["evidence_snapshot_path"]):
-                        st.image(inc["evidence_snapshot_path"], caption=f"Violation Snapshot - Frame #{inc['frame_index']}", width="stretch")
+                        st.image(inc["evidence_snapshot_path"], caption=f"Snapshot - Frame #{inc['frame_index']}", width="stretch")
                     elif inc.get("evidence_clip_path") and os.path.exists(inc["evidence_clip_path"]):
                         st.video(inc["evidence_clip_path"])
                     else:
                         st.caption("📸 Snapshot / Clip recorded in evidence archive.")
 
                 with inc_col2:
-                    st.markdown("#### 🧠 Explainable AI (XAI) Attribution")
+                    st.markdown("#### 🧠 Explainable AI Attribution")
                     details = inc.get("details", {})
                     attribution = details.get("factor_attribution", {})
 
@@ -827,16 +651,16 @@ elif menu_option == "🔍 Incident Vault":
                             x="Weight %",
                             y="Factor",
                             orientation='h',
-                            title="Threat Factor Contribution",
+                            title="Threat Contribution Breakdown",
                             color="Weight %",
                             color_continuous_scale="Reds"
                         )
                         fig_bar.update_layout(
-                            height=200,
+                            height=190,
                             margin=dict(l=10, r=10, t=30, b=10),
                             paper_bgcolor="rgba(0,0,0,0)",
                             plot_bgcolor="rgba(0,0,0,0)",
-                            font=dict(color="#E2E8F0", family="Plus Jakarta Sans")
+                            font=dict(color="#94A3B8", family="Inter")
                         )
                         st.plotly_chart(fig_bar, width="stretch", key=f"xai_chart_{inc['id']}")
 
@@ -845,17 +669,17 @@ elif menu_option == "🔍 Incident Vault":
 
                     # Proctor Verification Action Form
                     st.markdown("---")
-                    st.markdown("##### ⚖️ Proctor Decision")
+                    st.markdown("##### Proctor Decision")
                     v_col1, v_col2, v_col3 = st.columns(3)
                     
-                    if v_col1.button("✅ Confirm Violation", key=f"conf_{inc['id']}"):
+                    if v_col1.button("✅ Confirm", key=f"conf_{inc['id']}"):
                         db_manager.update_incident_verdict(inc['id'], "CONFIRMED")
-                        st.success("Incident confirmed as cheating violation.")
+                        st.success("Incident confirmed.")
                         st.rerun()
 
                     if v_col2.button("⚠️ False Positive", key=f"fp_{inc['id']}"):
                         db_manager.update_incident_verdict(inc['id'], "FALSE_POSITIVE")
-                        st.warning("Incident marked as False Positive.")
+                        st.warning("Marked as False Positive.")
                         st.rerun()
 
                     if v_col3.button("❌ Dismiss", key=f"dsm_{inc['id']}"):
@@ -863,7 +687,7 @@ elif menu_option == "🔍 Incident Vault":
                         st.info("Incident dismissed.")
                         st.rerun()
 
-                    notes = st.text_input("Proctor Audit Notes", value=inc.get("proctor_notes") or "", key=f"notes_{inc['id']}")
+                    notes = st.text_input("Proctor Notes", value=inc.get("proctor_notes") or "", key=f"notes_{inc['id']}")
                     if st.button("Save Notes", key=f"save_notes_{inc['id']}"):
                         db_manager.update_incident_verdict(inc['id'], inc['proctor_verdict'], notes)
                         st.success("Notes saved.")
@@ -871,10 +695,9 @@ elif menu_option == "🔍 Incident Vault":
 
 # ---------------- TAB 3: SESSION ANALYTICS & REPORTS ----------------
 elif menu_option == "📊 Analytics & Reports":
-    st.markdown("## 📊 Proctoring Analytics & Session Audit")
+    st.markdown("### 📊 Proctoring Analytics & Session Audit")
     
     current_session = db_manager.get_session_by_id(st.session_state.active_session_id)
-    all_sessions = db_manager.get_all_sessions()
     incidents = db_manager.get_session_incidents(st.session_state.active_session_id)
     metrics = db_manager.get_session_metrics(st.session_state.active_session_id, limit=500)
 
@@ -883,7 +706,7 @@ elif menu_option == "📊 Analytics & Reports":
     with kpi1:
         st.metric("Integrity Index", f"{current_session.get('integrity_index', 100.0):.1f}%")
     with kpi2:
-        st.metric("Total Incidents Flagged", len(incidents))
+        st.metric("Total Incidents", len(incidents))
     with kpi3:
         st.metric("Peak Risk Score", f"{current_session.get('peak_risk_score', 0.0):.1f}/100")
     with kpi4:
@@ -892,7 +715,7 @@ elif menu_option == "📊 Analytics & Reports":
 
     st.markdown("---")
 
-    col_c1, col_c2 = st.columns(2, gap="large")
+    col_c1, col_c2 = st.columns(2, gap="medium")
 
     with col_c1:
         st.subheader("Violation Distribution by Type")
@@ -900,8 +723,8 @@ elif menu_option == "📊 Analytics & Reports":
             v_types = [i["violation_type"] for i in incidents]
             v_df = pd.Series(v_types).value_counts().reset_index()
             v_df.columns = ["Violation Type", "Count"]
-            fig_pie = px.pie(v_df, values="Count", names="Violation Type", hole=0.45, color_discrete_sequence=px.colors.sequential.RdBu)
-            fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#E2E8F0", family="Plus Jakarta Sans"))
+            fig_pie = px.pie(v_df, values="Count", names="Violation Type", hole=0.4, color_discrete_sequence=px.colors.sequential.Darkmint)
+            fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#F8FAFC", family="Inter"))
             st.plotly_chart(fig_pie, width="stretch")
         else:
             st.info("No violations recorded for this candidate.")
@@ -916,7 +739,7 @@ elif menu_option == "📊 Analytics & Reports":
 
     # Formal Report Export
     st.markdown("---")
-    st.subheader("📄 Export Formal Integrity Report")
+    st.subheader("📄 Export Integrity Report")
     
     report_data = {
         "Session ID": current_session.get("session_id"),
@@ -957,7 +780,7 @@ elif menu_option == "📊 Analytics & Reports":
 
 # ---------------- TAB 4: SETTINGS & SENSITIVITY ----------------
 elif menu_option == "⚙️ Settings & Sensitivity":
-    st.markdown("## ⚙️ Proctoring Sensitivity & Threshold Configuration")
+    st.markdown("### ⚙️ Proctoring Sensitivity & Threshold Configuration")
     st.caption("Customize model confidence, gaze tolerance limits, and risk weights dynamically.")
 
     with st.form("settings_form"):
@@ -979,7 +802,7 @@ elif menu_option == "⚙️ Settings & Sensitivity":
         w_absent = r3.slider("Face Absent Weight", 10.0, 100.0, 40.0, 5.0)
         w_gaze = r4.slider("Gaze Deviation Weight", 5.0, 60.0, 25.0, 5.0)
 
-        submitted = st.form_submit_button("💾 Save & Apply Configuration")
+        submitted = st.form_submit_button("💾 Save Configuration")
         if submitted:
             # Update config file
             updated_cfg = {
