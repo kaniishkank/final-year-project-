@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring Dashboard
-Ultra-Refined Midnight Slate Enterprise UI.
-Features WebRTC live hardware-decoupled streaming, high-contrast navigation, cohesive typography, and clean threat telemetry.
+Ultra-Refined Midnight Slate Enterprise UI with Real-Time WebRTC Telemetry Bridge.
+Features direct thread-safe state synchronization, live Plotly risk gauge, sub-second telemetry fragments, and instant security alerting.
 """
 
 from datetime import datetime
@@ -306,6 +306,45 @@ db_manager = get_db_manager()
 pipeline = get_pipeline()
 
 
+# ---------------- SHARED THREAD-SAFE TELEMETRY DATA BRIDGE ----------------
+TELEMETRY_LOCK = threading.Lock()
+LATEST_TELEMETRY: Dict[str, Any] = {
+    "risk_score": 0.0,
+    "risk_level": "LOW",
+    "active_violations": [],
+    "person_count": 1,
+    "yaw": 0.0,
+    "pitch": 0.0,
+    "roll": 0.0,
+    "gaze_direction": "Direct (Screen)",
+    "phone_detected": False,
+    "is_absent": False,
+    "fps": 30.0,
+    "last_update_ts": time.time()
+}
+
+def update_live_telemetry(output: PipelineOutput):
+    """Writes real-time pipeline inference results directly to the shared telemetry state."""
+    with TELEMETRY_LOCK:
+        LATEST_TELEMETRY["risk_score"] = float(output.risk.smoothed_score)
+        LATEST_TELEMETRY["risk_level"] = output.risk.risk_level
+        LATEST_TELEMETRY["active_violations"] = list(output.risk.active_violations)
+        LATEST_TELEMETRY["person_count"] = int(output.pose_gaze.face_count if output.pose_gaze.face_detected else len(output.detections))
+        LATEST_TELEMETRY["yaw"] = float(output.pose_gaze.yaw)
+        LATEST_TELEMETRY["pitch"] = float(output.pose_gaze.pitch)
+        LATEST_TELEMETRY["roll"] = float(output.pose_gaze.roll)
+        LATEST_TELEMETRY["gaze_direction"] = output.pose_gaze.gaze_direction if output.pose_gaze.face_detected else "No Face"
+        LATEST_TELEMETRY["phone_detected"] = "PHONE_DETECTED" in output.risk.active_violations
+        LATEST_TELEMETRY["is_absent"] = output.pose_gaze.is_absent
+        LATEST_TELEMETRY["fps"] = float(output.fps)
+        LATEST_TELEMETRY["last_update_ts"] = time.time()
+
+def get_live_telemetry() -> Dict[str, Any]:
+    """Retrieves a thread-safe copy of the latest live telemetry state."""
+    with TELEMETRY_LOCK:
+        return dict(LATEST_TELEMETRY)
+
+
 # ---------------- WEBRTC VIDEO PROCESSOR ----------------
 RTC_CONFIGURATION = RTCConfiguration(
     {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
@@ -344,6 +383,9 @@ class ProctorVideoProcessor(VideoProcessorBase):
 
         with self.lock:
             self.latest_output = output
+
+        # Write to shared live telemetry state bridge
+        update_live_telemetry(output)
 
         return av.VideoFrame.from_ndarray(output.annotated_frame, format="bgr24")
 
@@ -510,6 +552,135 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 
+# ---------------- LIVE STREAMLIT FRAGMENTS ----------------
+@st.fragment(run_every="500ms")
+def render_live_top_kpis(session_id: str, candidate_name: str, candidate_id: str, exam_title: str):
+    """Renders 4 top KPI cards dynamically synchronized with the live WebRTC state."""
+    telemetry = get_live_telemetry()
+    incidents = db_manager.get_session_incidents(session_id)
+    total_incidents = len(incidents)
+    confirmed_incidents = sum(1 for i in incidents if i.get("proctor_verdict") == "CONFIRMED")
+    
+    # Calculate session integrity: start at 100%, deduct for confirmed violations
+    integrity_pct = max(0.0, 100.0 - (confirmed_incidents * 5.0) - (total_incidents * 1.5))
+    score_color_cls = "score-green" if integrity_pct >= 80 else ("score-yellow" if integrity_pct >= 50 else "score-red")
+
+    # Defense Status Logic
+    risk_score = telemetry.get("risk_score", 0.0)
+    active_violations = telemetry.get("active_violations", [])
+    if risk_score >= 70.0 or active_violations:
+        badge_html = '<span class="badge-status-alert">● SECURITY FLAGGED</span>'
+    elif risk_score >= 30.0:
+        badge_html = '<span class="badge-status-alert" style="background: rgba(245, 158, 11, 0.2); color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);">● ELEVATED RISK</span>'
+    else:
+        badge_html = '<span class="badge-status-safe">● ALL CLEAR</span>'
+
+    kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+
+    with kpi_col1:
+        st.markdown(f"""
+        <div class="kpi-tile-pro">
+            <div class="kpi-label-pro">👤 Candidate Identity</div>
+            <div class="kpi-value-pro">{candidate_name}</div>
+            <div class="kpi-meta-pro">ID: {candidate_id}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with kpi_col2:
+        st.markdown(f"""
+        <div class="kpi-tile-pro">
+            <div class="kpi-label-pro">📚 Active Assessment</div>
+            <div class="kpi-value-pro" style="font-size: 1.15rem;">{exam_title}</div>
+            <div class="kpi-meta-pro">Ref: <code>{session_id}</code></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with kpi_col3:
+        st.markdown(f"""
+        <div class="kpi-tile-pro">
+            <div class="kpi-label-pro">🛡️ Integrity Quotient</div>
+            <div class="kpi-value-pro {score_color_cls}">{integrity_pct:.1f}%</div>
+            <div class="kpi-meta-pro">Flags: {total_incidents} ({confirmed_incidents} Confirmed)</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with kpi_col4:
+        st.markdown(f"""
+        <div class="kpi-tile-pro">
+            <div class="kpi-label-pro">🚦 Defense Status</div>
+            <div style="margin-top: 4px;">{badge_html}</div>
+            <div class="kpi-meta-pro">Stream: WebRTC Live</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+@st.fragment(run_every="500ms")
+def render_live_threat_panel(session_id: str):
+    """Renders the Threat Analysis telemetry panel with live gauge and checklist values."""
+    telemetry = get_live_telemetry()
+    risk_score = telemetry.get("risk_score", 0.0)
+    risk_level = telemetry.get("risk_level", "LOW")
+    active_violations = telemetry.get("active_violations", [])
+    person_count = telemetry.get("person_count", 1)
+    yaw_val = telemetry.get("yaw", 0.0)
+    pitch_val = telemetry.get("pitch", 0.0)
+    gaze_status = telemetry.get("gaze_direction", "Direct (Screen)")
+
+    st.markdown("""
+    <div class="slate-panel">
+        <div style="font-size: 1.0rem; font-weight: 700; color: #FFFFFF; margin-bottom: 12px;">Threat Analysis & Telemetry</div>
+    """, unsafe_allow_html=True)
+
+    # Dynamic Threat Alert Banner
+    if active_violations:
+        st.markdown(f"""
+        <div style="background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.1rem;">🚨</span>
+            <span style="color: #F87171; font-weight: 700; font-size: 0.82rem;">SECURITY ALERT: {' • '.join(active_violations)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.1rem;">✅</span>
+            <span style="color: #34D399; font-weight: 700; font-size: 0.82rem;">COMPLIANCE VERIFIED: Candidate within normal limits</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Semi-Circular Plotly Risk Meter Gauge directly bound to live risk score
+    gauge_fig = create_gauge_chart(risk_score, risk_level)
+    st.plotly_chart(gauge_fig, width="stretch", key="webrtc_live_gauge")
+
+    # Live Numerical Telemetry Checklist Rows
+    st.markdown(f"""
+    <div style="margin-top: 4px; margin-bottom: 12px;">
+        <div class="telemetry-row-item">
+            <span class="telemetry-item-name">👥 Person Tracking</span>
+            <span class="telemetry-item-value">{person_count} Detected</span>
+        </div>
+        <div class="telemetry-row-item">
+            <span class="telemetry-item-name">🔄 Head Pose Yaw (L/R)</span>
+            <span class="telemetry-item-value">{yaw_val:+.1f}°</span>
+        </div>
+        <div class="telemetry-row-item">
+            <span class="telemetry-item-name">📐 Head Pose Pitch (U/D)</span>
+            <span class="telemetry-item-value">{pitch_val:+.1f}°</span>
+        </div>
+        <div class="telemetry-row-item">
+            <span class="telemetry-item-name">👀 Gaze Orientation</span>
+            <span class="telemetry-item-value">{gaze_status}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Continuous Session Integrity Timeline Chart
+    recent_metrics = db_manager.get_session_metrics(session_id, limit=50)
+    timeline_fig = create_timeline_chart(recent_metrics)
+    st.plotly_chart(timeline_fig, width="stretch", key="webrtc_timeline")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 # ---------------- TAB 1: LIVE PROCTORING ----------------
 if menu_option == "📹 Live Proctoring":
     current_session = db_manager.get_session_by_id(st.session_state.active_session_id) or {
@@ -521,51 +692,13 @@ if menu_option == "📹 Live Proctoring":
         "status": "ACTIVE"
     }
 
-    # Retrieve session stats
-    integrity_score = current_session.get('integrity_index', 100.0)
-    score_color_cls = "score-green" if integrity_score >= 80 else ("score-yellow" if integrity_score >= 50 else "score-red")
-    total_inc = current_session.get('total_incidents', 0)
-    is_compliant = (total_inc == 0)
-
-    # Top 4 Uniform Cohesive KPI Cards
-    kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
-
-    with kpi_col1:
-        st.markdown(f"""
-        <div class="kpi-tile-pro">
-            <div class="kpi-label-pro">👤 Candidate Identity</div>
-            <div class="kpi-value-pro">{current_session.get('candidate_name', 'Alex Johnson')}</div>
-            <div class="kpi-meta-pro">ID: {current_session.get('candidate_id', 'STD-101')}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with kpi_col2:
-        st.markdown(f"""
-        <div class="kpi-tile-pro">
-            <div class="kpi-label-pro">📚 Active Assessment</div>
-            <div class="kpi-value-pro" style="font-size: 1.15rem;">{current_session.get('exam_title', 'AI Assessment')}</div>
-            <div class="kpi-meta-pro">Ref: <code>{current_session.get('session_id')}</code></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with kpi_col3:
-        st.markdown(f"""
-        <div class="kpi-tile-pro">
-            <div class="kpi-label-pro">🛡️ Integrity Quotient</div>
-            <div class="kpi-value-pro {score_color_cls}">{integrity_score:.1f}%</div>
-            <div class="kpi-meta-pro">Recorded Flags: {total_inc}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with kpi_col4:
-        badge_html = '<span class="badge-status-safe">● VERIFIED COMPLIANT</span>' if is_compliant else '<span class="badge-status-alert">● SECURITY FLAGGED</span>'
-        st.markdown(f"""
-        <div class="kpi-tile-pro">
-            <div class="kpi-label-pro">🚦 Defense Status</div>
-            <div style="margin-top: 4px;">{badge_html}</div>
-            <div class="kpi-meta-pro">Stream: WebRTC Live</div>
-        </div>
-        """, unsafe_allow_html=True)
+    # Render Top 4 KPI Cards in a live sub-second fragment
+    render_live_top_kpis(
+        session_id=current_session.get("session_id", "default_session"),
+        candidate_name=current_session.get("candidate_name", "Alex Johnson"),
+        candidate_id=current_session.get("candidate_id", "STD-101"),
+        exam_title=current_session.get("exam_title", "CS401: Advanced AI Exam")
+    )
 
     st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 
@@ -605,78 +738,8 @@ if menu_option == "📹 Live Proctoring":
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_right:
-        # Read latest risk metrics from WebRTC processor
-        latest_risk_score = 0.0
-        latest_risk_level = "LOW"
-        active_violations = []
-        person_count = 1
-        yaw_val, pitch_val = 0.0, 0.0
-        gaze_status = "Direct (Screen)"
-
-        if 'webrtc_ctx' in locals() and webrtc_ctx.video_processor:
-            with webrtc_ctx.video_processor.lock:
-                out = webrtc_ctx.video_processor.latest_output
-                if out:
-                    latest_risk_score = out.risk.smoothed_score
-                    latest_risk_level = out.risk.risk_level
-                    active_violations = out.risk.active_violations
-                    person_count = out.pose_gaze.face_count if out.pose_gaze.face_detected else len(out.detections)
-                    yaw_val, pitch_val = out.pose_gaze.yaw, out.pose_gaze.pitch
-                    gaze_status = out.pose_gaze.gaze_direction if out.pose_gaze.face_detected else "No Face"
-
-        st.markdown("""
-        <div class="slate-panel">
-            <div style="font-size: 1.0rem; font-weight: 700; color: #FFFFFF; margin-bottom: 12px;">Threat Analysis & Telemetry</div>
-        """, unsafe_allow_html=True)
-
-        # Threat Alert Banner
-        if active_violations:
-            st.markdown(f"""
-            <div style="background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 1.1rem;">🚨</span>
-                <span style="color: #F87171; font-weight: 700; font-size: 0.82rem;">SECURITY ALERT: {' • '.join(active_violations)}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 1.1rem;">✅</span>
-                <span style="color: #34D399; font-weight: 700; font-size: 0.82rem;">COMPLIANCE VERIFIED: Candidate within normal limits</span>
-            </div>
-            """, unsafe_allow_html=True)
-
-        # Semi-Circular Plotly Risk Meter Gauge
-        gauge_fig = create_gauge_chart(latest_risk_score, latest_risk_level)
-        st.plotly_chart(gauge_fig, width="stretch", key="webrtc_live_gauge")
-
-        # Telemetry Checklist Rows
-        st.markdown(f"""
-        <div style="margin-top: 4px; margin-bottom: 12px;">
-            <div class="telemetry-row-item">
-                <span class="telemetry-item-name">👥 Person Tracking</span>
-                <span class="telemetry-item-value">{person_count} Detected</span>
-            </div>
-            <div class="telemetry-row-item">
-                <span class="telemetry-item-name">🔄 Head Pose Yaw (L/R)</span>
-                <span class="telemetry-item-value">{yaw_val:+.1f}°</span>
-            </div>
-            <div class="telemetry-row-item">
-                <span class="telemetry-item-name">📐 Head Pose Pitch (U/D)</span>
-                <span class="telemetry-item-value">{pitch_val:+.1f}°</span>
-            </div>
-            <div class="telemetry-row-item">
-                <span class="telemetry-item-name">👀 Gaze Orientation</span>
-                <span class="telemetry-item-value">{gaze_status}</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Continuous Session Integrity Timeline Chart
-        recent_metrics = db_manager.get_session_metrics(st.session_state.active_session_id, limit=50)
-        timeline_fig = create_timeline_chart(recent_metrics)
-        st.plotly_chart(timeline_fig, width="stretch", key="webrtc_timeline")
-
-        st.markdown("</div>", unsafe_allow_html=True)
+        # Render Live Telemetry and Gauge Panel in a real-time fragment
+        render_live_threat_panel(current_session.get("session_id", "default_session"))
 
 
 # ---------------- TAB 2: INCIDENT VAULT & EVIDENCE REVIEW ----------------
