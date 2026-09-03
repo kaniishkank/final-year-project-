@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring Dashboard
 Ultra-Refined Midnight Slate Enterprise UI.
-Powered by a Direct High-Speed Multi-Threaded OpenCV Video Engine for rock-solid 30 FPS live proctoring with zero WebRTC latency or disconnects.
+Powered by a Direct High-Speed Multi-Threaded OpenCV Video Engine with zero-collision SVG Threat Dial and real-time telemetry updates.
 """
 
 from datetime import datetime
@@ -349,77 +349,40 @@ class ThreadedCamera:
         self.frame = None
 
 
-# ---------------- HELPER PLOT FUNCTIONS ----------------
-def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
-    """Renders a clean semi-circular Plotly risk meter gauge."""
+# ---------------- HIGH-PERFORMANCE THREAT METER SVG RENDERER ----------------
+def get_threat_meter_html(risk_score: float, risk_level: str) -> str:
+    """Renders a zero-lag, silky smooth SVG circular threat gauge meter."""
     color_map = {
         "LOW": "#10B981",
         "MEDIUM": "#F59E0B",
         "HIGH": "#EF4444"
     }
-    bar_color = color_map.get(risk_level, "#10B981")
+    color = color_map.get(risk_level, "#10B981")
+    pct = min(100.0, max(0.0, risk_score))
+    
+    # 180-degree semi-circle math: circumference of radius 70 is pi * 70 ≈ 220
+    dash_total = 220
+    dash_fill = (pct / 100.0) * dash_total
+    dash_empty = dash_total - dash_fill
 
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=score,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': f"Threat Score: {risk_level}", 'font': {'size': 14, 'color': '#94A3B8', 'family': 'Plus Jakarta Sans'}},
-        number={'font': {'size': 30, 'color': '#FFFFFF', 'family': 'JetBrains Mono'}},
-        gauge={
-            'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#475569"},
-            'bar': {'color': bar_color, 'thickness': 0.35},
-            'bgcolor': "#0E1422",
-            'borderwidth': 1,
-            'bordercolor': "#283347",
-            'steps': [
-                {'range': [0, 30], 'color': "rgba(16, 185, 129, 0.12)"},
-                {'range': [30, 70], 'color': "rgba(245, 158, 11, 0.12)"},
-                {'range': [70, 100], 'color': "rgba(239, 68, 68, 0.18)"},
-            ],
-            'threshold': {
-                'line': {'color': "#EF4444", 'width': 2},
-                'thickness': 0.7,
-                'value': 70
-            }
-        }
-    ))
-    fig.update_layout(height=185, margin=dict(l=10, r=10, t=25, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-    return fig
-
-
-def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
-    """Renders dynamic risk evolution line chart with indigo styling."""
-    if not metrics:
-        fig = go.Figure()
-        fig.update_layout(
-            title={'text': "Awaiting Session Telemetry...", 'font': {'color': '#64748B', 'size': 12}},
-            height=185,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)"
-        )
-        return fig
-
-    df = pd.DataFrame(metrics)
-    fig = px.line(
-        df,
-        x=df.index,
-        y="risk_score",
-        labels={"x": "Frames", "risk_score": "Risk Index"},
-        title="Session Continuous Integrity Timeline"
-    )
-    fig.add_hline(y=70, line_dash="dash", line_color="#EF4444", annotation_text="Critical (70+)", annotation_font_color="#EF4444")
-    fig.add_hline(y=30, line_dash="dot", line_color="#F59E0B", annotation_text="Medium (30+)", annotation_font_color="#F59E0B")
-    fig.update_traces(line_color="#6366F1", line_width=2.5)
-    fig.update_layout(
-        height=185,
-        margin=dict(l=10, r=10, t=25, b=10),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#94A3B8", family="Plus Jakarta Sans"),
-        xaxis=dict(gridcolor="rgba(255, 255, 255, 0.05)"),
-        yaxis=dict(gridcolor="rgba(255, 255, 255, 0.05)", range=[0, 100])
-    )
-    return fig
+    return f"""
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px 0 16px 0;">
+        <div style="position: relative; width: 220px; height: 120px; overflow: hidden; display: flex; justify-content: center;">
+            <svg width="220" height="220" viewBox="0 0 220 220" style="transform: rotate(180deg);">
+                <!-- Background track -->
+                <circle cx="110" cy="110" r="75" fill="none" stroke="#0E1422" stroke-width="18" stroke-dasharray="235.6 235.6" stroke-dashoffset="0" />
+                <!-- Active risk needle stroke -->
+                <circle cx="110" cy="110" r="75" fill="none" stroke="{color}" stroke-width="18" 
+                    stroke-dasharray="235.6 235.6" stroke-dashoffset="{235.6 - (pct / 100.0) * 235.6}" 
+                    stroke-linecap="round" style="transition: stroke-dashoffset 0.15s ease;" />
+            </svg>
+            <div style="position: absolute; bottom: 8px; text-align: center;">
+                <div style="font-size: 2.2rem; font-weight: 800; color: #FFFFFF; font-family: 'JetBrains Mono', monospace; line-height: 1;">{risk_score:.0f}</div>
+                <div style="font-size: 0.74rem; font-weight: 700; color: {color}; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px;">{risk_level} THREAT</div>
+            </div>
+        </div>
+    </div>
+    """
 
 
 # ---------------- SIDEBAR CONTROLS ----------------
@@ -508,133 +471,6 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 
-# ---------------- KPI & THREAT PANEL RENDERING HELPERS ----------------
-def render_kpi_cards(session_id: str, candidate_name: str, candidate_id: str, exam_title: str, risk_score: float = 0.0, is_flagged: bool = False):
-    """Renders 4 top KPI cards with dynamic integrity quotient and defense status."""
-    incidents = db_manager.get_session_incidents(session_id)
-    total_incidents = len(incidents)
-    confirmed_incidents = sum(1 for i in incidents if i.get("proctor_verdict") == "CONFIRMED")
-
-    integrity_pct = max(0.0, 100.0 - (confirmed_incidents * 5.0) - (total_incidents * 1.5))
-    score_color_cls = "score-green" if integrity_pct >= 80 else ("score-yellow" if integrity_pct >= 50 else "score-red")
-
-    if is_flagged or risk_score >= 70.0:
-        badge_html = '<span class="badge-status-alert">● SECURITY FLAGGED</span>'
-    elif risk_score >= 30.0:
-        badge_html = '<span class="badge-status-alert" style="background: rgba(245, 158, 11, 0.2); color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);">● ELEVATED RISK</span>'
-    else:
-        badge_html = '<span class="badge-status-safe">● ALL CLEAR</span>'
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.markdown(f"""
-        <div class="kpi-tile-pro">
-            <div class="kpi-label-pro">👤 Candidate Identity</div>
-            <div class="kpi-value-pro">{candidate_name}</div>
-            <div class="kpi-meta-pro">ID: {candidate_id}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown(f"""
-        <div class="kpi-tile-pro">
-            <div class="kpi-label-pro">📚 Active Assessment</div>
-            <div class="kpi-value-pro" style="font-size: 1.15rem;">{exam_title}</div>
-            <div class="kpi-meta-pro">Ref: <code>{session_id}</code></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col3:
-        st.markdown(f"""
-        <div class="kpi-tile-pro">
-            <div class="kpi-label-pro">🛡️ Integrity Quotient</div>
-            <div class="kpi-value-pro {score_color_cls}">{integrity_pct:.1f}%</div>
-            <div class="kpi-meta-pro">Flags: {total_incidents} ({confirmed_incidents} Confirmed)</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col4:
-        st.markdown(f"""
-        <div class="kpi-tile-pro">
-            <div class="kpi-label-pro">🚦 Defense Status</div>
-            <div style="margin-top: 4px;">{badge_html}</div>
-            <div class="kpi-meta-pro">Stream: 30 FPS Live</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-
-def render_threat_panel(
-    session_id: str,
-    risk_score: float = 0.0,
-    risk_level: str = "LOW",
-    active_violations: Optional[List[str]] = None,
-    person_count: int = 1,
-    yaw_val: float = 0.0,
-    pitch_val: float = 0.0,
-    gaze_status: str = "Direct (Screen)",
-    is_flagged: bool = False
-):
-    """Renders the Threat Analysis telemetry panel with live gauge and checklist values."""
-    if active_violations is None:
-        active_violations = []
-
-    st.markdown("""
-    <div class="slate-panel">
-        <div style="font-size: 1.0rem; font-weight: 700; color: #FFFFFF; margin-bottom: 12px;">Threat Analysis & Telemetry</div>
-    """, unsafe_allow_html=True)
-
-    # Dynamic Threat Alert Banner
-    if is_flagged or active_violations:
-        alert_str = ' • '.join(active_violations) if active_violations else "ELEVATED RISK DETECTED"
-        st.markdown(f"""
-        <div style="background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 1.1rem;">🚨</span>
-            <span style="color: #F87171; font-weight: 700; font-size: 0.82rem;">SECURITY ALERT: {alert_str}</span>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 1.1rem;">✅</span>
-            <span style="color: #34D399; font-weight: 700; font-size: 0.82rem;">COMPLIANCE VERIFIED: Candidate within normal limits</span>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # Semi-Circular Plotly Risk Meter Gauge directly bound to live risk score
-    gauge_fig = create_gauge_chart(risk_score, risk_level)
-    st.plotly_chart(gauge_fig, width="stretch")
-
-    # Live Numerical Telemetry Checklist Rows
-    st.markdown(f"""
-    <div style="margin-top: 4px; margin-bottom: 12px;">
-        <div class="telemetry-row-item">
-            <span class="telemetry-item-name">👥 Person Tracking</span>
-            <span class="telemetry-item-value">{person_count} Detected</span>
-        </div>
-        <div class="telemetry-row-item">
-            <span class="telemetry-item-name">🔄 Head Pose Yaw (L/R)</span>
-            <span class="telemetry-item-value">{yaw_val:+.1f}°</span>
-        </div>
-        <div class="telemetry-row-item">
-            <span class="telemetry-item-name">📐 Head Pose Pitch (U/D)</span>
-            <span class="telemetry-item-value">{pitch_val:+.1f}°</span>
-        </div>
-        <div class="telemetry-row-item">
-            <span class="telemetry-item-name">👀 Gaze Orientation</span>
-            <span class="telemetry-item-value">{gaze_status}</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Continuous Session Integrity Timeline Chart
-    recent_metrics = db_manager.get_session_metrics(session_id, limit=50)
-    timeline_fig = create_timeline_chart(recent_metrics)
-    st.plotly_chart(timeline_fig, width="stretch")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
 # ---------------- TAB 1: LIVE PROCTORING ----------------
 if menu_option == "📹 Live Proctoring":
     current_session = db_manager.get_session_by_id(st.session_state.active_session_id) or {
@@ -652,7 +488,7 @@ if menu_option == "📹 Live Proctoring":
     exam_title = current_session.get("exam_title", "CS401: Advanced AI Exam")
 
     # Top KPI Metrics Placeholder
-    kpi_container = st.empty()
+    kpi_placeholder = st.empty()
 
     st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 
@@ -676,7 +512,14 @@ if menu_option == "📹 Live Proctoring":
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_right:
-        threat_panel_placeholder = st.empty()
+        st.markdown("""
+        <div class="slate-panel">
+            <div style="font-size: 1.0rem; font-weight: 700; color: #FFFFFF; margin-bottom: 12px;">Threat Analysis & Telemetry</div>
+        """, unsafe_allow_html=True)
+        threat_banner_placeholder = st.empty()
+        threat_gauge_placeholder = st.empty()
+        telemetry_rows_placeholder = st.empty()
+        st.markdown("</div>", unsafe_allow_html=True)
 
     if start_stream:
         # Start High-Speed Threaded OpenCV Hardware Camera
@@ -707,30 +550,96 @@ if menu_option == "📹 Live Proctoring":
                     gaze_status = str(output.pose_gaze.gaze_direction) if output.pose_gaze.face_detected else "No Face"
                     is_flagged = bool(output.risk.is_incident_triggered or len(active_violations) > 0 or risk_score >= 70.0)
 
-                    # 3. Update Threat Analysis Panel simultaneously
-                    with threat_panel_placeholder.container():
-                        render_threat_panel(
-                            session_id=session_id,
-                            risk_score=risk_score,
-                            risk_level=risk_level,
-                            active_violations=active_violations,
-                            person_count=person_count,
-                            yaw_val=yaw_val,
-                            pitch_val=pitch_val,
-                            gaze_status=gaze_status,
-                            is_flagged=is_flagged
-                        )
+                    # 3. Update Threat Banner
+                    if is_flagged or active_violations:
+                        alert_str = ' • '.join(active_violations) if active_violations else "ELEVATED RISK DETECTED"
+                        threat_banner_placeholder.markdown(f"""
+                        <div style="background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1.1rem;">🚨</span>
+                            <span style="color: #F87171; font-weight: 700; font-size: 0.82rem;">SECURITY ALERT: {alert_str}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        threat_banner_placeholder.markdown("""
+                        <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1.1rem;">✅</span>
+                            <span style="color: #34D399; font-weight: 700; font-size: 0.82rem;">COMPLIANCE VERIFIED: Candidate within normal limits</span>
+                        </div>
+                        """, unsafe_allow_html=True)
 
-                    # 4. Update Top KPI cards
-                    with kpi_container.container():
-                        render_kpi_cards(
-                            session_id=session_id,
-                            candidate_name=candidate_name,
-                            candidate_id=candidate_id,
-                            exam_title=exam_title,
-                            risk_score=risk_score,
-                            is_flagged=is_flagged
-                        )
+                    # 4. Update SVG Threat Dial Meter
+                    threat_gauge_placeholder.markdown(get_threat_meter_html(risk_score, risk_level), unsafe_allow_html=True)
+
+                    # 5. Update Telemetry Rows
+                    telemetry_rows_placeholder.markdown(f"""
+                    <div style="margin-top: 4px; margin-bottom: 12px;">
+                        <div class="telemetry-row-item">
+                            <span class="telemetry-item-name">👥 Person Tracking</span>
+                            <span class="telemetry-item-value">{person_count} Detected</span>
+                        </div>
+                        <div class="telemetry-row-item">
+                            <span class="telemetry-item-name">🔄 Head Pose Yaw (L/R)</span>
+                            <span class="telemetry-item-value">{yaw_val:+.1f}°</span>
+                        </div>
+                        <div class="telemetry-row-item">
+                            <span class="telemetry-item-name">📐 Head Pose Pitch (U/D)</span>
+                            <span class="telemetry-item-value">{pitch_val:+.1f}°</span>
+                        </div>
+                        <div class="telemetry-row-item">
+                            <span class="telemetry-item-name">👀 Gaze Orientation</span>
+                            <span class="telemetry-item-value">{gaze_status}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # 6. Update Top KPI Cards
+                    incidents = db_manager.get_session_incidents(session_id)
+                    total_incidents = len(incidents)
+                    confirmed_incidents = sum(1 for i in incidents if i.get("proctor_verdict") == "CONFIRMED")
+                    integrity_pct = max(0.0, 100.0 - (confirmed_incidents * 5.0) - (total_incidents * 1.5))
+                    score_color_cls = "score-green" if integrity_pct >= 80 else ("score-yellow" if integrity_pct >= 50 else "score-red")
+
+                    if is_flagged or risk_score >= 70.0:
+                        badge_html = '<span class="badge-status-alert">● SECURITY FLAGGED</span>'
+                    elif risk_score >= 30.0:
+                        badge_html = '<span class="badge-status-alert" style="background: rgba(245, 158, 11, 0.2); color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);">● ELEVATED RISK</span>'
+                    else:
+                        badge_html = '<span class="badge-status-safe">● ALL CLEAR</span>'
+
+                    with kpi_placeholder.container():
+                        k_col1, k_col2, k_col3, k_col4 = st.columns(4)
+                        with k_col1:
+                            st.markdown(f"""
+                            <div class="kpi-tile-pro">
+                                <div class="kpi-label-pro">👤 Candidate Identity</div>
+                                <div class="kpi-value-pro">{candidate_name}</div>
+                                <div class="kpi-meta-pro">ID: {candidate_id}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        with k_col2:
+                            st.markdown(f"""
+                            <div class="kpi-tile-pro">
+                                <div class="kpi-label-pro">📚 Active Assessment</div>
+                                <div class="kpi-value-pro" style="font-size: 1.15rem;">{exam_title}</div>
+                                <div class="kpi-meta-pro">Ref: <code>{session_id}</code></div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        with k_col3:
+                            st.markdown(f"""
+                            <div class="kpi-tile-pro">
+                                <div class="kpi-label-pro">🛡️ Integrity Quotient</div>
+                                <div class="kpi-value-pro {score_color_cls}">{integrity_pct:.1f}%</div>
+                                <div class="kpi-meta-pro">Flags: {total_incidents} ({confirmed_incidents} Confirmed)</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        with k_col4:
+                            st.markdown(f"""
+                            <div class="kpi-tile-pro">
+                                <div class="kpi-label-pro">🚦 Defense Status</div>
+                                <div style="margin-top: 4px;">{badge_html}</div>
+                                <div class="kpi-meta-pro">Stream: 30 FPS Native</div>
+                            </div>
+                            """, unsafe_allow_html=True)
 
                 # ~30 FPS frame sleep to maintain silky smooth UI without CPU overload
                 time.sleep(0.03)
@@ -751,11 +660,70 @@ if menu_option == "📹 Live Proctoring":
             </div>
             """, unsafe_allow_html=True)
 
-        with kpi_container.container():
-            render_kpi_cards(session_id, candidate_name, candidate_id, exam_title)
+        with kpi_placeholder.container():
+            k_col1, k_col2, k_col3, k_col4 = st.columns(4)
+            with k_col1:
+                st.markdown(f"""
+                <div class="kpi-tile-pro">
+                    <div class="kpi-label-pro">👤 Candidate Identity</div>
+                    <div class="kpi-value-pro">{candidate_name}</div>
+                    <div class="kpi-meta-pro">ID: {candidate_id}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with k_col2:
+                st.markdown(f"""
+                <div class="kpi-tile-pro">
+                    <div class="kpi-label-pro">📚 Active Assessment</div>
+                    <div class="kpi-value-pro" style="font-size: 1.15rem;">{exam_title}</div>
+                    <div class="kpi-meta-pro">Ref: <code>{session_id}</code></div>
+                </div>
+                """, unsafe_allow_html=True)
+            with k_col3:
+                st.markdown(f"""
+                <div class="kpi-tile-pro">
+                    <div class="kpi-label-pro">🛡️ Integrity Quotient</div>
+                    <div class="kpi-value-pro score-green">100.0%</div>
+                    <div class="kpi-meta-pro">Flags: 0 (0 Confirmed)</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with k_col4:
+                st.markdown("""
+                <div class="kpi-tile-pro">
+                    <div class="kpi-label-pro">🚦 Defense Status</div>
+                    <div style="margin-top: 4px;"><span class="badge-status-safe">● ALL CLEAR</span></div>
+                    <div class="kpi-meta-pro">Stream: Standby</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-        with threat_panel_placeholder.container():
-            render_threat_panel(session_id)
+        threat_banner_placeholder.markdown("""
+        <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.1rem;">✅</span>
+            <span style="color: #34D399; font-weight: 700; font-size: 0.82rem;">COMPLIANCE VERIFIED: Candidate within normal limits</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        threat_gauge_placeholder.markdown(get_threat_meter_html(0.0, "LOW"), unsafe_allow_html=True)
+
+        telemetry_rows_placeholder.markdown("""
+        <div style="margin-top: 4px; margin-bottom: 12px;">
+            <div class="telemetry-row-item">
+                <span class="telemetry-item-name">👥 Person Tracking</span>
+                <span class="telemetry-item-value">1 Detected</span>
+            </div>
+            <div class="telemetry-row-item">
+                <span class="telemetry-item-name">🔄 Head Pose Yaw (L/R)</span>
+                <span class="telemetry-item-value">+0.0°</span>
+            </div>
+            <div class="telemetry-row-item">
+                <span class="telemetry-item-name">📐 Head Pose Pitch (U/D)</span>
+                <span class="telemetry-item-value">+0.0°</span>
+            </div>
+            <div class="telemetry-row-item">
+                <span class="telemetry-item-name">👀 Gaze Orientation</span>
+                <span class="telemetry-item-value">Direct (Screen)</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ---------------- TAB 2: INCIDENT VAULT & EVIDENCE REVIEW ----------------
@@ -893,15 +861,32 @@ elif menu_option == "📊 Analytics & Reports":
             v_df.columns = ["Violation Type", "Count"]
             fig_pie = px.pie(v_df, values="Count", names="Violation Type", hole=0.45, color_discrete_sequence=px.colors.sequential.RdBu)
             fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#E2E8F0", family="Plus Jakarta Sans"))
-            st.plotly_chart(fig_pie, width="stretch")
+            st.plotly_chart(fig_pie, width="stretch", key="analytics_pie")
         else:
             st.info("No violations recorded for this candidate.")
 
     with col_c2:
         st.subheader("Session Integrity Timeline")
         if metrics:
-            fig_line = create_timeline_chart(metrics)
-            st.plotly_chart(fig_line, width="stretch")
+            df = pd.DataFrame(metrics)
+            fig_line = px.line(
+                df,
+                x=df.index,
+                y="risk_score",
+                labels={"x": "Frames", "risk_score": "Risk Index"},
+                title="Session Continuous Integrity Timeline"
+            )
+            fig_line.add_hline(y=70, line_dash="dash", line_color="#EF4444")
+            fig_line.add_hline(y=30, line_dash="dot", line_color="#F59E0B")
+            fig_line.update_traces(line_color="#6366F1", line_width=2.5)
+            fig_line.update_layout(
+                height=185,
+                margin=dict(l=10, r=10, t=25, b=10),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#94A3B8", family="Plus Jakarta Sans")
+            )
+            st.plotly_chart(fig_line, width="stretch", key="analytics_timeline")
         else:
             st.info("No telemetry logs recorded.")
 
