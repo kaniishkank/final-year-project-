@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring Dashboard
-Modern Apple / Linear-Style Clean White & Crisp Minimalist UI.
-Features WebRTC live proctoring, pure white card architecture, soft elevation shadows, and refined enterprise typography.
+Stripe / Linear-Grade Refined Clean Light UI.
+Features WebRTC live proctoring, pure white card architecture, high-contrast typography, and unified telemetry analysis.
 """
 
 from datetime import datetime
@@ -30,7 +30,7 @@ from backend.explainability.reason_generator import ReasonGenerator
 from backend.pipeline import EviGuardPipeline, PipelineOutput
 
 
-# ---------------- PAGE CONFIGURATION & APPLE/LINEAR CLEAN WHITE THEME ----------------
+# ---------------- PAGE CONFIGURATION & STRIPE/LINEAR CLEAN LIGHT THEME ----------------
 st.set_page_config(
     page_title="EviGuard - AI Proctoring & Evidence Analysis",
     page_icon="🛡️",
@@ -38,66 +38,67 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for Apple / Linear Light Minimalist Aesthetics
+# Refined Custom CSS for Stripe/Linear Clean Light Design System
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-    /* Global Off-White Canvas Background */
+    /* Global Off-White Canvas Background & Clean Header */
     html, body, [class*="css"], .stApp {
         background-color: #F8FAFC !important;
         color: #0F172A !important;
         font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
+    header[data-testid="stHeader"] {
+        background-color: #F8FAFC !important;
+        border-bottom: 1px solid #E2E8F0 !important;
+    }
 
-    /* Pure White Elevation Cards */
+    /* Structured Pure White Cards */
     .white-card {
         background-color: #FFFFFF;
         border: 1px solid #E2E8F0;
-        border-radius: 16px;
-        padding: 20px 24px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.03);
-        margin-bottom: 20px;
+        border-radius: 12px;
+        padding: 18px 20px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        margin-bottom: 16px;
     }
 
-    /* Top 4 KPI Metric Cards */
+    /* Top 4 KPI Metric Cards (Equal Height & Clean Alignment) */
     .kpi-card-white {
         background-color: #FFFFFF;
         border: 1px solid #E2E8F0;
-        border-radius: 16px;
-        padding: 18px 20px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+        border-radius: 12px;
+        padding: 16px 20px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        min-height: 112px;
-        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        min-height: 105px;
+        height: 100%;
+        transition: border-color 0.15s ease;
     }
     .kpi-card-white:hover {
-        transform: translateY(-2px);
         border-color: #CBD5E1;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     }
     .kpi-label {
-        font-size: 0.75rem;
-        font-weight: 700;
+        font-size: 11px;
+        font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.05em;
         color: #64748B;
     }
     .kpi-value {
-        font-size: 1.45rem;
-        font-weight: 800;
+        font-size: 18px;
+        font-weight: 700;
         color: #0F172A;
         margin-top: 4px;
         line-height: 1.2;
-        letter-spacing: -0.02em;
     }
     .kpi-meta {
-        font-size: 0.75rem;
+        font-size: 12px;
         color: #94A3B8;
-        font-family: 'JetBrains Mono', monospace;
-        margin-top: 6px;
+        margin-top: 4px;
     }
 
     /* Soft Integrity Scores */
@@ -111,101 +112,162 @@ st.markdown("""
         color: #EF4444 !important;
     }
 
-    /* Soft Pastel Badges */
-    .badge-compliant-light {
+    /* Soft Pastel Status Pills */
+    .badge-compliant-pill {
         display: inline-flex;
         align-items: center;
         background-color: #DCFCE7;
         color: #15803D;
         border: 1px solid #BBF7D0;
         border-radius: 20px;
-        padding: 4px 12px;
-        font-size: 0.78rem;
+        padding: 3px 10px;
+        font-size: 12px;
         font-weight: 700;
     }
-    .badge-flagged-light {
+    .badge-flagged-pill {
         display: inline-flex;
         align-items: center;
         background-color: #FEE2E2;
         color: #B91C1C;
         border: 1px solid #FECACA;
         border-radius: 20px;
-        padding: 4px 12px;
-        font-size: 0.78rem;
+        padding: 3px 10px;
+        font-size: 12px;
         font-weight: 700;
     }
-    .badge-id-light {
+    .badge-id-pill {
+        background-color: #F1F5F9;
+        color: #475569;
+        border: 1px solid #E2E8F0;
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 11px;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 600;
+    }
+
+    /* Video Player & Streaming Badges */
+    .live-stream-badge {
+        background-color: #DCFCE7;
+        color: #15803D;
+        border: 1px solid #BBF7D0;
+        border-radius: 12px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+    }
+    .stream-fps-badge {
         background-color: #F1F5F9;
         color: #475569;
         border: 1px solid #E2E8F0;
         border-radius: 6px;
         padding: 2px 8px;
-        font-size: 0.72rem;
+        font-size: 11px;
         font-family: 'JetBrains Mono', monospace;
         font-weight: 600;
     }
 
-    /* Clean Itemized Telemetry Rows */
-    .telemetry-row-light {
+    /* WebRTC Stream Styling */
+    div[data-testid="stWebRtc"] video {
+        border-radius: 10px !important;
+        border: 1px solid #CBD5E1 !important;
+    }
+    div[data-testid="stWebRtc"] button {
+        background-color: #4F46E5 !important;
+        color: #FFFFFF !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        border: none !important;
+        padding: 8px 18px !important;
+        box-shadow: 0 1px 3px rgba(79, 70, 229, 0.3) !important;
+    }
+    div[data-testid="stWebRtc"] button:hover {
+        background-color: #4338CA !important;
+    }
+
+    /* Compliance Banners */
+    .compliance-banner-safe {
+        background-color: #F0FDF4;
+        border: 1px solid #BBF7D0;
+        color: #166534;
+        font-weight: 600;
+        font-size: 13px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+    }
+    .compliance-banner-alert {
+        background-color: #FEF2F2;
+        border: 1px solid #FECACA;
+        color: #991B1B;
+        font-weight: 600;
+        font-size: 13px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+    }
+
+    /* Refined Telemetry Rows */
+    .telemetry-row-clean {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 10px 14px;
-        background-color: #F8FAFC;
-        border: 1px solid #E2E8F0;
-        border-radius: 10px;
-        margin-bottom: 8px;
+        padding: 8px 0;
+        border-bottom: 1px solid #F1F5F9;
     }
-    .telemetry-name-light {
-        font-size: 0.82rem;
-        font-weight: 600;
-        color: #475569;
+    .telemetry-key {
+        font-size: 13px;
+        font-weight: 500;
+        color: #64748B;
     }
-    .telemetry-value-light {
-        font-size: 0.90rem;
+    .telemetry-val {
+        font-size: 13px;
         font-weight: 700;
         font-family: 'JetBrains Mono', monospace;
         color: #0F172A;
     }
 
-    /* Sleek Linear/Apple Buttons */
+    /* Refined Action Buttons */
     div.stButton > button {
-        border-radius: 10px !important;
+        border-radius: 8px !important;
         font-weight: 600 !important;
         font-family: 'Plus Jakarta Sans', sans-serif !important;
         border: 1px solid #E2E8F0 !important;
         background-color: #FFFFFF !important;
         color: #0F172A !important;
-        padding: 9px 18px !important;
+        padding: 8px 16px !important;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
-        transition: all 0.2s ease !important;
+        transition: all 0.15s ease !important;
+        font-size: 13px !important;
     }
     div.stButton > button:hover {
         background-color: #F8FAFC !important;
         border-color: #CBD5E1 !important;
         color: #4F46E5 !important;
-        transform: translateY(-1px) !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08) !important;
     }
 
     /* Primary Accent Download Button */
     div.stDownloadButton > button {
-        border-radius: 10px !important;
+        border-radius: 8px !important;
         background-color: #4F46E5 !important;
         border: none !important;
         color: #FFFFFF !important;
         font-weight: 600 !important;
-        padding: 10px 22px !important;
-        box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.25) !important;
-        transition: all 0.2s ease !important;
+        padding: 9px 20px !important;
+        box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2) !important;
+        transition: background-color 0.15s ease !important;
     }
     div.stDownloadButton > button:hover {
         background-color: #4338CA !important;
-        transform: translateY(-1px) !important;
-        box-shadow: 0 6px 12px -2px rgba(79, 70, 229, 0.35) !important;
     }
 
-    /* Crisp White Sidebar Drawer */
+    /* Crisp White Sidebar & Contrast Fix */
     section[data-testid="stSidebar"] {
         background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0 !important;
@@ -213,48 +275,52 @@ st.markdown("""
     section[data-testid="stSidebar"] div[role="radiogroup"] {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 6px;
     }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
+    section[data-testid="stSidebar"] div[role="radiogroup"] label {
         background-color: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
-        border-radius: 10px !important;
+        border-radius: 8px !important;
         padding: 10px 14px !important;
-        color: #475569 !important;
-        transition: all 0.2s ease !important;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+        margin-bottom: 0px !important;
+        color: #334155 !important;
+        font-weight: 500 !important;
+        font-size: 14px !important;
+        transition: all 0.15s ease !important;
+        cursor: pointer !important;
     }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
-        background-color: #F8FAFC !important;
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+        background-color: #F1F5F9 !important;
         color: #0F172A !important;
         border-color: #CBD5E1 !important;
     }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"],
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {
+    section[data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"],
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
         background-color: #EEF2FF !important;
         border: 1px solid #C7D2FE !important;
         color: #4338CA !important;
-        font-weight: 700 !important;
-        box-shadow: 0 1px 3px rgba(79, 70, 229, 0.1) !important;
+        font-weight: 600 !important;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label div:first-child {
+        display: none !important;
     }
 
     /* Inputs, Selectboxes */
     .stSelectbox div[data-baseweb="select"], .stTextInput input {
         background-color: #FFFFFF !important;
         border: 1px solid #CBD5E1 !important;
-        border-radius: 10px !important;
+        border-radius: 8px !important;
         color: #0F172A !important;
     }
     .stSelectbox div[data-baseweb="select"]:hover, .stTextInput input:focus {
         border-color: #4F46E5 !important;
-        box-shadow: 0 0 0 1px #4F46E5 !important;
     }
 
-    /* Accordion Expanders */
+    /* Accordions */
     .streamlit-expanderHeader {
         background-color: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
-        border-radius: 10px !important;
+        border-radius: 8px !important;
         font-weight: 600 !important;
         color: #0F172A !important;
     }
@@ -331,12 +397,12 @@ def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
         mode="gauge+number",
         value=score,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': f"Risk Score: {risk_level}", 'font': {'size': 14, 'color': '#475569', 'family': 'Plus Jakarta Sans'}},
-        number={'font': {'size': 32, 'color': '#0F172A', 'family': 'JetBrains Mono'}},
+        title={'text': f"Risk Score: {risk_level}", 'font': {'size': 13, 'color': '#64748B', 'family': 'Plus Jakarta Sans'}},
+        number={'font': {'size': 28, 'color': '#0F172A', 'family': 'JetBrains Mono'}},
         gauge={
             'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#CBD5E1"},
             'bar': {'color': bar_color, 'thickness': 0.3},
-            'bgcolor': "#F1F5F9",
+            'bgcolor': "#F8FAFC",
             'borderwidth': 1,
             'bordercolor': "#E2E8F0",
             'steps': [
@@ -351,7 +417,7 @@ def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
             }
         }
     ))
-    fig.update_layout(height=185, margin=dict(l=10, r=10, t=25, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+    fig.update_layout(height=175, margin=dict(l=10, r=10, t=20, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     return fig
 
 
@@ -361,7 +427,7 @@ def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
         fig = go.Figure()
         fig.update_layout(
             title={'text': "Awaiting Session Telemetry...", 'font': {'color': '#94A3B8', 'size': 12}},
-            height=185,
+            height=175,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)"
         )
@@ -379,13 +445,13 @@ def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
     fig.add_hline(y=30, line_dash="dot", line_color="#F59E0B", annotation_text="Warn 30+", annotation_font_color="#F59E0B")
     fig.update_traces(line_color="#4F46E5", line_width=2)
     fig.update_layout(
-        height=185,
+        height=175,
         margin=dict(l=10, r=10, t=25, b=10),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#64748B", family="Plus Jakarta Sans"),
-        xaxis=dict(gridcolor="#E2E8F0"),
-        yaxis=dict(gridcolor="#E2E8F0", range=[0, 100])
+        xaxis=dict(gridcolor="#F1F5F9"),
+        yaxis=dict(gridcolor="#F1F5F9", range=[0, 100])
     )
     return fig
 
@@ -393,11 +459,11 @@ def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
 # ---------------- SIDEBAR NAVIGATION ----------------
 with st.sidebar:
     st.markdown("""
-    <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px; margin-bottom: 2px;">
-        <span style="font-size: 1.4rem;">🛡️</span>
-        <span style="font-size: 1.2rem; font-weight: 800; color: #0F172A; letter-spacing: -0.02em;">EviGuard</span>
+    <div style="display: flex; align-items: center; gap: 10px; margin-top: 2px; margin-bottom: 2px;">
+        <span style="font-size: 1.35rem;">🛡️</span>
+        <span style="font-size: 1.15rem; font-weight: 800; color: #0F172A; letter-spacing: -0.02em;">EviGuard</span>
     </div>
-    <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 16px;">AI-Powered Exam Proctoring & XAI Verification</div>
+    <div style="font-size: 11px; color: #64748B; margin-bottom: 14px;">Automated Exam Proctoring Suite</div>
     """, unsafe_allow_html=True)
 
     menu_option = st.radio(
@@ -422,7 +488,7 @@ with st.sidebar:
             st.session_state.active_session_id = default_id
 
     st.markdown("""
-    <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748B; margin-bottom: 6px;">Active Exam Session</div>
+    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #64748B; margin-bottom: 6px;">Active Exam Session</div>
     """, unsafe_allow_html=True)
 
     selected_session = st.selectbox(
@@ -447,7 +513,7 @@ with st.sidebar:
     # Footer System Status
     st.markdown("---")
     st.markdown("""
-    <div style="font-size: 0.72rem; color: #64748B; line-height: 1.6;">
+    <div style="font-size: 11px; color: #64748B; line-height: 1.6;">
         <div>Engine: <span style="font-weight: 600; color: #0F172A;">YOLOv8 + MediaPipe</span></div>
         <div>Stream: <span style="font-weight: 600; color: #0F172A;">WebRTC Live (30 FPS)</span></div>
         <div>Database: <span style="color: #15803D; font-weight: 700;">● Connected</span></div>
@@ -472,7 +538,7 @@ if menu_option == "📹 Live Proctoring":
     total_inc = current_session.get('total_incidents', 0)
     is_compliant = (total_inc == 0)
 
-    # Top 4 Clean White KPI Cards
+    # Top 4 Clean White KPI Cards (Equal Height Alignment)
     kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
 
     with kpi_col1:
@@ -480,7 +546,7 @@ if menu_option == "📹 Live Proctoring":
         <div class="kpi-card-white">
             <div class="kpi-label">👤 Candidate Profile</div>
             <div class="kpi-value">{current_session.get('candidate_name', 'Alex Johnson')}</div>
-            <div class="kpi-meta"><span class="badge-id-light">ID: {current_session.get('candidate_id', 'STD-101')}</span></div>
+            <div class="kpi-meta"><span class="badge-id-pill">ID: {current_session.get('candidate_id', 'STD-101')}</span></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -488,7 +554,7 @@ if menu_option == "📹 Live Proctoring":
         st.markdown(f"""
         <div class="kpi-card-white">
             <div class="kpi-label">📚 Subject & Exam</div>
-            <div class="kpi-value" style="font-size: 1.15rem;">{current_session.get('exam_title', 'AI Assessment')}</div>
+            <div class="kpi-value" style="font-size: 15px;">{current_session.get('exam_title', 'AI Assessment')}</div>
             <div class="kpi-meta">Ref: <code>{current_session.get('session_id')}</code></div>
         </div>
         """, unsafe_allow_html=True)
@@ -503,7 +569,7 @@ if menu_option == "📹 Live Proctoring":
         """, unsafe_allow_html=True)
 
     with kpi_col4:
-        badge_html = '<span class="badge-compliant-light">● COMPLIANT</span>' if is_compliant else '<span class="badge-flagged-light">● FLAGGED</span>'
+        badge_html = '<span class="badge-compliant-pill">● COMPLIANT</span>' if is_compliant else '<span class="badge-flagged-pill">● FLAGGED</span>'
         st.markdown(f"""
         <div class="kpi-card-white">
             <div class="kpi-label">🚦 Session Status</div>
@@ -512,7 +578,7 @@ if menu_option == "📹 Live Proctoring":
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-bottom: 16px;'></div>", unsafe_allow_html=True)
 
     # Main 2-Column Grid: Left 65% (Video Frame), Right 35% (Threat Analysis)
     col_left, col_right = st.columns([13, 7], gap="medium")
@@ -521,8 +587,11 @@ if menu_option == "📹 Live Proctoring":
         st.markdown("""
         <div class="white-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <span style="font-size: 1.0rem; font-weight: 700; color: #0F172A;">Live Video Stream & AI HUD</span>
-                <span style="font-size: 0.75rem; color: #64748B; font-family: 'JetBrains Mono'; font-weight: 600;">640x480 • 30 FPS</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 15px; font-weight: 700; color: #0F172A;">Live Video Stream & AI HUD</span>
+                    <span class="live-stream-badge">● LIVE STREAMING</span>
+                </div>
+                <span class="stream-fps-badge">640x480 • 30 FPS</span>
             </div>
         """, unsafe_allow_html=True)
 
@@ -547,11 +616,6 @@ if menu_option == "📹 Live Proctoring":
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_right:
-        st.markdown("""
-        <div class="white-card">
-            <div style="font-size: 1.0rem; font-weight: 700; color: #0F172A; margin-bottom: 12px;">Threat Analysis & Telemetry</div>
-        """, unsafe_allow_html=True)
-
         # Read latest risk metrics from WebRTC processor
         latest_risk_score = 0.0
         latest_risk_level = "LOW"
@@ -571,33 +635,50 @@ if menu_option == "📹 Live Proctoring":
                     yaw_val, pitch_val = out.pose_gaze.yaw, out.pose_gaze.pitch
                     gaze_status = out.pose_gaze.gaze_direction if out.pose_gaze.face_detected else "No Face"
 
-        # Alert Banner
+        st.markdown("""
+        <div class="white-card">
+            <div style="font-size: 15px; font-weight: 700; color: #0F172A; margin-bottom: 12px;">Threat Analysis & Telemetry</div>
+        """, unsafe_allow_html=True)
+
+        # Compliance Banner
         if active_violations:
-            st.error(f"🚨 **VIOLATION**: {' • '.join(active_violations)}")
+            st.markdown(f"""
+            <div class="compliance-banner-alert">
+                <span style="font-size: 1.1rem; margin-right: 8px;">🚨</span>
+                <span><strong>VIOLATION FLAGGED</strong>: {' • '.join(active_violations)}</span>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            st.success("✅ **STATUS SAFE**: Candidate within parameters.")
+            st.markdown("""
+            <div class="compliance-banner-safe">
+                <span style="font-size: 1.1rem; margin-right: 8px;">✅</span>
+                <span><strong>COMPLIANT</strong>: Candidate within normal bounds</span>
+            </div>
+            """, unsafe_allow_html=True)
 
         # Plotly Minimalist Risk Gauge
         gauge_fig = create_gauge_chart(latest_risk_score, latest_risk_level)
         st.plotly_chart(gauge_fig, width="stretch", key="webrtc_live_gauge")
 
-        # Itemized Telemetry Checklist
+        # Refined Itemized Telemetry Rows with border-bottom
         st.markdown(f"""
-        <div class="telemetry-row-light">
-            <span class="telemetry-name-light">👥 Person Count</span>
-            <span class="telemetry-value-light">{person_count}</span>
-        </div>
-        <div class="telemetry-row-light">
-            <span class="telemetry-name-light">🔄 Head Pose Yaw (L/R)</span>
-            <span class="telemetry-value-light">{yaw_val:+.1f}°</span>
-        </div>
-        <div class="telemetry-row-light">
-            <span class="telemetry-name-light">📐 Head Pose Pitch (U/D)</span>
-            <span class="telemetry-value-light">{pitch_val:+.1f}°</span>
-        </div>
-        <div class="telemetry-row-light">
-            <span class="telemetry-name-light">👀 Gaze Tracking</span>
-            <span class="telemetry-value-light">{gaze_status}</span>
+        <div style="margin-top: 4px; margin-bottom: 12px;">
+            <div class="telemetry-row-clean">
+                <span class="telemetry-key">Person Count</span>
+                <span class="telemetry-val">{person_count}</span>
+            </div>
+            <div class="telemetry-row-clean">
+                <span class="telemetry-key">Head Pose Yaw (L/R)</span>
+                <span class="telemetry-val">{yaw_val:+.1f}°</span>
+            </div>
+            <div class="telemetry-row-clean">
+                <span class="telemetry-key">Head Pose Pitch (U/D)</span>
+                <span class="telemetry-val">{pitch_val:+.1f}°</span>
+            </div>
+            <div class="telemetry-row-clean" style="border-bottom: none;">
+                <span class="telemetry-key">Gaze Direction</span>
+                <span class="telemetry-val">{gaze_status}</span>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
