@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring Dashboard
-Modernized Real-Time Academic Integrity & Evidence Analysis System.
-Features WebRTC hardware-decoupled streaming, dark glassmorphism theme, and real-time XAI threat analytics.
+Deep Obsidian & Cyan Cyber-Shield Redesign.
+Features WebRTC hardware-decoupled streaming, glassmorphism UI, JetBrains/Plus Jakarta Sans typography, and non-clipping telemetry.
 """
 
 from datetime import datetime
@@ -30,71 +30,132 @@ from backend.explainability.reason_generator import ReasonGenerator
 from backend.pipeline import EviGuardPipeline, PipelineOutput
 
 
-# ---------------- PAGE CONFIGURATION & MODERN DARK GLASSMORPHISM THEME ----------------
+# ---------------- PAGE CONFIGURATION & CYBER-SHIELD THEME ----------------
 st.set_page_config(
-    page_title="EviGuard - AI Proctoring & Evidence Analysis",
+    page_title="EviGuard - AI Proctoring & Cyber-Shield",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for Dark Glassmorphism Aesthetics
+# Advanced Custom CSS Injection (Deep Obsidian & Cyan Cyber-Shield)
 st.markdown("""
 <style>
-    /* Global Base */
-    .stApp {
-        background-color: #0B0F19;
-        color: #F3F4F6;
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+    /* Global Obsidian Theme */
+    html, body, [class*="css"], .stApp {
+        background: radial-gradient(circle at top right, #0d1527, #070a12, #04060a) !important;
+        background-attachment: fixed !important;
+        color: #F3F4F6 !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
 
-    /* Glassmorphism Metric Cards */
-    .kpi-card {
-        background: rgba(17, 24, 39, 0.75);
+    /* Glassmorphism Containers */
+    .cyber-panel {
+        background: rgba(16, 24, 40, 0.75);
         backdrop-filter: blur(16px);
         -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 14px;
-        padding: 16px 20px;
+        border: 1px solid rgba(56, 189, 248, 0.15);
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+        margin-bottom: 20px;
+    }
+
+    /* Top 4 KPI Metric Cards */
+    .kpi-card {
+        background: rgba(16, 24, 40, 0.75);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(56, 189, 248, 0.15);
+        border-top: 3px solid #00f2fe;
+        border-radius: 16px;
+        padding: 20px;
         box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-        transition: transform 0.2s ease, border-color 0.2s ease;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        min-height: 120px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
     }
     .kpi-card:hover {
-        border-color: rgba(99, 102, 241, 0.4);
-        transform: translateY(-2px);
+        border-color: rgba(0, 242, 254, 0.5);
+        transform: translateY(-3px);
+        box-shadow: 0 12px 36px 0 rgba(0, 242, 254, 0.15);
     }
+    .kpi-card.kpi-exam { border-top-color: #6366f1; }
+    .kpi-card.kpi-integrity { border-top-color: #10b981; }
+    .kpi-card.kpi-status { border-top-color: #f59e0b; }
+
     .kpi-title {
-        font-size: 0.78rem;
-        font-weight: 600;
+        font-size: 0.76rem;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #9CA3AF;
-        margin-bottom: 6px;
+        letter-spacing: 0.08em;
+        color: #94A3B8;
+        display: flex;
+        align-items: center;
+        gap: 6px;
     }
     .kpi-value {
         font-size: 1.45rem;
-        font-weight: 700;
+        font-weight: 800;
         color: #FFFFFF;
         line-height: 1.2;
+        margin-top: 4px;
+        letter-spacing: -0.02em;
     }
     .kpi-subtext {
-        font-size: 0.78rem;
-        color: #6B7280;
-        margin-top: 4px;
+        font-size: 0.76rem;
+        color: #64748B;
+        font-family: 'JetBrains Mono', monospace;
+        margin-top: 6px;
     }
 
-    /* Dynamic Integrity Score Colors */
+    /* Dynamic Integrity Colors */
     .score-green {
         color: #10B981 !important;
-        text-shadow: 0 0 16px rgba(16, 185, 129, 0.3);
+        text-shadow: 0 0 18px rgba(16, 185, 129, 0.4);
     }
     .score-yellow {
         color: #F59E0B !important;
-        text-shadow: 0 0 16px rgba(245, 158, 11, 0.3);
+        text-shadow: 0 0 18px rgba(245, 158, 11, 0.4);
     }
     .score-red {
         color: #EF4444 !important;
-        text-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
+        text-shadow: 0 0 18px rgba(239, 68, 68, 0.5);
+    }
+
+    /* Modern Telemetry Grid (Non-clipping values) */
+    .telemetry-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-top: 14px;
+        margin-bottom: 14px;
+    }
+    .telemetry-item {
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(56, 189, 248, 0.12);
+        border-radius: 12px;
+        padding: 12px 14px;
+        text-align: center;
+    }
+    .telemetry-label {
+        font-size: 0.70rem;
+        font-weight: 700;
+        color: #94A3B8;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+    .telemetry-val {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #00f2fe;
+        font-family: 'JetBrains Mono', monospace;
+        margin-top: 4px;
+        white-space: nowrap;
     }
 
     /* Status Badges */
@@ -103,55 +164,99 @@ st.markdown("""
         align-items: center;
         background: rgba(16, 185, 129, 0.15);
         color: #34D399;
-        border: 1px solid rgba(52, 211, 153, 0.3);
-        border-radius: 8px;
-        padding: 4px 12px;
-        font-size: 0.85rem;
-        font-weight: 600;
+        border: 1px solid rgba(52, 211, 153, 0.35);
+        border-radius: 20px;
+        padding: 4px 14px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
     }
     .status-badge-violation {
         display: inline-flex;
         align-items: center;
-        background: rgba(239, 68, 68, 0.18);
+        background: rgba(239, 68, 68, 0.2);
         color: #F87171;
-        border: 1px solid rgba(248, 113, 113, 0.4);
-        border-radius: 8px;
-        padding: 4px 12px;
-        font-size: 0.85rem;
-        font-weight: 600;
-        animation: pulse 2s infinite;
+        border: 1px solid rgba(248, 113, 113, 0.45);
+        border-radius: 20px;
+        padding: 4px 14px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        animation: pulseAlert 2s infinite;
+        box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
     }
 
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.6; }
+    @keyframes pulseAlert {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.7; transform: scale(0.98); }
     }
 
-    /* Streamlit Containers */
-    .stSelectbox, .stTextInput, .stSlider {
-        color: #E5E7EB;
-    }
-    
-    /* Modern Action Buttons */
+    /* Button System (Pill Shaped with Cyber Glow) */
     div.stButton > button {
-        border-radius: 10px;
-        font-weight: 600;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        background: linear-gradient(135deg, #1E293B, #0F172A);
-        color: #F9FAFB;
-        transition: all 0.25s ease;
+        border-radius: 50px !important;
+        font-weight: 700 !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        border: 1px solid rgba(0, 242, 254, 0.3) !important;
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)) !important;
+        color: #F9FAFB !important;
+        padding: 10px 26px !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 0.82rem !important;
     }
     div.stButton > button:hover {
-        background: linear-gradient(135deg, #4F46E5, #6366F1);
-        border-color: #818CF8;
-        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4);
-        transform: translateY(-1px);
+        transform: translateY(-2px) !important;
+        box-shadow: 0 0 20px rgba(0, 242, 254, 0.45) !important;
+        border-color: #00f2fe !important;
+        color: #00f2fe !important;
     }
 
-    /* Sidebar Glassmorphism */
+    /* Primary / Download Buttons */
+    div.stDownloadButton > button {
+        border-radius: 50px !important;
+        background: linear-gradient(135deg, #059669, #10b981) !important;
+        border: 1px solid rgba(16, 185, 129, 0.5) !important;
+        box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35) !important;
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+        padding: 10px 26px !important;
+        transition: all 0.3s ease !important;
+    }
+    div.stDownloadButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 0 24px rgba(16, 185, 129, 0.6) !important;
+    }
+
+    /* Sidebar Glassmorphism & Custom Radio Pills */
     section[data-testid="stSidebar"] {
-        background-color: #080C14;
-        border-right: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(8, 12, 20, 0.88) !important;
+        backdrop-filter: blur(20px) !important;
+        border-right: 1px solid rgba(56, 189, 248, 0.12) !important;
+    }
+    section[data-testid="stSidebar"] .stRadio > div {
+        gap: 6px;
+    }
+
+    /* Inputs, Selectboxes, Sliders */
+    .stSelectbox div[data-baseweb="select"], .stTextInput input {
+        background: rgba(15, 23, 42, 0.75) !important;
+        border: 1px solid rgba(56, 189, 248, 0.2) !important;
+        border-radius: 10px !important;
+        color: #F1F5F9 !important;
+    }
+    .stSelectbox div[data-baseweb="select"]:hover, .stTextInput input:focus {
+        border-color: #00f2fe !important;
+        box-shadow: 0 0 12px rgba(0, 242, 254, 0.25) !important;
+    }
+
+    /* Expander Styling */
+    .streamlit-expanderHeader {
+        background: rgba(15, 23, 42, 0.6) !important;
+        border: 1px solid rgba(56, 189, 248, 0.12) !important;
+        border-radius: 12px !important;
+        font-weight: 600 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -216,7 +321,7 @@ class ProctorVideoProcessor(VideoProcessorBase):
 
 # ---------------- HELPER PLOT FUNCTIONS ----------------
 def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
-    """Renders a modern dark semi-circular Plotly risk gauge."""
+    """Renders a modern dark semi-circular Plotly risk gauge with cyan/emerald theme."""
     color_map = {
         "LOW": "#10B981",
         "MEDIUM": "#F59E0B",
@@ -228,37 +333,37 @@ def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
         mode="gauge+number",
         value=score,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': f"Risk Score: {risk_level}", 'font': {'size': 16, 'color': '#E2E8F0'}},
-        number={'font': {'size': 32, 'color': '#FFFFFF'}},
+        title={'text': f"Risk Score: {risk_level}", 'font': {'size': 15, 'color': '#CBD5E1', 'family': 'Plus Jakarta Sans'}},
+        number={'font': {'size': 32, 'color': '#FFFFFF', 'family': 'JetBrains Mono'}},
         gauge={
             'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#475569"},
             'bar': {'color': bar_color, 'thickness': 0.35},
-            'bgcolor': "rgba(30, 41, 59, 0.5)",
+            'bgcolor': "rgba(15, 23, 42, 0.6)",
             'borderwidth': 1,
-            'bordercolor': "rgba(255, 255, 255, 0.1)",
+            'bordercolor': "rgba(56, 189, 248, 0.15)",
             'steps': [
                 {'range': [0, 30], 'color': "rgba(16, 185, 129, 0.12)"},
                 {'range': [30, 70], 'color': "rgba(245, 158, 11, 0.12)"},
                 {'range': [70, 100], 'color': "rgba(239, 68, 68, 0.18)"},
             ],
             'threshold': {
-                'line': {'color': "#DC2626", 'width': 3},
+                'line': {'color': "#EF4444", 'width': 3},
                 'thickness': 0.75,
                 'value': 70
             }
         }
     ))
-    fig.update_layout(height=200, margin=dict(l=15, r=15, t=30, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+    fig.update_layout(height=195, margin=dict(l=15, r=15, t=25, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     return fig
 
 
 def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
-    """Renders dynamic risk evolution line chart in dark mode."""
+    """Renders dynamic risk evolution line chart with glowing cyan styling."""
     if not metrics:
         fig = go.Figure()
         fig.update_layout(
-            title={'text': "Awaiting Telemetry...", 'font': {'color': '#94A3B8'}},
-            height=200,
+            title={'text': "Awaiting Telemetry Stream...", 'font': {'color': '#64748B', 'size': 13}},
+            height=195,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)"
         )
@@ -274,24 +379,24 @@ def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
     )
     fig.add_hline(y=70, line_dash="dash", line_color="#EF4444", annotation_text="Critical (70+)", annotation_font_color="#EF4444")
     fig.add_hline(y=30, line_dash="dot", line_color="#F59E0B", annotation_text="Medium (30+)", annotation_font_color="#F59E0B")
-    fig.update_traces(line_color="#6366F1", line_width=2.5)
+    fig.update_traces(line_color="#00f2fe", line_width=2.5)
     fig.update_layout(
-        height=200,
-        margin=dict(l=15, r=15, t=30, b=10),
+        height=195,
+        margin=dict(l=15, r=15, t=25, b=10),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#94A3B8"),
-        xaxis=dict(gridcolor="rgba(255, 255, 255, 0.05)"),
-        yaxis=dict(gridcolor="rgba(255, 255, 255, 0.05)", range=[0, 100])
+        font=dict(color="#94A3B8", family="Plus Jakarta Sans"),
+        xaxis=dict(gridcolor="rgba(255, 255, 255, 0.04)"),
+        yaxis=dict(gridcolor="rgba(255, 255, 255, 0.04)", range=[0, 100])
     )
     return fig
 
 
 # ---------------- SIDEBAR CONTROLS ----------------
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/shield.png", width=60)
+    st.image("https://img.icons8.com/fluency/96/shield.png", width=54)
     st.markdown("### **EviGuard AI**")
-    st.caption("AI Exam Proctoring & Integrity Verification")
+    st.caption("Cyber-Shield Exam Integrity & XAI Verification")
     st.markdown("---")
 
     menu_option = st.radio(
@@ -355,13 +460,13 @@ if menu_option == "📹 Live Proctoring":
     total_inc = current_session.get('total_incidents', 0)
     is_compliant = (total_inc == 0)
 
-    # 4 Modern Glassmorphism KPI Metric Cards
+    # Top 4 Sleek Glassmorphism KPI Cards with Glowing Top Accents
     kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
 
     with kpi_col1:
         st.markdown(f"""
         <div class="kpi-card">
-            <div class="kpi-title">👤 Candidate</div>
+            <div class="kpi-title">👤 Candidate Profile</div>
             <div class="kpi-value">{current_session.get('candidate_name', 'Alex Johnson')}</div>
             <div class="kpi-subtext">ID: {current_session.get('candidate_id', 'STD-101')}</div>
         </div>
@@ -369,7 +474,7 @@ if menu_option == "📹 Live Proctoring":
 
     with kpi_col2:
         st.markdown(f"""
-        <div class="kpi-card">
+        <div class="kpi-card kpi-exam">
             <div class="kpi-title">📚 Exam Session</div>
             <div class="kpi-value" style="font-size: 1.15rem;">{current_session.get('exam_title', 'AI Assessment')}</div>
             <div class="kpi-subtext">Ref: <code>{current_session.get('session_id')}</code></div>
@@ -378,31 +483,37 @@ if menu_option == "📹 Live Proctoring":
 
     with kpi_col3:
         st.markdown(f"""
-        <div class="kpi-card">
+        <div class="kpi-card kpi-integrity">
             <div class="kpi-title">🛡️ Live Integrity Score</div>
             <div class="kpi-value {score_class}">{integrity_score:.1f}%</div>
-            <div class="kpi-subtext">Total Flags: {total_inc}</div>
+            <div class="kpi-subtext">Flagged Incidents: {total_inc}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with kpi_col4:
         badge_html = '<span class="status-badge-compliant">● COMPLIANT</span>' if is_compliant else '<span class="status-badge-violation">● VIOLATION FLAGGED</span>'
         st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">🚦 Session Status</div>
+        <div class="kpi-card kpi-status">
+            <div class="kpi-title">🚦 Security Status</div>
             <div style="margin-top: 4px;">{badge_html}</div>
-            <div class="kpi-subtext">Engine: WebRTC Active</div>
+            <div class="kpi-subtext">Engine: WebRTC Live</div>
         </div>
         """, unsafe_allow_html=True)
 
     st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
 
-    # Main Grid Layout: 2/3 Left (Video Stream), 1/3 Right (Real-time Analytics)
-    col_left, col_right = st.columns([2, 1])
+    # Main Grid Layout: Left 2/3 (Live Stream) and Right 1/3 (Threat Analytics)
+    col_left, col_right = st.columns([2, 1], gap="large")
 
     with col_left:
-        st.markdown("#### 📹 Real-Time Live Feed & AI HUD Overlay")
-        
+        st.markdown("""
+        <div class="cyber-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <span style="font-size: 1.05rem; font-weight: 700; color: #FFFFFF;">📹 Real-Time Live Feed & AI HUD</span>
+                <span style="font-size: 0.78rem; color: #00f2fe; font-family: 'JetBrains Mono'; font-weight: 600;">● ZERO-LATENCY STREAM</span>
+            </div>
+        """, unsafe_allow_html=True)
+
         webrtc_ctx = webrtc_streamer(
             key="eviguard-live",
             mode=WebRtcMode.SENDRECV,
@@ -421,8 +532,13 @@ if menu_option == "📹 Live Proctoring":
                 candidate_name=current_session.get("candidate_name", "Alex Johnson")
             )
 
+        st.markdown("</div>", unsafe_allow_html=True)
+
     with col_right:
-        st.markdown("#### ⚡ Real-Time Threat Analysis")
+        st.markdown("""
+        <div class="cyber-panel">
+            <div style="font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin-bottom: 12px;">⚡ Real-Time Threat Analysis</div>
+        """, unsafe_allow_html=True)
         
         # Read latest risk metrics from WebRTC processor
         latest_risk_score = 0.0
@@ -445,22 +561,36 @@ if menu_option == "📹 Live Proctoring":
         if active_violations:
             st.error(f"🚨 **ACTIVE ALERT**: {' • '.join(active_violations)}")
         else:
-            st.success("✅ **Integrity Compliant**: Candidate within threshold limits.")
+            st.success("✅ **Integrity Compliant**: Candidate within normal bounds.")
 
         # Plotly Risk Meter Gauge
         gauge_fig = create_gauge_chart(latest_risk_score, latest_risk_level)
         st.plotly_chart(gauge_fig, width="stretch", key="webrtc_live_gauge")
 
-        # Telemetry Metrics Grid
-        t_col1, t_col2, t_col3 = st.columns(3)
-        t_col1.metric("Persons", person_count)
-        t_col2.metric("Yaw (L/R)", f"{yaw_val:+.1f}°")
-        t_col3.metric("Pitch (U/D)", f"{pitch_val:+.1f}°")
+        # Non-clipping Custom Telemetry Grid
+        st.markdown(f"""
+        <div class="telemetry-grid">
+            <div class="telemetry-item">
+                <div class="telemetry-label">👥 Persons</div>
+                <div class="telemetry-val">{person_count}</div>
+            </div>
+            <div class="telemetry-item">
+                <div class="telemetry-label">🔄 Yaw (L/R)</div>
+                <div class="telemetry-val">{yaw_val:+.1f}°</div>
+            </div>
+            <div class="telemetry-item">
+                <div class="telemetry-label">📐 Pitch (U/D)</div>
+                <div class="telemetry-val">{pitch_val:+.1f}°</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
         # Live Session Timeline Chart
         recent_metrics = db_manager.get_session_metrics(st.session_state.active_session_id, limit=50)
         timeline_fig = create_timeline_chart(recent_metrics)
         st.plotly_chart(timeline_fig, width="stretch", key="webrtc_timeline")
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ---------------- TAB 2: INCIDENT VAULT & EVIDENCE REVIEW ----------------
@@ -495,12 +625,11 @@ elif menu_option == "🔍 Incident Vault":
         st.markdown(f"Displaying **{len(filtered_incidents)}** incident(s)")
 
         for inc in filtered_incidents:
-            severity_class = f"badge-{inc['severity'].lower()}"
             with st.expander(
-                f"🚨 Incident #{inc['id']} | [{inc['severity']}] {inc['violation_type']} at {inc['timestamp']} (Risk: {inc['risk_score']}/100) - Verdict: {inc['proctor_verdict']}",
+                f"🚨 Incident #{inc['id']} | [{inc['severity']}] {inc['violation_type']} at {inc['timestamp']} (Risk: {inc['risk_score']}/100) — Verdict: {inc['proctor_verdict']}",
                 expanded=True
             ):
-                inc_col1, inc_col2 = st.columns([3, 2])
+                inc_col1, inc_col2 = st.columns([3, 2], gap="medium")
 
                 with inc_col1:
                     st.markdown(f"#### 📄 {inc['reason_summary']}")
@@ -529,7 +658,7 @@ elif menu_option == "🔍 Incident Vault":
                             x="Weight %",
                             y="Factor",
                             orientation='h',
-                            title="Threat Contribution Breakdown",
+                            title="Threat Factor Contribution",
                             color="Weight %",
                             color_continuous_scale="Reds"
                         )
@@ -538,14 +667,14 @@ elif menu_option == "🔍 Incident Vault":
                             margin=dict(l=10, r=10, t=30, b=10),
                             paper_bgcolor="rgba(0,0,0,0)",
                             plot_bgcolor="rgba(0,0,0,0)",
-                            font=dict(color="#E2E8F0")
+                            font=dict(color="#E2E8F0", family="Plus Jakarta Sans")
                         )
                         st.plotly_chart(fig_bar, width="stretch", key=f"xai_chart_{inc['id']}")
 
                     if details.get("recommended_action"):
                         st.info(f"**Recommended Action**: {details['recommended_action']}")
 
-                    # Proctor Verification Action
+                    # Proctor Verification Action Form
                     st.markdown("---")
                     st.markdown("##### ⚖️ Proctor Decision")
                     v_col1, v_col2, v_col3 = st.columns(3)
@@ -594,7 +723,7 @@ elif menu_option == "📊 Analytics & Reports":
 
     st.markdown("---")
 
-    col_c1, col_c2 = st.columns(2)
+    col_c1, col_c2 = st.columns(2, gap="large")
 
     with col_c1:
         st.subheader("Violation Distribution by Type")
@@ -602,8 +731,8 @@ elif menu_option == "📊 Analytics & Reports":
             v_types = [i["violation_type"] for i in incidents]
             v_df = pd.Series(v_types).value_counts().reset_index()
             v_df.columns = ["Violation Type", "Count"]
-            fig_pie = px.pie(v_df, values="Count", names="Violation Type", hole=0.4, color_discrete_sequence=px.colors.sequential.RdBu)
-            fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#E2E8F0"))
+            fig_pie = px.pie(v_df, values="Count", names="Violation Type", hole=0.45, color_discrete_sequence=px.colors.sequential.RdBu)
+            fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#E2E8F0", family="Plus Jakarta Sans"))
             st.plotly_chart(fig_pie, width="stretch")
         else:
             st.info("No violations recorded for this candidate.")
