@@ -43,36 +43,41 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-    /* Global Obsidian Theme */
+    /* Global Radiant Cyber-Mesh Aurora Theme */
     html, body, [class*="css"], .stApp {
-        background: radial-gradient(circle at top right, #0d1527, #070a12, #04060a) !important;
+        background: 
+            radial-gradient(circle at 15% 15%, rgba(14, 165, 233, 0.20) 0%, transparent 45%),
+            radial-gradient(circle at 85% 20%, rgba(99, 102, 241, 0.25) 0%, transparent 50%),
+            radial-gradient(circle at 50% 85%, rgba(16, 185, 129, 0.15) 0%, transparent 55%),
+            radial-gradient(circle at 80% 80%, rgba(56, 189, 248, 0.18) 0%, transparent 50%),
+            linear-gradient(145deg, #090e1a 0%, #0c152a 45%, #050813 100%) !important;
         background-attachment: fixed !important;
-        color: #F3F4F6 !important;
+        color: #F8FAFC !important;
         font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
 
     /* Glassmorphism Containers */
     .cyber-panel {
-        background: rgba(16, 24, 40, 0.75);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(56, 189, 248, 0.15);
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(11, 18, 33, 0.78)) !important;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(56, 189, 248, 0.22);
         border-radius: 16px;
-        padding: 20px;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+        padding: 22px;
+        box-shadow: 0 12px 36px 0 rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
         margin-bottom: 20px;
     }
 
     /* Top 4 KPI Metric Cards */
     .kpi-card {
-        background: rgba(16, 24, 40, 0.75);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(56, 189, 248, 0.15);
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(11, 18, 33, 0.80)) !important;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(56, 189, 248, 0.20);
         border-top: 3px solid #00f2fe;
         border-radius: 16px;
         padding: 20px;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        box-shadow: 0 10px 32px 0 rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         min-height: 120px;
         display: flex;
@@ -80,11 +85,11 @@ st.markdown("""
         justify-content: space-between;
     }
     .kpi-card:hover {
-        border-color: rgba(0, 242, 254, 0.5);
-        transform: translateY(-3px);
-        box-shadow: 0 12px 36px 0 rgba(0, 242, 254, 0.15);
+        border-color: rgba(0, 242, 254, 0.6);
+        transform: translateY(-4px);
+        box-shadow: 0 16px 40px 0 rgba(0, 242, 254, 0.22);
     }
-    .kpi-card.kpi-exam { border-top-color: #6366f1; }
+    .kpi-card.kpi-exam { border-top-color: #818cf8; }
     .kpi-card.kpi-integrity { border-top-color: #10b981; }
     .kpi-card.kpi-status { border-top-color: #f59e0b; }
 
