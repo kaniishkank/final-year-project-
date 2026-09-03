@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring Dashboard
-Ultra-Refined Midnight Slate Enterprise UI with Real-Time WebRTC Telemetry Bridge.
-Features direct thread-safe state synchronization, live Plotly risk gauge, sub-second telemetry fragments, and instant security alerting.
+Ultra-Refined Midnight Slate Enterprise UI with Dual-Mode Video Engine.
+Features Direct Hardware Camera streaming (instant zero-friction start), WebRTC alternative, live Plotly risk gauge, and real-time telemetry synchronization.
 """
 
 from datetime import datetime
@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from backend.db.models import DatabaseManager, ExamSession, Incident, RiskMetricLog
 from backend.detection.base import DetectionResult
 from backend.explainability.reason_generator import ReasonGenerator
-from backend.pipeline import EviGuardPipeline, PipelineOutput
+from backend.pipeline import EviGuardPipeline, PipelineOutput, FreshFrameReader
 
 
 # ---------------- PAGE CONFIGURATION & REFINED ENTERPRISE THEME ----------------
@@ -170,8 +170,8 @@ st.markdown("""
         color: #F8FAFC;
     }
 
-    /* WebRTC Video Player Frame & Start Button */
-    div[data-testid="stWebRtc"] video {
+    /* WebRTC & Direct Video Player Containers */
+    div[data-testid="stWebRtc"] video, [data-testid="stImage"] img {
         border-radius: 10px !important;
         border: 1px solid #283347 !important;
     }
@@ -183,13 +183,9 @@ st.markdown("""
         border: none !important;
         padding: 9px 20px !important;
         box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4) !important;
-        transition: background-color 0.2s ease !important;
-    }
-    div[data-testid="stWebRtc"] button:hover {
-        background-color: #4338CA !important;
     }
 
-    /* Modern Flat Buttons */
+    /* Modern Buttons */
     div.stButton > button {
         border-radius: 8px !important;
         font-weight: 600 !important;
@@ -216,7 +212,6 @@ st.markdown("""
         font-weight: 700 !important;
         padding: 10px 22px !important;
         box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35) !important;
-        transition: all 0.2s ease !important;
     }
     div.stDownloadButton > button:hover {
         background-color: #4338CA !important;
@@ -227,8 +222,6 @@ st.markdown("""
         background-color: #0E1322 !important;
         border-right: 1px solid #232D3F !important;
     }
-    
-    /* Navigation Radio Items (Clear, Solid, Readable Card Tiles) */
     section[data-testid="stSidebar"] div[role="radiogroup"] {
         display: flex !important;
         flex-direction: column !important;
@@ -258,7 +251,6 @@ st.markdown("""
         box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35) !important;
     }
 
-    /* Ensure text inside sidebar navigation is 100% visible, crisp white and clear */
     section[data-testid="stSidebar"] div[role="radiogroup"] label p,
     section[data-testid="stSidebar"] div[role="radiogroup"] label span,
     section[data-testid="stSidebar"] div[role="radiogroup"] label div {
@@ -270,7 +262,7 @@ st.markdown("""
         display: inline-block !important;
     }
 
-    /* Inputs, Selectboxes, Sliders */
+    /* Inputs, Selectboxes */
     .stSelectbox div[data-baseweb="select"], .stTextInput input {
         background-color: #151C2C !important;
         border: 1px solid #283347 !important;
@@ -281,7 +273,6 @@ st.markdown("""
         border-color: #4F46E5 !important;
     }
 
-    /* Accordion Header */
     .streamlit-expanderHeader {
         background-color: #151C2C !important;
         border: 1px solid #283347 !important;
@@ -347,7 +338,7 @@ def get_live_telemetry() -> Dict[str, Any]:
 
 # ---------------- WEBRTC VIDEO PROCESSOR ----------------
 RTC_CONFIGURATION = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}, {"urls": ["stun:stun1.l.google.com:19302"]}]}
 )
 
 
@@ -370,11 +361,9 @@ class ProctorVideoProcessor(VideoProcessorBase):
         if img is None or img.size == 0:
             return frame
 
-        # Resize for smooth 30 FPS inference
         if img.shape[1] != 640 or img.shape[0] != 480:
             img = cv2.resize(img, (640, 480), interpolation=cv2.INTER_LINEAR)
 
-        # Process through EviGuardPipeline
         output: PipelineOutput = self.pipeline.process_frame(
             frame=img,
             session_id=self.session_id,
@@ -384,9 +373,7 @@ class ProctorVideoProcessor(VideoProcessorBase):
         with self.lock:
             self.latest_output = output
 
-        # Write to shared live telemetry state bridge
         update_live_telemetry(output)
-
         return av.VideoFrame.from_ndarray(output.annotated_frame, format="bgr24")
 
 
@@ -465,7 +452,6 @@ def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
 
 # ---------------- SIDEBAR CONTROLS ----------------
 with st.sidebar:
-    # Branding & Header Section
     st.markdown("""
     <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px; margin-bottom: 4px;">
         <span style="font-size: 1.6rem;">🛡️</span>
@@ -479,7 +465,6 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    # Navigation Tiles (Clean, Visible, High-Contrast Buttons)
     menu_option = st.radio(
         "Navigation Modules",
         ["📹 Live Proctoring", "🔍 Incident Vault", "📊 Analytics & Reports", "⚙️ Settings & Sensitivity"],
@@ -527,7 +512,6 @@ with st.sidebar:
             st.success(f"Session {new_s_id} active!")
             st.rerun()
 
-    # Footer Diagnostics Widget
     st.markdown("<div style='margin-top: 14px; margin-bottom: 14px; border-top: 1px solid #232D3F;'></div>", unsafe_allow_html=True)
     st.markdown("""
     <div style="background: #151C2C; border: 1px solid #283347; border-radius: 10px; padding: 12px 14px; font-size: 0.72rem; line-height: 1.6; color: #94A3B8;">
@@ -541,8 +525,8 @@ with st.sidebar:
             <span style="color: #F8FAFC; font-family: 'JetBrains Mono'; font-weight: 600;">MediaPipe</span>
         </div>
         <div style="display: flex; justify-content: space-between;">
-            <span>WebRTC Stream</span>
-            <span style="color: #6366F1; font-family: 'JetBrains Mono'; font-weight: 600;">30 FPS Active</span>
+            <span>Stream Engine</span>
+            <span style="color: #6366F1; font-family: 'JetBrains Mono'; font-weight: 600;">Direct Hardware / WebRTC</span>
         </div>
         <div style="display: flex; justify-content: space-between;">
             <span>Database</span>
@@ -561,11 +545,9 @@ def render_live_top_kpis(session_id: str, candidate_name: str, candidate_id: str
     total_incidents = len(incidents)
     confirmed_incidents = sum(1 for i in incidents if i.get("proctor_verdict") == "CONFIRMED")
     
-    # Calculate session integrity: start at 100%, deduct for confirmed violations
     integrity_pct = max(0.0, 100.0 - (confirmed_incidents * 5.0) - (total_incidents * 1.5))
     score_color_cls = "score-green" if integrity_pct >= 80 else ("score-yellow" if integrity_pct >= 50 else "score-red")
 
-    # Defense Status Logic
     risk_score = telemetry.get("risk_score", 0.0)
     active_violations = telemetry.get("active_violations", [])
     if risk_score >= 70.0 or active_violations:
@@ -609,7 +591,7 @@ def render_live_top_kpis(session_id: str, candidate_name: str, candidate_id: str
         <div class="kpi-tile-pro">
             <div class="kpi-label-pro">🚦 Defense Status</div>
             <div style="margin-top: 4px;">{badge_html}</div>
-            <div class="kpi-meta-pro">Stream: WebRTC Live</div>
+            <div class="kpi-meta-pro">Live Stream Synchronized</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -717,23 +699,71 @@ if menu_option == "📹 Live Proctoring":
             </div>
         """, unsafe_allow_html=True)
 
-        webrtc_ctx = webrtc_streamer(
-            key="eviguard-live",
-            mode=WebRtcMode.SENDRECV,
-            rtc_configuration=RTC_CONFIGURATION,
-            video_processor_factory=ProctorVideoProcessor,
-            media_stream_constraints={
-                "video": {"width": {"ideal": 640}, "height": {"ideal": 480}},
-                "audio": False
-            },
-            async_processing=True
+        stream_mode = st.radio(
+            "Video Stream Engine",
+            ["⚡ Direct Hardware Camera (Recommended)", "🌐 WebRTC Stream"],
+            horizontal=True,
+            label_visibility="collapsed"
         )
 
-        if webrtc_ctx.video_processor:
-            webrtc_ctx.video_processor.set_session_info(
-                session_id=current_session.get("session_id", "default_session"),
-                candidate_name=current_session.get("candidate_name", "Alex Johnson")
+        if stream_mode == "⚡ Direct Hardware Camera (Recommended)":
+            if "direct_cam_running" not in st.session_state:
+                st.session_state.direct_cam_running = False
+
+            c_btn1, c_btn2 = st.columns([1, 1])
+            if not st.session_state.direct_cam_running:
+                if c_btn1.button("▶ Start Live Camera", use_container_width=True):
+                    st.session_state.direct_cam_running = True
+                    st.rerun()
+            else:
+                if c_btn2.button("⏹ Stop Live Camera", use_container_width=True):
+                    st.session_state.direct_cam_running = False
+                    st.rerun()
+
+            video_frame_box = st.empty()
+
+            if st.session_state.direct_cam_running:
+                reader = FreshFrameReader(src=0, width=640, height=480)
+                reader.start()
+                try:
+                    # Continuous live streaming loop
+                    while st.session_state.get("direct_cam_running", False):
+                        frame = reader.read()
+                        if frame is not None:
+                            output: PipelineOutput = pipeline.process_frame(
+                                frame=frame,
+                                session_id=current_session.get("session_id", "default_session"),
+                                candidate_name=current_session.get("candidate_name", "Alex Johnson")
+                            )
+                            update_live_telemetry(output)
+                            video_frame_box.image(output.annotated_frame, channels="BGR", use_container_width=True)
+                        time.sleep(0.01)
+                except Exception as e:
+                    st.error(f"Camera stream interrupted: {e}")
+                finally:
+                    reader.stop()
+            else:
+                st.info("Camera is currently stopped. Click **▶ Start Live Camera** to begin proctoring.")
+
+        else:
+            # WebRTC Browser Engine
+            webrtc_ctx = webrtc_streamer(
+                key="eviguard-live",
+                mode=WebRtcMode.SENDRECV,
+                rtc_configuration=RTC_CONFIGURATION,
+                video_processor_factory=ProctorVideoProcessor,
+                media_stream_constraints={
+                    "video": {"width": {"ideal": 640}, "height": {"ideal": 480}},
+                    "audio": False
+                },
+                async_processing=True
             )
+
+            if webrtc_ctx.video_processor:
+                webrtc_ctx.video_processor.set_session_info(
+                    session_id=current_session.get("session_id", "default_session"),
+                    candidate_name=current_session.get("candidate_name", "Alex Johnson")
+                )
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -752,7 +782,6 @@ elif menu_option == "🔍 Incident Vault":
     if not incidents:
         st.info("No suspicious incidents recorded for this session yet. All clear! 🛡️")
     else:
-        # Filter Bar
         f_col1, f_col2 = st.columns([2, 2])
         severity_filter = f_col1.multiselect(
             "Filter by Severity",
@@ -784,7 +813,6 @@ elif menu_option == "🔍 Incident Vault":
                     st.markdown(f"#### 📄 {inc['reason_summary']}")
                     st.write(inc['reason_narrative'])
 
-                    # Evidence Media Display
                     if inc.get("evidence_snapshot_path") and os.path.exists(inc["evidence_snapshot_path"]):
                         st.image(inc["evidence_snapshot_path"], caption=f"Snapshot - Frame #{inc['frame_index']}", width="stretch")
                     elif inc.get("evidence_clip_path") and os.path.exists(inc["evidence_clip_path"]):
@@ -823,7 +851,6 @@ elif menu_option == "🔍 Incident Vault":
                     if details.get("recommended_action"):
                         st.info(f"**Recommended Action**: {details['recommended_action']}")
 
-                    # Proctor Verification Action Form
                     st.markdown("---")
                     st.markdown("##### ⚖️ Proctor Decision")
                     v_col1, v_col2, v_col3 = st.columns(3)
@@ -857,7 +884,6 @@ elif menu_option == "📊 Analytics & Reports":
     incidents = db_manager.get_session_incidents(st.session_state.active_session_id)
     metrics = db_manager.get_session_metrics(st.session_state.active_session_id, limit=500)
 
-    # Top KPI Cards
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     with kpi1:
         st.metric("Integrity Index", f"{current_session.get('integrity_index', 100.0):.1f}%")
@@ -893,7 +919,6 @@ elif menu_option == "📊 Analytics & Reports":
         else:
             st.info("No telemetry logs recorded.")
 
-    # Formal Report Export
     st.markdown("---")
     st.subheader("📄 Export Formal Integrity Report")
     
@@ -960,7 +985,6 @@ elif menu_option == "⚙️ Settings & Sensitivity":
 
         submitted = st.form_submit_button("💾 Save Configuration")
         if submitted:
-            # Update config file
             updated_cfg = {
                 "system": {"app_name": "EviGuard AI", "version": "1.0.0", "inference_stride": 3},
                 "detection": {"confidence_threshold": conf_thresh, "imgsz": 320},
