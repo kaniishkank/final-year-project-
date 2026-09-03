@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring Dashboard
-Flagship 5-Star Enterprise Command Center UI.
-Features WebRTC live hardware-decoupled streaming, Titanium Glassmorphism theme, real-time XAI threat telemetry, and precision audit workflows.
+Ultra-Refined Midnight Slate Enterprise UI.
+Features WebRTC live hardware-decoupled streaming, high-contrast navigation, cohesive typography, and clean threat telemetry.
 """
 
 from datetime import datetime
@@ -30,7 +30,7 @@ from backend.explainability.reason_generator import ReasonGenerator
 from backend.pipeline import EviGuardPipeline, PipelineOutput
 
 
-# ---------------- PAGE CONFIGURATION & 5-STAR TITANIUM ENTERPRISE THEME ----------------
+# ---------------- PAGE CONFIGURATION & REFINED ENTERPRISE THEME ----------------
 st.set_page_config(
     page_title="EviGuard - AI Proctoring & Evidence Analysis",
     page_icon="🛡️",
@@ -38,107 +38,91 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# World-Class Enterprise UI Stylesheet
+# Custom High-Contrast, Cohesive Enterprise Stylesheet
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-    /* Global Obsidian Canvas */
+    /* Global Midnight Slate Canvas */
     html, body, [class*="css"], .stApp {
-        background: 
-            radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.18), transparent 70%),
-            radial-gradient(ellipse 60% 40% at 85% 15%, rgba(14, 165, 233, 0.14), transparent 60%),
-            radial-gradient(ellipse 50% 40% at 15% 85%, rgba(16, 185, 129, 0.10), transparent 50%),
-            linear-gradient(180deg, #0B0F19 0%, #070A12 50%, #04060A 100%) !important;
+        background-color: #0B0F19 !important;
+        background-image: radial-gradient(circle at 50% 0%, rgba(79, 70, 229, 0.12) 0%, transparent 60%) !important;
         background-attachment: fixed !important;
         color: #F8FAFC !important;
         font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
 
     header[data-testid="stHeader"] {
-        background: rgba(11, 15, 25, 0.8) !important;
-        backdrop-filter: blur(16px) !important;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+        background: rgba(11, 15, 25, 0.9) !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
 
-    /* Titanium Glassmorphism Card Containers */
-    .titanium-card {
-        background: linear-gradient(135deg, rgba(17, 24, 39, 0.85), rgba(13, 18, 30, 0.80));
-        backdrop-filter: blur(24px);
-        -webkit-backdrop-filter: blur(24px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 16px;
-        padding: 22px 24px;
-        box-shadow: 0 10px 36px 0 rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-        margin-bottom: 20px;
+    /* Uniform Slate Enterprise Cards */
+    .slate-panel {
+        background: #151C2C;
+        border: 1px solid #283347;
+        border-radius: 14px;
+        padding: 20px 22px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+        margin-bottom: 18px;
     }
 
-    /* Top 4 KPI Stat Tiles */
-    .kpi-stat-card {
-        background: linear-gradient(135deg, rgba(17, 24, 39, 0.88), rgba(13, 18, 30, 0.82));
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-top: 3px solid #00f2fe;
-        border-radius: 16px;
-        padding: 18px 22px;
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    /* Top 4 KPI Metric Cards (Uniform Cohesive Styling) */
+    .kpi-tile-pro {
+        background: #151C2C;
+        border: 1px solid #283347;
+        border-radius: 14px;
+        padding: 16px 20px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        min-height: 116px;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        min-height: 110px;
+        height: 100%;
+        transition: border-color 0.2s ease, transform 0.2s ease;
     }
-    .kpi-stat-card:hover {
-        transform: translateY(-3px);
-        border-color: rgba(0, 242, 254, 0.45);
-        box-shadow: 0 14px 40px rgba(0, 242, 254, 0.15);
+    .kpi-tile-pro:hover {
+        border-color: #4F46E5;
+        transform: translateY(-2px);
     }
-    .kpi-stat-card.kpi-exam { border-top-color: #818cf8; }
-    .kpi-stat-card.kpi-integrity { border-top-color: #10b981; }
-    .kpi-stat-card.kpi-status { border-top-color: #f59e0b; }
-
-    .kpi-label {
+    .kpi-label-pro {
         font-size: 0.72rem;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.06em;
         color: #94A3B8;
         display: flex;
         align-items: center;
         gap: 6px;
     }
-    .kpi-val {
-        font-size: 1.45rem;
+    .kpi-value-pro {
+        font-size: 1.35rem;
         font-weight: 800;
         color: #FFFFFF;
         letter-spacing: -0.02em;
         line-height: 1.2;
         margin-top: 4px;
     }
-    .kpi-meta {
+    .kpi-meta-pro {
         font-size: 0.74rem;
         color: #64748B;
         font-family: 'JetBrains Mono', monospace;
         margin-top: 6px;
     }
 
-    /* Glowing Dynamic Scores */
-    .score-glow-green {
+    /* Status Score Colors */
+    .score-green {
         color: #10B981 !important;
-        text-shadow: 0 0 16px rgba(16, 185, 129, 0.4);
     }
-    .score-glow-yellow {
+    .score-yellow {
         color: #F59E0B !important;
-        text-shadow: 0 0 16px rgba(245, 158, 11, 0.4);
     }
-    .score-glow-red {
+    .score-red {
         color: #EF4444 !important;
-        text-shadow: 0 0 16px rgba(239, 68, 68, 0.5);
     }
 
-    /* Status Glow Badges */
-    .badge-verified-safe {
+    /* Clean Rounded Status Badges */
+    .badge-status-safe {
         display: inline-flex;
         align-items: center;
         background: rgba(16, 185, 129, 0.15);
@@ -148,10 +132,9 @@ st.markdown("""
         padding: 4px 12px;
         font-size: 0.76rem;
         font-weight: 700;
-        letter-spacing: 0.04em;
-        box-shadow: 0 0 14px rgba(16, 185, 129, 0.2);
+        letter-spacing: 0.03em;
     }
-    .badge-violation-alert {
+    .badge-status-alert {
         display: inline-flex;
         align-items: center;
         background: rgba(239, 68, 68, 0.2);
@@ -161,175 +144,149 @@ st.markdown("""
         padding: 4px 12px;
         font-size: 0.76rem;
         font-weight: 700;
-        letter-spacing: 0.04em;
-        box-shadow: 0 0 16px rgba(239, 68, 68, 0.35);
-        animation: pulseAlert 2s infinite ease-in-out;
-    }
-    @keyframes pulseAlert {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.75; transform: scale(0.98); }
+        letter-spacing: 0.03em;
     }
 
-    /* Modern Telemetry Rows */
-    .telemetry-item-row {
+    /* High-Contrast Telemetry Checklist Rows */
+    .telemetry-row-item {
         display: flex;
         justify-content: space-between;
         align-items: center;
         padding: 10px 14px;
-        background: rgba(15, 23, 42, 0.65);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 10px;
+        background: #0E1422;
+        border: 1px solid #232D3F;
+        border-radius: 8px;
         margin-bottom: 8px;
-        transition: border-color 0.2s ease;
     }
-    .telemetry-item-row:hover {
-        border-color: rgba(99, 102, 241, 0.35);
-    }
-    .telemetry-key-name {
-        font-size: 0.80rem;
+    .telemetry-item-name {
+        font-size: 0.82rem;
         font-weight: 600;
         color: #94A3B8;
     }
-    .telemetry-val-display {
+    .telemetry-item-value {
         font-size: 0.88rem;
         font-weight: 700;
         font-family: 'JetBrains Mono', monospace;
-        color: #00F2FE;
+        color: #F8FAFC;
     }
 
-    /* Video Player Frame Container */
+    /* WebRTC Video Player Frame & Start Button */
     div[data-testid="stWebRtc"] video {
-        border-radius: 12px !important;
-        border: 1px solid rgba(56, 189, 248, 0.2) !important;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+        border-radius: 10px !important;
+        border: 1px solid #283347 !important;
+    }
+    div[data-testid="stWebRtc"] button {
+        background-color: #4F46E5 !important;
+        color: #FFFFFF !important;
+        border-radius: 8px !important;
+        font-weight: 700 !important;
+        border: none !important;
+        padding: 9px 20px !important;
+        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4) !important;
+        transition: background-color 0.2s ease !important;
+    }
+    div[data-testid="stWebRtc"] button:hover {
+        background-color: #4338CA !important;
     }
 
-    /* 5-Star Button Architecture */
+    /* Modern Flat Buttons */
     div.stButton > button {
-        border-radius: 50px !important;
-        font-weight: 700 !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
         font-family: 'Plus Jakarta Sans', sans-serif !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)) !important;
+        border: 1px solid #283347 !important;
+        background-color: #1E293B !important;
         color: #F8FAFC !important;
-        padding: 10px 24px !important;
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3) !important;
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        font-size: 0.80rem !important;
+        padding: 9px 18px !important;
+        transition: all 0.2s ease !important;
+        font-size: 0.84rem !important;
     }
     div.stButton > button:hover {
-        transform: translateY(-2px) !important;
-        border-color: #00F2FE !important;
-        color: #00F2FE !important;
-        box-shadow: 0 0 20px rgba(0, 242, 254, 0.4) !important;
+        background-color: #334155 !important;
+        border-color: #4F46E5 !important;
+        color: #FFFFFF !important;
     }
 
-    /* Primary Gradient Buttons */
+    /* Primary Accent Download Button */
     div.stDownloadButton > button {
-        border-radius: 50px !important;
-        background: linear-gradient(135deg, #4F46E5, #6366F1) !important;
-        border: 1px solid rgba(129, 140, 248, 0.4) !important;
-        box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4) !important;
+        border-radius: 8px !important;
+        background-color: #4F46E5 !important;
+        border: 1px solid #6366F1 !important;
         color: #FFFFFF !important;
         font-weight: 700 !important;
-        padding: 10px 26px !important;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        font-size: 0.82rem !important;
-        transition: all 0.25s ease !important;
+        padding: 10px 22px !important;
+        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35) !important;
+        transition: all 0.2s ease !important;
     }
     div.stDownloadButton > button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 8px 26px rgba(79, 70, 229, 0.6) !important;
+        background-color: #4338CA !important;
     }
 
-    /* Precision Sidebar Navigation */
+    /* Left Sidebar Navigation & Contrast Fix */
     section[data-testid="stSidebar"] {
-        background: rgba(8, 12, 20, 0.94) !important;
-        backdrop-filter: blur(24px) !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
+        background-color: #0E1322 !important;
+        border-right: 1px solid #232D3F !important;
     }
     
-    .sidebar-brand-badge {
-        background: rgba(15, 23, 42, 0.9);
-        border: 2px solid #38BDF8;
-        border-radius: 14px;
-        padding: 8px;
-        box-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .brand-title {
-        font-size: 1.4rem;
-        font-weight: 800;
-        background: linear-gradient(90deg, #38BDF8, #818CF8);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        letter-spacing: -0.02em;
-        line-height: 1.1;
-    }
-    .brand-sub {
-        font-size: 0.68rem;
-        font-weight: 700;
-        color: #64748B;
-        letter-spacing: 0.08em;
-    }
-
+    /* Navigation Radio Items (Clear, Solid, Readable Card Tiles) */
     section[data-testid="stSidebar"] div[role="radiogroup"] {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 8px !important;
     }
     section[data-testid="stSidebar"] div[role="radiogroup"] label {
-        background: rgba(15, 23, 42, 0.65) !important;
-        border: 1px solid rgba(255, 255, 255, 0.06) !important;
-        border-radius: 12px !important;
-        padding: 11px 16px !important;
+        background-color: #151C2C !important;
+        border: 1px solid #283347 !important;
+        border-radius: 10px !important;
+        padding: 12px 16px !important;
         margin-bottom: 0px !important;
-        color: #94A3B8 !important;
-        font-weight: 600 !important;
-        font-size: 0.84rem !important;
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
         cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+        transition: all 0.2s ease !important;
     }
     section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-        transform: translateX(4px) !important;
-        border-color: rgba(56, 189, 248, 0.4) !important;
-        background: rgba(30, 41, 59, 0.75) !important;
-        color: #F8FAFC !important;
+        background-color: #1E293B !important;
+        border-color: #4F46E5 !important;
+        transform: translateX(3px) !important;
     }
-    section[data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"],
-    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-        background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(99, 102, 241, 0.18)) !important;
-        border: 1px solid #00F2FE !important;
-        color: #00F2FE !important;
-        box-shadow: 0 0 18px rgba(0, 242, 254, 0.25) !important;
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] label div:first-child {
-        display: none !important;
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked),
+    section[data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"] {
+        background: linear-gradient(135deg, #4F46E5, #4338CA) !important;
+        border-color: #6366F1 !important;
+        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35) !important;
     }
 
-    /* Inputs, Selectboxes */
+    /* Ensure text inside sidebar navigation is 100% visible, crisp white and clear */
+    section[data-testid="stSidebar"] div[role="radiogroup"] label p,
+    section[data-testid="stSidebar"] div[role="radiogroup"] label span,
+    section[data-testid="stSidebar"] div[role="radiogroup"] label div {
+        color: #FFFFFF !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        display: inline-block !important;
+    }
+
+    /* Inputs, Selectboxes, Sliders */
     .stSelectbox div[data-baseweb="select"], .stTextInput input {
-        background: rgba(15, 23, 42, 0.8) !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        border-radius: 10px !important;
+        background-color: #151C2C !important;
+        border: 1px solid #283347 !important;
+        border-radius: 8px !important;
         color: #F8FAFC !important;
     }
     .stSelectbox div[data-baseweb="select"]:hover, .stTextInput input:focus {
-        border-color: #00F2FE !important;
-        box-shadow: 0 0 12px rgba(0, 242, 254, 0.25) !important;
+        border-color: #4F46E5 !important;
     }
 
-    /* Accordion Expanders */
+    /* Accordion Header */
     .streamlit-expanderHeader {
-        background: rgba(15, 23, 42, 0.75) !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        border-radius: 12px !important;
-        font-weight: 700 !important;
+        background-color: #151C2C !important;
+        border: 1px solid #283347 !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
         color: #F8FAFC !important;
     }
 </style>
@@ -393,7 +350,7 @@ class ProctorVideoProcessor(VideoProcessorBase):
 
 # ---------------- HELPER PLOT FUNCTIONS ----------------
 def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
-    """Renders a flagship semi-circular Plotly risk meter gauge."""
+    """Renders a clean semi-circular Plotly risk meter gauge."""
     color_map = {
         "LOW": "#10B981",
         "MEDIUM": "#F59E0B",
@@ -405,37 +362,37 @@ def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
         mode="gauge+number",
         value=score,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': f"Threat Index: {risk_level}", 'font': {'size': 14, 'color': '#94A3B8', 'family': 'Plus Jakarta Sans'}},
-        number={'font': {'size': 32, 'color': '#FFFFFF', 'family': 'JetBrains Mono'}},
+        title={'text': f"Threat Score: {risk_level}", 'font': {'size': 14, 'color': '#94A3B8', 'family': 'Plus Jakarta Sans'}},
+        number={'font': {'size': 30, 'color': '#FFFFFF', 'family': 'JetBrains Mono'}},
         gauge={
             'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#475569"},
             'bar': {'color': bar_color, 'thickness': 0.35},
-            'bgcolor': "rgba(15, 23, 42, 0.6)",
+            'bgcolor': "#0E1422",
             'borderwidth': 1,
-            'bordercolor': "rgba(255, 255, 255, 0.1)",
+            'bordercolor': "#283347",
             'steps': [
                 {'range': [0, 30], 'color': "rgba(16, 185, 129, 0.12)"},
                 {'range': [30, 70], 'color': "rgba(245, 158, 11, 0.12)"},
                 {'range': [70, 100], 'color': "rgba(239, 68, 68, 0.18)"},
             ],
             'threshold': {
-                'line': {'color': "#EF4444", 'width': 3},
-                'thickness': 0.75,
+                'line': {'color': "#EF4444", 'width': 2},
+                'thickness': 0.7,
                 'value': 70
             }
         }
     ))
-    fig.update_layout(height=190, margin=dict(l=10, r=10, t=25, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+    fig.update_layout(height=185, margin=dict(l=10, r=10, t=25, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     return fig
 
 
 def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
-    """Renders dynamic risk evolution line chart with glowing cyan styling."""
+    """Renders dynamic risk evolution line chart with indigo styling."""
     if not metrics:
         fig = go.Figure()
         fig.update_layout(
             title={'text': "Awaiting Session Telemetry...", 'font': {'color': '#64748B', 'size': 12}},
-            height=190,
+            height=185,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)"
         )
@@ -451,9 +408,9 @@ def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
     )
     fig.add_hline(y=70, line_dash="dash", line_color="#EF4444", annotation_text="Critical (70+)", annotation_font_color="#EF4444")
     fig.add_hline(y=30, line_dash="dot", line_color="#F59E0B", annotation_text="Medium (30+)", annotation_font_color="#F59E0B")
-    fig.update_traces(line_color="#00F2FE", line_width=2.5)
+    fig.update_traces(line_color="#6366F1", line_width=2.5)
     fig.update_layout(
-        height=190,
+        height=185,
         margin=dict(l=10, r=10, t=25, b=10),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -468,29 +425,27 @@ def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
 with st.sidebar:
     # Branding & Header Section
     st.markdown("""
-    <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px; margin-bottom: 6px;">
-        <div class="sidebar-brand-badge">
-            <img src="https://img.icons8.com/fluency/96/shield.png" width="34" height="34" style="display: block;" />
-        </div>
+    <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px; margin-bottom: 4px;">
+        <span style="font-size: 1.6rem;">🛡️</span>
         <div>
-            <div class="brand-title">EviGuard AI</div>
-            <div class="brand-sub">ENTERPRISE COMMAND CENTER</div>
+            <div style="font-size: 1.25rem; font-weight: 800; color: #FFFFFF; letter-spacing: -0.02em;">EviGuard AI</div>
+            <div style="font-size: 0.70rem; font-weight: 600; color: #64748B; letter-spacing: 0.05em; text-transform: uppercase;">Proctoring Studio</div>
         </div>
     </div>
     <div style="margin-top: 6px; margin-bottom: 18px;">
-        <span style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25); color: #38BDF8; border-radius: 20px; padding: 3px 10px; font-size: 0.70rem; font-weight: 600; font-family: 'JetBrains Mono';">v1.0 • Enterprise Edition</span>
+        <span style="background: rgba(79, 70, 229, 0.15); border: 1px solid rgba(79, 70, 229, 0.4); color: #A5B4FC; border-radius: 6px; padding: 3px 8px; font-size: 0.72rem; font-weight: 600; font-family: 'JetBrains Mono';">v1.0 • Enterprise Edition</span>
     </div>
     """, unsafe_allow_html=True)
 
-    # Navigation Tiles
+    # Navigation Tiles (Clean, Visible, High-Contrast Buttons)
     menu_option = st.radio(
-        "Navigation Menu",
+        "Navigation Modules",
         ["📹 Live Proctoring", "🔍 Incident Vault", "📊 Analytics & Reports", "⚙️ Settings & Sensitivity"],
         index=0,
         label_visibility="collapsed"
     )
 
-    st.markdown("---")
+    st.markdown("<div style='margin-top: 14px; margin-bottom: 14px; border-top: 1px solid #232D3F;'></div>", unsafe_allow_html=True)
 
     # Session Selector Container
     all_sessions = db_manager.get_all_sessions()
@@ -531,31 +486,31 @@ with st.sidebar:
             st.rerun()
 
     # Footer Diagnostics Widget
-    st.markdown("---")
+    st.markdown("<div style='margin-top: 14px; margin-bottom: 14px; border-top: 1px solid #232D3F;'></div>", unsafe_allow_html=True)
     st.markdown("""
-    <div style="background: rgba(10, 15, 29, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 12px 14px; font-size: 0.72rem; line-height: 1.6; color: #94A3B8;">
-        <div style="font-weight: 700; color: #64748B; text-transform: uppercase; font-size: 0.68rem; margin-bottom: 4px;">System Health Matrix</div>
+    <div style="background: #151C2C; border: 1px solid #283347; border-radius: 10px; padding: 12px 14px; font-size: 0.72rem; line-height: 1.6; color: #94A3B8;">
+        <div style="font-weight: 700; color: #64748B; text-transform: uppercase; font-size: 0.68rem; margin-bottom: 4px;">System Diagnostics</div>
         <div style="display: flex; justify-content: space-between;">
             <span>AI Detector</span>
-            <span style="color: #F8FAFC; font-family: 'JetBrains Mono'; font-weight: 600;">YOLOv8n</span>
+            <span style="color: #F8FAFC; font-family: 'JetBrains Mono'; font-weight: 600;">YOLOv8</span>
         </div>
         <div style="display: flex; justify-content: space-between;">
             <span>Gaze / 3D Pose</span>
-            <span style="color: #F8FAFC; font-family: 'JetBrains Mono'; font-weight: 600;">MediaPipe Mesh</span>
+            <span style="color: #F8FAFC; font-family: 'JetBrains Mono'; font-weight: 600;">MediaPipe</span>
         </div>
         <div style="display: flex; justify-content: space-between;">
             <span>WebRTC Stream</span>
-            <span style="color: #00F2FE; font-family: 'JetBrains Mono'; font-weight: 600;">30 FPS Active</span>
+            <span style="color: #6366F1; font-family: 'JetBrains Mono'; font-weight: 600;">30 FPS Active</span>
         </div>
         <div style="display: flex; justify-content: space-between;">
-            <span>Audit Database</span>
-            <span style="color: #34D399; font-weight: 700;">● Connected</span>
+            <span>Database</span>
+            <span style="color: #10B981; font-weight: 700;">● Connected</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
 
-# ---------------- TAB 1: LIVE PROCTORING COMMAND CENTER ----------------
+# ---------------- TAB 1: LIVE PROCTORING ----------------
 if menu_option == "📹 Live Proctoring":
     current_session = db_manager.get_session_by_id(st.session_state.active_session_id) or {
         "session_id": st.session_state.active_session_id,
@@ -568,64 +523,64 @@ if menu_option == "📹 Live Proctoring":
 
     # Retrieve session stats
     integrity_score = current_session.get('integrity_index', 100.0)
-    score_glow_cls = "score-glow-green" if integrity_score >= 80 else ("score-glow-yellow" if integrity_score >= 50 else "score-glow-red")
+    score_color_cls = "score-green" if integrity_score >= 80 else ("score-yellow" if integrity_score >= 50 else "score-red")
     total_inc = current_session.get('total_incidents', 0)
     is_compliant = (total_inc == 0)
 
-    # Top 4 Flagship Titanium KPI Cards
+    # Top 4 Uniform Cohesive KPI Cards
     kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
 
     with kpi_col1:
         st.markdown(f"""
-        <div class="kpi-stat-card">
-            <div class="kpi-label">👤 Candidate Identity</div>
-            <div class="kpi-val">{current_session.get('candidate_name', 'Alex Johnson')}</div>
-            <div class="kpi-meta">ID: {current_session.get('candidate_id', 'STD-101')}</div>
+        <div class="kpi-tile-pro">
+            <div class="kpi-label-pro">👤 Candidate Identity</div>
+            <div class="kpi-value-pro">{current_session.get('candidate_name', 'Alex Johnson')}</div>
+            <div class="kpi-meta-pro">ID: {current_session.get('candidate_id', 'STD-101')}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with kpi_col2:
         st.markdown(f"""
-        <div class="kpi-stat-card kpi-exam">
-            <div class="kpi-label">📚 Active Assessment</div>
-            <div class="kpi-val" style="font-size: 1.15rem;">{current_session.get('exam_title', 'AI Assessment')}</div>
-            <div class="kpi-meta">Ref: <code>{current_session.get('session_id')}</code></div>
+        <div class="kpi-tile-pro">
+            <div class="kpi-label-pro">📚 Active Assessment</div>
+            <div class="kpi-value-pro" style="font-size: 1.15rem;">{current_session.get('exam_title', 'AI Assessment')}</div>
+            <div class="kpi-meta-pro">Ref: <code>{current_session.get('session_id')}</code></div>
         </div>
         """, unsafe_allow_html=True)
 
     with kpi_col3:
         st.markdown(f"""
-        <div class="kpi-stat-card kpi-integrity">
-            <div class="kpi-label">🛡️ Integrity Quotient</div>
-            <div class="kpi-val {score_glow_cls}">{integrity_score:.1f}%</div>
-            <div class="kpi-meta">Recorded Flags: {total_inc}</div>
+        <div class="kpi-tile-pro">
+            <div class="kpi-label-pro">🛡️ Integrity Quotient</div>
+            <div class="kpi-value-pro {score_color_cls}">{integrity_score:.1f}%</div>
+            <div class="kpi-meta-pro">Recorded Flags: {total_inc}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with kpi_col4:
-        badge_html = '<span class="badge-verified-safe">● VERIFIED COMPLIANT</span>' if is_compliant else '<span class="badge-violation-alert">● SECURITY FLAGGED</span>'
+        badge_html = '<span class="badge-status-safe">● VERIFIED COMPLIANT</span>' if is_compliant else '<span class="badge-status-alert">● SECURITY FLAGGED</span>'
         st.markdown(f"""
-        <div class="kpi-stat-card kpi-status">
-            <div class="kpi-label">🚦 AI Defense Status</div>
+        <div class="kpi-tile-pro">
+            <div class="kpi-label-pro">🚦 Defense Status</div>
             <div style="margin-top: 4px;">{badge_html}</div>
-            <div class="kpi-meta">Stream Engine: WebRTC Live</div>
+            <div class="kpi-meta-pro">Stream: WebRTC Live</div>
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 
-    # Main Grid Layout: Left 65% (Live Stream with AI HUD), Right 35% (Real-Time Threat Matrix)
-    col_left, col_right = st.columns([13, 7], gap="large")
+    # Main Grid Layout: Left 65% (Live Stream), Right 35% (Threat Matrix)
+    col_left, col_right = st.columns([13, 7], gap="medium")
 
     with col_left:
         st.markdown("""
-        <div class="titanium-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 1.05rem; font-weight: 700; color: #FFFFFF;">Live Video Stream & AI HUD</span>
-                    <span style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #34D399; border-radius: 12px; padding: 2px 10px; font-size: 0.72rem; font-weight: 700;">● ZERO-LATENCY FEED</span>
+        <div class="slate-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 1.0rem; font-weight: 700; color: #FFFFFF;">Live Video Stream & AI HUD</span>
+                    <span style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #34D399; border-radius: 12px; padding: 2px 8px; font-size: 0.72rem; font-weight: 700;">● ZERO-LATENCY</span>
                 </div>
-                <span style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 3px 10px; font-size: 0.74rem; font-family: 'JetBrains Mono'; color: #94A3B8;">640x480 • 30 FPS</span>
+                <span style="background: #0E1422; border: 1px solid #283347; border-radius: 6px; padding: 2px 8px; font-size: 0.72rem; font-family: 'JetBrains Mono'; color: #94A3B8;">640x480 • 30 FPS</span>
             </div>
         """, unsafe_allow_html=True)
 
@@ -670,48 +625,48 @@ if menu_option == "📹 Live Proctoring":
                     gaze_status = out.pose_gaze.gaze_direction if out.pose_gaze.face_detected else "No Face"
 
         st.markdown("""
-        <div class="titanium-card">
-            <div style="font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin-bottom: 14px;">Threat Analysis & Telemetry</div>
+        <div class="slate-panel">
+            <div style="font-size: 1.0rem; font-weight: 700; color: #FFFFFF; margin-bottom: 12px;">Threat Analysis & Telemetry</div>
         """, unsafe_allow_html=True)
 
         # Threat Alert Banner
         if active_violations:
             st.markdown(f"""
-            <div style="background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <div style="background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 1.1rem;">🚨</span>
                 <span style="color: #F87171; font-weight: 700; font-size: 0.82rem;">SECURITY ALERT: {' • '.join(active_violations)}</span>
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown("""
-            <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 1.1rem;">✅</span>
                 <span style="color: #34D399; font-weight: 700; font-size: 0.82rem;">COMPLIANCE VERIFIED: Candidate within normal limits</span>
             </div>
             """, unsafe_allow_html=True)
 
-        # Plotly Semi-Circular Risk Meter Gauge
+        # Semi-Circular Plotly Risk Meter Gauge
         gauge_fig = create_gauge_chart(latest_risk_score, latest_risk_level)
         st.plotly_chart(gauge_fig, width="stretch", key="webrtc_live_gauge")
 
-        # Telemetry Matrix Rows
+        # Telemetry Checklist Rows
         st.markdown(f"""
-        <div style="margin-top: 4px; margin-bottom: 14px;">
-            <div class="telemetry-item-row">
-                <span class="telemetry-key-name">👥 Person Tracking</span>
-                <span class="telemetry-val-display">{person_count} Detected</span>
+        <div style="margin-top: 4px; margin-bottom: 12px;">
+            <div class="telemetry-row-item">
+                <span class="telemetry-item-name">👥 Person Tracking</span>
+                <span class="telemetry-item-value">{person_count} Detected</span>
             </div>
-            <div class="telemetry-item-row">
-                <span class="telemetry-key-name">🔄 Head Pose Yaw (L/R)</span>
-                <span class="telemetry-val-display">{yaw_val:+.1f}°</span>
+            <div class="telemetry-row-item">
+                <span class="telemetry-item-name">🔄 Head Pose Yaw (L/R)</span>
+                <span class="telemetry-item-value">{yaw_val:+.1f}°</span>
             </div>
-            <div class="telemetry-item-row">
-                <span class="telemetry-key-name">📐 Head Pose Pitch (U/D)</span>
-                <span class="telemetry-val-display">{pitch_val:+.1f}°</span>
+            <div class="telemetry-row-item">
+                <span class="telemetry-item-name">📐 Head Pose Pitch (U/D)</span>
+                <span class="telemetry-item-value">{pitch_val:+.1f}°</span>
             </div>
-            <div class="telemetry-item-row">
-                <span class="telemetry-key-name">👀 Real-Time Gaze Vector</span>
-                <span class="telemetry-val-display">{gaze_status}</span>
+            <div class="telemetry-row-item">
+                <span class="telemetry-item-name">👀 Gaze Orientation</span>
+                <span class="telemetry-item-value">{gaze_status}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -807,7 +762,7 @@ elif menu_option == "🔍 Incident Vault":
 
                     # Proctor Verification Action Form
                     st.markdown("---")
-                    st.markdown("##### ⚖️ Proctor Audit Decision")
+                    st.markdown("##### ⚖️ Proctor Decision")
                     v_col1, v_col2, v_col3 = st.columns(3)
                     
                     if v_col1.button("✅ Confirm Violation", key=f"conf_{inc['id']}"):
@@ -825,7 +780,7 @@ elif menu_option == "🔍 Incident Vault":
                         st.info("Incident dismissed.")
                         st.rerun()
 
-                    notes = st.text_input("Proctor Audit Notes", value=inc.get("proctor_notes") or "", key=f"notes_{inc['id']}")
+                    notes = st.text_input("Proctor Notes", value=inc.get("proctor_notes") or "", key=f"notes_{inc['id']}")
                     if st.button("Save Notes", key=f"save_notes_{inc['id']}"):
                         db_manager.update_incident_verdict(inc['id'], inc['proctor_verdict'], notes)
                         st.success("Notes saved.")
@@ -940,7 +895,7 @@ elif menu_option == "⚙️ Settings & Sensitivity":
         w_absent = r3.slider("Face Absent Weight", 10.0, 100.0, 40.0, 5.0)
         w_gaze = r4.slider("Gaze Deviation Weight", 5.0, 60.0, 25.0, 5.0)
 
-        submitted = st.form_submit_button("💾 Save & Apply Configuration")
+        submitted = st.form_submit_button("💾 Save Configuration")
         if submitted:
             # Update config file
             updated_cfg = {
