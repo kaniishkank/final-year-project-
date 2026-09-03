@@ -83,7 +83,7 @@ def test_person_tracker():
 
 def test_pose_gaze_estimator():
     estimator = PoseGazeEstimator({
-        "head_pose": {"yaw_limit_left": -25.0, "yaw_limit_right": 25.0, "pitch_limit_down": -20.0},
+        "head_pose": {"max_yaw_angle": 16.0, "max_pitch_angle": 14.0},
         "face_absence": {"absence_frames_threshold": 2}
     })
 
@@ -99,21 +99,33 @@ def test_pose_gaze_estimator():
     assert "CENTER" in direction
     assert looking_away is False
 
-    dir_down, look_down = estimator._classify_gaze(yaw=0.0, pitch=-30.0, roll=0.0)
-    assert "LOOKING_DOWN" in dir_down
+    dir_down, look_down = estimator._classify_gaze(yaw=0.0, pitch=25.0, roll=0.0)
+    assert "LOOKING DOWN" in dir_down
     assert look_down is True
+
+    dir_left, look_left = estimator._classify_gaze(yaw=-20.0, pitch=0.0, roll=0.0)
+    assert "LOOKING LEFT" in dir_left
+    assert look_left is True
+
+    dir_right, look_right = estimator._classify_gaze(yaw=20.0, pitch=0.0, roll=0.0)
+    assert "LOOKING RIGHT" in dir_right
+    assert look_right is True
+
+    dir_up, look_up = estimator._classify_gaze(yaw=0.0, pitch=-20.0, roll=0.0)
+    assert "LOOKING UP" in dir_up
+    assert look_up is True
 
 
 def test_risk_engine():
     engine = RiskEngine({
-        "weights": {"cell_phone": 50.0, "multiple_persons": 45.0, "face_absent": 40.0},
+        "weights": {"cell_phone": 85.0, "multiple_persons": 80.0, "face_absent": 75.0, "gaze_deviation": 45.0},
         "thresholds": {"low_max": 30.0, "medium_max": 70.0, "high_threshold": 70.0}
     })
 
     # 1. Normal state
     dummy_pose = PoseGazeResult(
         face_detected=True, face_count=1, yaw=0.0, pitch=0.0, roll=0.0,
-        gaze_direction="CENTER", is_looking_away=False, is_absent=False, absence_frames=0
+        gaze_direction="CENTER (FOCUSED)", is_looking_away=False, is_absent=False, absence_frames=0
     )
     assessment1 = engine.evaluate([], dummy_pose, person_count=1)
     assert assessment1.risk_level == "LOW"
@@ -123,8 +135,17 @@ def test_risk_engine():
     phone_det = [DetectionResult(box=[10.0, 10.0, 50.0, 50.0], confidence=0.9, class_id=67, class_name="cell phone")]
     assessment2 = engine.evaluate(phone_det, dummy_pose, person_count=1)
     assert "PHONE_DETECTED" in assessment2.active_violations
-    assert assessment2.raw_score >= 50.0
+    assert assessment2.raw_score >= 70.0
     assert assessment2.is_incident_triggered is True
+
+    # 3. Violation: 4-Way Gaze Deviation (LOOKING LEFT)
+    dummy_pose_left = PoseGazeResult(
+        face_detected=True, face_count=1, yaw=-22.0, pitch=0.0, roll=0.0,
+        gaze_direction="LOOKING LEFT", is_looking_away=True, is_absent=False, absence_frames=0
+    )
+    assessment3 = engine.evaluate([], dummy_pose_left, person_count=1)
+    assert "HEAD_TURN (LEFT)" in assessment3.active_violations
+    assert assessment3.raw_score >= 45.0
 
 
 def test_reason_generator():

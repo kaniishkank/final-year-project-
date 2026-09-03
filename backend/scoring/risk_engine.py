@@ -1,7 +1,7 @@
 """
 Dynamic Risk Scoring Engine Module
 Aggregates detection, tracking, and pose/gaze signals to compute real-time suspiciousness index.
-Configured for Strict Zero-Tolerance High-Security Proctoring with direct critical triggers.
+Configured for Strict Zero-Tolerance High-Security Proctoring with direct 4-way gaze violation triggers.
 """
 
 from dataclasses import dataclass, field
@@ -46,22 +46,22 @@ class RiskEngine:
         
         # Strict Zero-Tolerance Risk Weights
         weights_cfg = self.config.get("weights", {})
-        self.w_phone = weights_cfg.get("cell_phone", 85.0) # Instant critical alert
-        self.w_multiple_persons = weights_cfg.get("multiple_persons", 80.0) # Instant critical intruder alert
-        self.w_face_absent = weights_cfg.get("face_absent", 75.0) # Immediate seat abandonment
-        self.w_gaze = weights_cfg.get("gaze_deviation", 45.0) # Rapid accumulation
-        self.w_head_pose = weights_cfg.get("head_pose_deviation", 45.0)
-        self.w_suspicious_object = weights_cfg.get("suspicious_object", 40.0)
+        self.w_phone = float(weights_cfg.get("cell_phone", 85.0)) # Instant critical alert
+        self.w_multiple_persons = float(weights_cfg.get("multiple_persons", 80.0)) # Instant critical intruder alert
+        self.w_face_absent = float(weights_cfg.get("face_absent", 75.0)) # Immediate seat abandonment
+        self.w_gaze = float(weights_cfg.get("gaze_deviation", 45.0)) # Rapid accumulation (+45.0)
+        self.w_head_pose = float(weights_cfg.get("head_pose_deviation", 45.0))
+        self.w_suspicious_object = float(weights_cfg.get("suspicious_object", 40.0))
 
         # Fast Temporal Parameters (~0.8s responsive window)
-        self.decay_rate = self.config.get("decay_rate", 0.88)
-        self.accumulation_rate = self.config.get("accumulation_rate", 0.55)
+        self.decay_rate = float(self.config.get("decay_rate", 0.88))
+        self.accumulation_rate = float(self.config.get("accumulation_rate", 0.55))
 
         # Thresholds
         thresholds_cfg = self.config.get("thresholds", {})
-        self.low_max = thresholds_cfg.get("low_max", 30.0)
-        self.medium_max = thresholds_cfg.get("medium_max", 70.0)
-        self.high_threshold = thresholds_cfg.get("high_threshold", 70.0)
+        self.low_max = float(thresholds_cfg.get("low_max", 30.0))
+        self.medium_max = float(thresholds_cfg.get("medium_max", 70.0))
+        self.high_threshold = float(thresholds_cfg.get("high_threshold", 70.0))
 
         # Multi-Student Independent Risk Histories
         self.student_histories: Dict[int, float] = {}
@@ -77,17 +77,7 @@ class RiskEngine:
         person_count: int,
         student_id: int = 1
     ) -> RiskAssessment:
-        """Evaluates proctoring signals with instant direct triggers for critical violations.
-        
-        Args:
-            detections: List of active object detections.
-            pose_gaze: Result from pose and gaze estimator.
-            person_count: Number of tracked persons.
-            student_id: Identifier for the candidate being evaluated.
-            
-        Returns:
-            RiskAssessment object with instantaneous and smoothed risk scores.
-        """
+        """Evaluates proctoring signals with instant triggers for 4-way directional gaze and object threats."""
         active_violations: List[str] = []
         factors: Dict[str, float] = {}
         is_critical_direct_trigger = False
@@ -121,14 +111,24 @@ class RiskEngine:
             if pose_gaze.absence_frames >= 15:
                 is_critical_direct_trigger = True
 
-        # 5. Snappy Gaze and Head Pose Deviations
-        elif pose_gaze.face_detected and pose_gaze.is_looking_away:
-            if "LOOKING_DOWN" in pose_gaze.gaze_direction:
-                active_violations.append("GAZE_DOWN (DESK)")
-                factors["gaze_deviation"] = self.w_gaze + 5.0
-            elif "LOOKING_LEFT" in pose_gaze.gaze_direction or "LOOKING_RIGHT" in pose_gaze.gaze_direction:
-                active_violations.append("GAZE_AWAY (SIDE)")
+        # 5. Snappy 4-Way Gaze & Head Pose Deviations (LEFT, RIGHT, DOWN, UP)
+        elif pose_gaze.face_detected and (pose_gaze.is_looking_away or ("CENTER" not in pose_gaze.gaze_direction.upper())):
+            gaze_dir = pose_gaze.gaze_direction.upper()
+            if "LOOKING LEFT" in gaze_dir or "LEFT" in gaze_dir:
+                active_violations.append("HEAD_TURN (LEFT)")
                 factors["head_pose_deviation"] = self.w_head_pose
+            elif "LOOKING RIGHT" in gaze_dir or "RIGHT" in gaze_dir:
+                active_violations.append("HEAD_TURN (RIGHT)")
+                factors["head_pose_deviation"] = self.w_head_pose
+            elif "LOOKING DOWN" in gaze_dir or "DOWN" in gaze_dir:
+                active_violations.append("GAZE_DOWN (DESK/LAP)")
+                factors["gaze_deviation"] = self.w_gaze + 5.0
+            elif "LOOKING UP" in gaze_dir or "UP" in gaze_dir:
+                active_violations.append("GAZE_AWAY (UP)")
+                factors["gaze_deviation"] = self.w_gaze
+            elif "HEAD TILTED" in gaze_dir or "TILT" in gaze_dir:
+                active_violations.append("HEAD_TILTED")
+                factors["head_pose_deviation"] = self.w_head_pose * 0.8
             else:
                 active_violations.append("GAZE_DEVIATION")
                 factors["gaze_deviation"] = self.w_gaze
@@ -139,7 +139,7 @@ class RiskEngine:
         # Retrieve student specific temporal history
         student_smoothed = self.student_histories.get(student_id, 0.0)
 
-        # Apply Instant Bypass for Critical Violations or Temporal Fast Smoothing
+        # Apply Instant Bypass for Critical Violations or Fast Smoothing
         if is_critical_direct_trigger and raw_score >= 70.0:
             student_smoothed = max(student_smoothed, raw_score)
         else:
@@ -192,10 +192,3 @@ class RiskEngine:
             student_id=student_id,
             timestamp=now
         )
-
-    def reset(self):
-        """Resets all engine state and per-student histories."""
-        self.current_smoothed_score = 0.0
-        self.last_incident_time = 0.0
-        self.student_histories.clear()
-        self.student_last_incidents.clear()

@@ -442,12 +442,12 @@ class EviGuardPipeline:
         risk_text = f"RISK: {risk.smoothed_score:.0f}/100 [{risk.risk_level}]"
         cv2.putText(frame, risk_text, (12, 44), cv2.FONT_HERSHEY_SIMPLEX, 0.5, risk_color, 2, cv2.LINE_AA)
 
-        pose_text = f"Yaw:{pose_gaze.yaw:+.0f} Pitch:{pose_gaze.pitch:+.0f}" if pose_gaze.face_detected else "NO FACE"
-        cv2.putText(frame, pose_text, (w - 220, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
+        pose_text = f"Yaw:{pose_gaze.yaw:+.1f} Pitch:{pose_gaze.pitch:+.1f}" if pose_gaze.face_detected else "NO FACE"
+        cv2.putText(frame, pose_text, (w - 240, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1, cv2.LINE_AA)
 
         gaze_str = f"Gaze: {pose_gaze.gaze_direction}" if pose_gaze.face_detected else "CANDIDATE ABSENT"
-        gaze_col = (0, 0, 255) if pose_gaze.is_looking_away or not pose_gaze.face_detected else (0, 255, 120)
-        cv2.putText(frame, gaze_str, (w - 260, 44), cv2.FONT_HERSHEY_SIMPLEX, 0.42, gaze_col, 1, cv2.LINE_AA)
+        gaze_col = (0, 0, 255) if (pose_gaze.is_looking_away or pose_gaze.gaze_direction != "CENTER (FOCUSED)" or not pose_gaze.face_detected) else (0, 255, 120)
+        cv2.putText(frame, gaze_str, (w - 280, 44), cv2.FONT_HERSHEY_SIMPLEX, 0.45, gaze_col, 2 if gaze_col == (0, 0, 255) else 1, cv2.LINE_AA)
 
         # 4. Critical Warning Strip if Active Violations
         if risk.active_violations:

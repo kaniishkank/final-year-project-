@@ -1,13 +1,14 @@
 """
 Pose and Gaze Estimation Module
 Calculates 3D Head Pose (Yaw, Pitch, Roll) and Gaze Direction using MediaPipe FaceMesh and solvePnP.
-Features cropped bounding box optimization for ultra-fast landmark compute and strict angle thresholds.
+Features exact symmetric 6-point 3D-to-2D facial landmark mapping and 4-way directional thresholding (LEFT, RIGHT, DOWN, UP).
 """
 
 from dataclasses import dataclass
 import logging
 import math
 from typing import Dict, Any, List, Optional, Tuple
+import cv2
 import numpy as np
 
 logger = logging.getLogger("EviGuard.PoseGaze")
@@ -19,9 +20,9 @@ class PoseGazeResult:
     face_detected: bool
     face_count: int
     yaw: float # Negative = left, Positive = right
-    pitch: float # Negative = down (looking at desk/phone), Positive = up
+    pitch: float # Positive = down (desk/phone), Negative = up (ceiling)
     roll: float # Negative = tilt left, Positive = tilt right
-    gaze_direction: str # CENTER, LOOKING_LEFT, LOOKING_RIGHT, LOOKING_DOWN, LOOKING_UP
+    gaze_direction: str # CENTER (FOCUSED), LOOKING LEFT, LOOKING RIGHT, LOOKING DOWN, LOOKING UP
     is_looking_away: bool
     is_absent: bool
     absence_frames: int
@@ -46,32 +47,30 @@ class PoseGazeResult:
 class PoseGazeEstimator:
     """Extracts head pose angles and gaze metrics from frames or cropped student ROIs."""
 
-    # 3D generic facial model points (in mm, centered around nose tip)
+    # Stable 3D generic facial model points (in mm, centered around nose tip)
     MODEL_POINTS_3D = np.array([
         (0.0, 0.0, 0.0),             # Nose tip (landmark 1)
-        (0.0, -330.0, -65.0),        # Chin (landmark 152)
-        (-225.0, 170.0, -135.0),     # Left eye left corner (landmark 33)
-        (225.0, 170.0, -135.0),      # Right eye right corner (landmark 263)
-        (-150.0, -150.0, -125.0),    # Left Mouth corner (landmark 61)
-        (150.0, -150.0, -125.0)      # Right mouth corner (landmark 291)
+        (0.0, -330.0, -65.0),        # Chin (landmark 199)
+        (-225.0, 170.0, -135.0),     # Left Eye Outer Corner (landmark 33)
+        (225.0, 170.0, -135.0),      # Right Eye Outer Corner (landmark 263)
+        (-150.0, -150.0, -125.0),    # Left Mouth Corner (landmark 61)
+        (150.0, -150.0, -125.0)      # Right Mouth Corner (landmark 291)
     ], dtype=np.float64)
 
-    # Key landmark indices in MediaPipe Face Mesh
-    LANDMARK_INDICES = [1, 152, 33, 263, 61, 291]
+    # Exact symmetric landmark indices in MediaPipe Face Mesh
+    LANDMARK_INDICES = [1, 199, 33, 263, 61, 291]
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.config = config or {}
         
-        # Strict High-Security Thresholds (Degrees)
+        # Symmetric 4-Way Directional Thresholds (Degrees)
         head_cfg = self.config.get("head_pose", {})
-        self.yaw_limit_left = head_cfg.get("yaw_limit_left", -16.0) # Catches glancing left/right
-        self.yaw_limit_right = head_cfg.get("yaw_limit_right", 16.0)
-        self.pitch_limit_down = head_cfg.get("pitch_limit_down", -14.0) # Catches looking downward at lap/desk
-        self.pitch_limit_up = head_cfg.get("pitch_limit_up", 20.0)
-        self.roll_limit = head_cfg.get("roll_limit", 20.0)
+        self.max_yaw_angle = abs(float(head_cfg.get("max_yaw_angle", head_cfg.get("yaw_limit_right", 16.0))))
+        self.max_pitch_angle = abs(float(head_cfg.get("max_pitch_angle", head_cfg.get("pitch_limit_down", 14.0))))
+        self.max_roll_angle = abs(float(head_cfg.get("max_roll_angle", head_cfg.get("roll_limit", 22.0))))
 
         absence_cfg = self.config.get("face_absence", {})
-        self.absence_threshold = absence_cfg.get("absence_frames_threshold", 15) # ~0.5s rapid response
+        self.absence_threshold = int(absence_cfg.get("absence_frames_threshold", 15)) # ~0.5s rapid response
 
         self.consecutive_absence_frames = 0
         self.consecutive_lookaway_frames = 0
@@ -97,7 +96,7 @@ class PoseGazeEstimator:
             self._fallback_mode = True
 
     def estimate(self, frame: np.ndarray, bbox: Optional[List[float]] = None) -> PoseGazeResult:
-        """Processes frame (or cropped student bounding box) to compute 3D head pose and gaze orientation."""
+        """Processes frame to compute 3D head pose (Yaw, Pitch, Roll) and 4-way gaze direction."""
         if frame is None or frame.size == 0:
             self.consecutive_absence_frames += 1
             return self._create_absent_result()
@@ -106,7 +105,6 @@ class PoseGazeEstimator:
             return self._fallback_estimate(frame)
 
         try:
-            import cv2
             h_full, w_full = frame.shape[:2]
             
             # Crop optimization if bounding box provided
@@ -142,7 +140,7 @@ class PoseGazeEstimator:
             face_count = len(results.multi_face_landmarks)
             primary_face = results.multi_face_landmarks[0]
 
-            # Extract 2D image points mapped back to global coordinates
+            # Extract 2D image points for the 6 symmetric facial landmarks
             image_points_2d = []
             for idx in self.LANDMARK_INDICES:
                 lm = primary_face.landmark[idx]
@@ -159,7 +157,7 @@ class PoseGazeEstimator:
             ], dtype=np.float64)
             dist_coeffs = np.zeros((4, 1))
 
-            # Solve PnP for 3D Pose
+            # Solve PnP for 3D Head Pose
             success, rvec, tvec = cv2.solvePnP(
                 self.MODEL_POINTS_3D,
                 image_points_2d,
@@ -171,16 +169,21 @@ class PoseGazeEstimator:
             if not success:
                 return self._fallback_estimate(frame)
 
-            # Compute rotation angles from rotation vector
+            # Convert rotation vector to 3x3 rotation matrix
             rmat, _ = cv2.Rodrigues(rvec)
-            yaw, pitch, roll = self._rotation_matrix_to_euler_angles(rmat)
+            
+            # Decompose rotation matrix into Euler angles (Pitch, Yaw, Roll)
+            angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
+            pitch = float(angles[0]) # Positive = Looking Down, Negative = Looking Up
+            yaw = float(angles[1])   # Positive = Looking Right, Negative = Looking Left
+            roll = float(angles[2])  # Tilt
 
-            # Project 3D nose vector forward
+            # Project 3D nose vector forward for HUD visualization
             nose_end_point3D = np.array([[0.0, 0.0, 500.0]], dtype=np.float64)
             nose_end_point2D, _ = cv2.projectPoints(nose_end_point3D, rvec, tvec, camera_matrix, dist_coeffs)
             p_nose_2d = (float(nose_end_point2D[0][0][0]), float(nose_end_point2D[0][0][1]))
 
-            # Classify Gaze & Orientation
+            # Symmetric 4-Way Directional Classification
             gaze_direction, is_looking_away = self._classify_gaze(yaw, pitch, roll)
 
             if is_looking_away:
@@ -213,49 +216,25 @@ class PoseGazeEstimator:
             return self._fallback_estimate(frame)
 
     def _classify_gaze(self, yaw: float, pitch: float, roll: float) -> Tuple[str, bool]:
-        """Categorizes head pose into discrete gaze directions."""
-        is_looking_away = False
-        directions = []
+        """Symmetric 4-way directional thresholding for LEFT, RIGHT, DOWN, UP, and CENTER."""
+        # 1. Yaw Checks (Horizontal: Left / Right)
+        if yaw < -self.max_yaw_angle:  # e.g., < -16.0 deg
+            return "LOOKING LEFT", True
+        elif yaw > self.max_yaw_angle: # e.g., > +16.0 deg
+            return "LOOKING RIGHT", True
 
-        if yaw < self.yaw_limit_left:
-            directions.append("LOOKING_LEFT")
-            is_looking_away = True
-        elif yaw > self.yaw_limit_right:
-            directions.append("LOOKING_RIGHT")
-            is_looking_away = True
+        # 2. Pitch Checks (Vertical: Down / Up)
+        elif pitch > self.max_pitch_angle:   # e.g., > +14.0 deg (looking down at desk/lap/phone)
+            return "LOOKING DOWN", True
+        elif pitch < -self.max_pitch_angle:  # e.g., < -14.0 deg (looking up at ceiling)
+            return "LOOKING UP", True
 
-        if pitch < self.pitch_limit_down:
-            directions.append("LOOKING_DOWN (DESK/PHONE)")
-            is_looking_away = True
-        elif pitch > self.pitch_limit_up:
-            directions.append("LOOKING_UP")
-            is_looking_away = True
+        # 3. Roll Checks (Head Tilt)
+        elif abs(roll) > self.max_roll_angle:
+            return "HEAD TILTED", True
 
-        if abs(roll) > self.roll_limit:
-            directions.append("HEAD_TILTED")
-            is_looking_away = True
-
-        if not directions:
-            return "CENTER (FOCUSED)", False
-
-        return " + ".join(directions), is_looking_away
-
-    @staticmethod
-    def _rotation_matrix_to_euler_angles(R: np.ndarray) -> Tuple[float, float, float]:
-        """Calculates rotation angles (Yaw, Pitch, Roll in degrees) from 3x3 rotation matrix."""
-        sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
-        singular = sy < 1e-6
-
-        if not singular:
-            x = math.atan2(R[2, 1], R[2, 2])
-            y = math.atan2(-R[2, 0], sy)
-            z = math.atan2(R[1, 0], R[0, 0])
-        else:
-            x = math.atan2(-R[1, 2], R[1, 1])
-            y = math.atan2(-R[2, 0], sy)
-            z = 0.0
-
-        return float(math.degrees(y)), float(math.degrees(x)), float(math.degrees(z))
+        # 4. Center / Focused Normal State
+        return "CENTER (FOCUSED)", False
 
     def _create_absent_result(self) -> PoseGazeResult:
         """Returns result state when no face is visible."""
@@ -266,17 +245,16 @@ class PoseGazeEstimator:
             yaw=0.0,
             pitch=0.0,
             roll=0.0,
-            gaze_direction="NO_FACE_DETECTED",
+            gaze_direction="NO FACE DETECTED",
             is_looking_away=True,
             is_absent=is_absent,
             absence_frames=self.consecutive_absence_frames
         )
 
     def _fallback_estimate(self, frame: np.ndarray) -> PoseGazeResult:
-        """Lightweight OpenCV Haar Cascade fallback for face detection and centered gaze."""
+        """Lightweight OpenCV Haar Cascade fallback with calibrated 4-way directional gaze."""
         h, w = frame.shape[:2]
         try:
-            import cv2
             face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             faces = face_cascade.detectMultiScale(gray, 1.2, 4)
@@ -290,8 +268,11 @@ class PoseGazeEstimator:
             face_center_x = x + fw / 2.0
             face_center_y = y + fh / 2.0
 
-            yaw = float((face_center_x - w / 2.0) / (w / 2.0) * 30.0)
-            pitch = float(-(face_center_y - h / 2.0) / (h / 2.0) * 20.0)
+            # Proportional angular estimation from center of screen
+            # Horizontal deviation: [-35.0 deg, +35.0 deg]
+            yaw = float((face_center_x - w / 2.0) / (w / 2.0) * 35.0)
+            # Vertical deviation: [+30.0 deg (down), -30.0 deg (up)]
+            pitch = float((face_center_y - h / 2.0) / (h / 2.0) * 30.0)
             roll = 0.0
 
             gaze_direction, is_looking_away = self._classify_gaze(yaw, pitch, roll)
@@ -308,7 +289,7 @@ class PoseGazeEstimator:
                 absence_frames=0,
                 face_box=[float(x), float(y), float(x + fw), float(y + fh)],
                 landmarks_2d=[(face_center_x, face_center_y)],
-                nose_projection_2d=(face_center_x + yaw * 2, face_center_y + pitch * 2)
+                nose_projection_2d=(face_center_x + yaw * 2.5, face_center_y + pitch * 2.5)
             )
         except Exception:
             self.consecutive_absence_frames = 0
