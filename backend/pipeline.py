@@ -369,10 +369,14 @@ class EviGuardPipeline:
                 label = f"ALERT: Phone ({det.confidence*100:.0f}%)"
             elif "book" in cls_name:
                 color = (0, 165, 255) # Orange for books
-                label = f"Book ({det.confidence*100:.0f}%)"
+                label = f"ALERT: Book ({det.confidence*100:.0f}%)"
             elif "person" in cls_name:
-                color = (255, 180, 0) # Cyan/Blue for persons
-                label = f"Person #{det.track_id or 1}"
+                if det.track_id == 1:
+                    color = (255, 180, 0) # Cyan/Blue for primary candidate
+                    label = f"Student #1 (Candidate) ({det.confidence*100:.0f}%)"
+                else:
+                    color = (0, 0, 255) # Red for unauthorized second person
+                    label = f"ALERT: Secondary Person #{det.track_id} ({det.confidence*100:.0f}%)"
             else:
                 color = (0, 255, 0)
                 label = f"{det.class_name} ({det.confidence*100:.0f}%)"

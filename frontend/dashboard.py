@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring Dashboard
-Interactive web interface for real-time exam monitoring, evidence clip playback, explainability review, and session auditing.
-Powered by streamlit-webrtc for zero-latency, hardware-decoupled browser video streaming.
+Modernized Real-Time Academic Integrity & Evidence Analysis System.
+Features WebRTC hardware-decoupled streaming, dark glassmorphism theme, and real-time XAI threat analytics.
 """
 
 from datetime import datetime
@@ -26,14 +26,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from backend.db.models import DatabaseManager, ExamSession, Incident, RiskMetricLog
 from backend.detection.base import DetectionResult
-from backend.detection.factory import DetectorFactory
 from backend.explainability.reason_generator import ReasonGenerator
 from backend.pipeline import EviGuardPipeline, PipelineOutput
-from backend.pose.pose_gaze import PoseGazeEstimator
-from backend.scoring.risk_engine import RiskEngine
 
 
-# ---------------- PAGE CONFIGURATION ----------------
+# ---------------- PAGE CONFIGURATION & MODERN DARK GLASSMORPHISM THEME ----------------
 st.set_page_config(
     page_title="EviGuard - AI Proctoring & Evidence Analysis",
     page_icon="🛡️",
@@ -41,54 +38,120 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling
+# Custom CSS for Dark Glassmorphism Aesthetics
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.2rem;
+    /* Global Base */
+    .stApp {
+        background-color: #0B0F19;
+        color: #F3F4F6;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    /* Glassmorphism Metric Cards */
+    .kpi-card {
+        background: rgba(17, 24, 39, 0.75);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 16px 20px;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    .kpi-card:hover {
+        border-color: rgba(99, 102, 241, 0.4);
+        transform: translateY(-2px);
+    }
+    .kpi-title {
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #9CA3AF;
+        margin-bottom: 6px;
+    }
+    .kpi-value {
+        font-size: 1.45rem;
         font-weight: 700;
-        color: #1E293B;
-        margin-bottom: 0px;
+        color: #FFFFFF;
+        line-height: 1.2;
     }
-    .sub-header {
-        font-size: 1.0rem;
-        color: #64748B;
-        margin-bottom: 20px;
+    .kpi-subtext {
+        font-size: 0.78rem;
+        color: #6B7280;
+        margin-top: 4px;
     }
-    .metric-card {
-        background-color: #F8FAFC;
-        border: 1px solid #E2E8F0;
+
+    /* Dynamic Integrity Score Colors */
+    .score-green {
+        color: #10B981 !important;
+        text-shadow: 0 0 16px rgba(16, 185, 129, 0.3);
+    }
+    .score-yellow {
+        color: #F59E0B !important;
+        text-shadow: 0 0 16px rgba(245, 158, 11, 0.3);
+    }
+    .score-red {
+        color: #EF4444 !important;
+        text-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
+    }
+
+    /* Status Badges */
+    .status-badge-compliant {
+        display: inline-flex;
+        align-items: center;
+        background: rgba(16, 185, 129, 0.15);
+        color: #34D399;
+        border: 1px solid rgba(52, 211, 153, 0.3);
+        border-radius: 8px;
+        padding: 4px 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    .status-badge-violation {
+        display: inline-flex;
+        align-items: center;
+        background: rgba(239, 68, 68, 0.18);
+        color: #F87171;
+        border: 1px solid rgba(248, 113, 113, 0.4);
+        border-radius: 8px;
+        padding: 4px 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+    }
+
+    /* Streamlit Containers */
+    .stSelectbox, .stTextInput, .stSlider {
+        color: #E5E7EB;
+    }
+    
+    /* Modern Action Buttons */
+    div.stButton > button {
         border-radius: 10px;
-        padding: 15px;
-        text-align: center;
-    }
-    .badge-critical {
-        background-color: #EF4444;
-        color: white;
-        padding: 4px 8px;
-        border-radius: 6px;
         font-weight: 600;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: linear-gradient(135deg, #1E293B, #0F172A);
+        color: #F9FAFB;
+        transition: all 0.25s ease;
     }
-    .badge-high {
-        background-color: #F97316;
-        color: white;
-        padding: 4px 8px;
-        border-radius: 6px;
-        font-weight: 600;
+    div.stButton > button:hover {
+        background: linear-gradient(135deg, #4F46E5, #6366F1);
+        border-color: #818CF8;
+        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4);
+        transform: translateY(-1px);
     }
-    .badge-medium {
-        background-color: #EAB308;
-        color: black;
-        padding: 4px 8px;
-        border-radius: 6px;
-        font-weight: 600;
-    }
-    .badge-low {
-        background-color: #10B981;
-        color: white;
-        padding: 4px 8px;
-        border-radius: 6px;
-        font-weight: 600;
+
+    /* Sidebar Glassmorphism */
+    section[data-testid="stSidebar"] {
+        background-color: #080C14;
+        border-right: 1px solid rgba(255, 255, 255, 0.06);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -133,7 +196,7 @@ class ProctorVideoProcessor(VideoProcessorBase):
         if img is None or img.size == 0:
             return frame
 
-        # Downscale to 640x480 for ultra-fast processing
+        # Downscale to 640x480 for fast real-time inference
         if img.shape[1] != 640 or img.shape[0] != 480:
             img = cv2.resize(img, (640, 480), interpolation=cv2.INTER_LINEAR)
 
@@ -147,13 +210,13 @@ class ProctorVideoProcessor(VideoProcessorBase):
         with self.lock:
             self.latest_output = output
 
-        # Return the annotated frame with HUD back to the browser video element
+        # Return the annotated frame with HUD back to browser video player
         return av.VideoFrame.from_ndarray(output.annotated_frame, format="bgr24")
 
 
 # ---------------- HELPER PLOT FUNCTIONS ----------------
 def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
-    """Renders a modern semi-circular Plotly risk gauge."""
+    """Renders a modern dark semi-circular Plotly risk gauge."""
     color_map = {
         "LOW": "#10B981",
         "MEDIUM": "#F59E0B",
@@ -165,34 +228,40 @@ def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
         mode="gauge+number",
         value=score,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': f"Risk Score: {risk_level}", 'font': {'size': 18, 'color': '#1E293B'}},
+        title={'text': f"Risk Score: {risk_level}", 'font': {'size': 16, 'color': '#E2E8F0'}},
+        number={'font': {'size': 32, 'color': '#FFFFFF'}},
         gauge={
-            'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#94A3B8"},
-            'bar': {'color': bar_color, 'thickness': 0.3},
-            'bgcolor': "#F1F5F9",
-            'borderwidth': 2,
-            'bordercolor': "#CBD5E1",
+            'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#475569"},
+            'bar': {'color': bar_color, 'thickness': 0.35},
+            'bgcolor': "rgba(30, 41, 59, 0.5)",
+            'borderwidth': 1,
+            'bordercolor': "rgba(255, 255, 255, 0.1)",
             'steps': [
-                {'range': [0, 30], 'color': "rgba(16, 185, 129, 0.15)"},
-                {'range': [30, 70], 'color': "rgba(245, 158, 11, 0.15)"},
-                {'range': [70, 100], 'color': "rgba(239, 68, 68, 0.15)"},
+                {'range': [0, 30], 'color': "rgba(16, 185, 129, 0.12)"},
+                {'range': [30, 70], 'color': "rgba(245, 158, 11, 0.12)"},
+                {'range': [70, 100], 'color': "rgba(239, 68, 68, 0.18)"},
             ],
             'threshold': {
-                'line': {'color': "#DC2626", 'width': 4},
-                'thickness': 0.8,
+                'line': {'color': "#DC2626", 'width': 3},
+                'thickness': 0.75,
                 'value': 70
             }
         }
     ))
-    fig.update_layout(height=220, margin=dict(l=20, r=20, t=35, b=10), paper_bgcolor="rgba(0,0,0,0)")
+    fig.update_layout(height=200, margin=dict(l=15, r=15, t=30, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     return fig
 
 
 def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
-    """Renders dynamic risk evolution line chart."""
+    """Renders dynamic risk evolution line chart in dark mode."""
     if not metrics:
         fig = go.Figure()
-        fig.update_layout(title="No telemetry data recorded yet", height=230)
+        fig.update_layout(
+            title={'text': "Awaiting Telemetry...", 'font': {'color': '#94A3B8'}},
+            height=200,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)"
+        )
         return fig
 
     df = pd.DataFrame(metrics)
@@ -200,21 +269,29 @@ def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
         df,
         x=df.index,
         y="risk_score",
-        labels={"x": "Time / Frames", "risk_score": "Risk Index (0-100)"},
+        labels={"x": "Time (Frames)", "risk_score": "Risk Index"},
         title="Continuous Session Risk Timeline"
     )
-    fig.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Critical Alert (70+)")
-    fig.add_hline(y=30, line_dash="dot", line_color="orange", annotation_text="Medium Risk (30+)")
-    fig.update_traces(line_color="#4F46E5", line_width=2.5)
-    fig.update_layout(height=230, margin=dict(l=20, r=20, t=35, b=10), paper_bgcolor="rgba(0,0,0,0)")
+    fig.add_hline(y=70, line_dash="dash", line_color="#EF4444", annotation_text="Critical (70+)", annotation_font_color="#EF4444")
+    fig.add_hline(y=30, line_dash="dot", line_color="#F59E0B", annotation_text="Medium (30+)", annotation_font_color="#F59E0B")
+    fig.update_traces(line_color="#6366F1", line_width=2.5)
+    fig.update_layout(
+        height=200,
+        margin=dict(l=15, r=15, t=30, b=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#94A3B8"),
+        xaxis=dict(gridcolor="rgba(255, 255, 255, 0.05)"),
+        yaxis=dict(gridcolor="rgba(255, 255, 255, 0.05)", range=[0, 100])
+    )
     return fig
 
 
 # ---------------- SIDEBAR CONTROLS ----------------
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/shield.png", width=64)
-    st.title("EviGuard AI")
-    st.markdown("**Intelligent Exam Proctoring & Evidence Verification**")
+    st.image("https://img.icons8.com/fluency/96/shield.png", width=60)
+    st.markdown("### **EviGuard AI**")
+    st.caption("AI Exam Proctoring & Integrity Verification")
     st.markdown("---")
 
     menu_option = st.radio(
@@ -224,7 +301,7 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.subheader("Session Management")
+    st.subheader("Session Selector")
 
     # Session Selector or Creator
     all_sessions = db_manager.get_all_sessions()
@@ -245,15 +322,15 @@ with st.sidebar:
     )
     st.session_state.active_session_id = selected_session
 
-    with st.expander("➕ Create New Exam Session"):
+    with st.expander("➕ Start New Session"):
         new_s_id = st.text_input("Session ID", f"EXAM_{datetime.now().strftime('%H%M%S')}")
         new_c_id = st.text_input("Candidate ID", "STD-102")
         new_c_name = st.text_input("Candidate Name", "Jane Doe")
         new_exam = st.text_input("Exam Name", "Final Engineering Assessment")
-        if st.button("Start New Session", width="stretch"):
+        if st.button("Initialize Session", width="stretch"):
             db_manager.create_session(new_s_id, new_c_id, new_c_name, new_exam)
             st.session_state.active_session_id = new_s_id
-            st.success(f"Session {new_s_id} created!")
+            st.success(f"Session {new_s_id} active!")
             st.rerun()
 
     st.markdown("---")
@@ -267,120 +344,94 @@ if menu_option == "📹 Live Proctoring":
         "candidate_id": "STD-101",
         "candidate_name": "Alex Johnson",
         "exam_title": "CS401: Advanced AI Exam",
-        "integrity_index": 100.0
+        "integrity_index": 100.0,
+        "status": "ACTIVE"
     }
 
-    # Top Status Banner
-    col_t1, col_t2, col_t3, col_t4 = st.columns([3, 2, 2, 2])
-    with col_t1:
-        st.markdown(f"### 🎯 Candidate: **{current_session.get('candidate_name', 'Alex Johnson')}**")
-        st.caption(f"Session: `{current_session.get('session_id')}` | Exam: {current_session.get('exam_title')}")
-    with col_t2:
-        st.metric("Integrity Index", f"{current_session.get('integrity_index', 100.0):.1f}%", delta=None)
-    with col_t3:
-        st.metric("Total Flagged Incidents", current_session.get('total_incidents', 0))
-    with col_t4:
-        st.metric("Status", current_session.get('status', 'ACTIVE'))
+    # Retrieve session stats
+    integrity_score = current_session.get('integrity_index', 100.0)
+    score_class = "score-green" if integrity_score >= 80 else ("score-yellow" if integrity_score >= 50 else "score-red")
+    
+    total_inc = current_session.get('total_incidents', 0)
+    is_compliant = (total_inc == 0)
 
-    st.markdown("---")
+    # 4 Modern Glassmorphism KPI Metric Cards
+    kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
 
-    # Mode Selector
-    video_source_mode = st.radio(
-        "Video Ingestion Engine",
-        ["🌐 WebRTC Live Webcam (Browser Native, Zero Latency)", "🧪 Synthetic Avatar Simulator (Demo Mode)"],
-        index=0,
-        horizontal=True
-    )
+    with kpi_col1:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">👤 Candidate</div>
+            <div class="kpi-value">{current_session.get('candidate_name', 'Alex Johnson')}</div>
+            <div class="kpi-subtext">ID: {current_session.get('candidate_id', 'STD-101')}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # Main Live Layout
-    col_left, col_right = st.columns([3, 2])
+    with kpi_col2:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">📚 Exam Session</div>
+            <div class="kpi-value" style="font-size: 1.15rem;">{current_session.get('exam_title', 'AI Assessment')}</div>
+            <div class="kpi-subtext">Ref: <code>{current_session.get('session_id')}</code></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with kpi_col3:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">🛡️ Live Integrity Score</div>
+            <div class="kpi-value {score_class}">{integrity_score:.1f}%</div>
+            <div class="kpi-subtext">Total Flags: {total_inc}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with kpi_col4:
+        badge_html = '<span class="status-badge-compliant">● COMPLIANT</span>' if is_compliant else '<span class="status-badge-violation">● VIOLATION FLAGGED</span>'
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-title">🚦 Session Status</div>
+            <div style="margin-top: 4px;">{badge_html}</div>
+            <div class="kpi-subtext">Engine: WebRTC Active</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
+
+    # Main Grid Layout: 2/3 Left (Video Stream), 1/3 Right (Real-time Analytics)
+    col_left, col_right = st.columns([2, 1])
 
     with col_left:
-        st.subheader("Live Video Feed & AI HUD")
+        st.markdown("#### 📹 Real-Time Live Feed & AI HUD Overlay")
         
-        if "WebRTC" in video_source_mode:
-            st.caption("Click **START** below to allow browser webcam access and stream in real-time.")
-            webrtc_ctx = webrtc_streamer(
-                key="eviguard-live",
-                mode=WebRtcMode.SENDRECV,
-                rtc_configuration=RTC_CONFIGURATION,
-                video_processor_factory=ProctorVideoProcessor,
-                media_stream_constraints={
-                    "video": {"width": {"ideal": 640}, "height": {"ideal": 480}},
-                    "audio": False
-                },
-                async_processing=True
+        webrtc_ctx = webrtc_streamer(
+            key="eviguard-live",
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration=RTC_CONFIGURATION,
+            video_processor_factory=ProctorVideoProcessor,
+            media_stream_constraints={
+                "video": {"width": {"ideal": 640}, "height": {"ideal": 480}},
+                "audio": False
+            },
+            async_processing=True
+        )
+
+        if webrtc_ctx.video_processor:
+            webrtc_ctx.video_processor.set_session_info(
+                session_id=current_session.get("session_id", "default_session"),
+                candidate_name=current_session.get("candidate_name", "Alex Johnson")
             )
 
-            if webrtc_ctx.video_processor:
-                webrtc_ctx.video_processor.set_session_info(
-                    session_id=current_session.get("session_id", "default_session"),
-                    candidate_name=current_session.get("candidate_name", "Alex Johnson")
-                )
-        else:
-            # Synthetic Demo Simulator
-            video_placeholder = st.empty()
-            st.markdown("##### 🧪 Interactive Violation Simulator (Demo Mode)")
-            sim_col1, sim_col2, sim_col3, sim_col4 = st.columns(4)
-            sim_phone = sim_col1.button("📱 Phone Detected")
-            sim_multi = sim_col2.button("👥 Multiple People")
-            sim_lookaway = sim_col3.button("👀 Looking Away")
-            sim_absent = sim_col4.button("🚪 Candidate Absent")
-
-            # Generate synthetic frame
-            frame_h, frame_w = 480, 640
-            frame = np.zeros((frame_h, frame_w, 3), dtype=np.uint8)
-            frame[:] = (35, 30, 40)
-            cv2.rectangle(frame, (100, 320), (540, 480), (70, 65, 80), -1)
-
-            injected_dets: List[DetectionResult] = []
-            if not sim_absent:
-                if sim_lookaway:
-                    cv2.circle(frame, (300, 200), 75, (200, 180, 160), -1)
-                    cv2.circle(frame, (270, 195), 10, (50, 40, 30), -1)
-                    cv2.ellipse(frame, (300, 380), (140, 120), 0, 0, 180, (120, 90, 80), -1)
-                else:
-                    cv2.circle(frame, (320, 200), 75, (220, 190, 170), -1)
-                    cv2.circle(frame, (295, 195), 10, (50, 40, 30), -1)
-                    cv2.circle(frame, (345, 195), 10, (50, 40, 30), -1)
-                    cv2.ellipse(frame, (320, 380), (140, 120), 0, 0, 180, (120, 90, 80), -1)
-
-                injected_dets.append(
-                    DetectionResult(box=[180.0, 120.0, 460.0, 460.0], confidence=0.95, class_id=0, class_name="person")
-                )
-
-            if sim_phone:
-                cv2.rectangle(frame, (420, 340), (490, 440), (20, 20, 20), -1)
-                cv2.rectangle(frame, (425, 345), (485, 435), (200, 240, 255), -1)
-                injected_dets.append(
-                    DetectionResult(box=[420.0, 340.0, 490.0, 440.0], confidence=0.92, class_id=67, class_name="cell phone")
-                )
-
-            if sim_multi:
-                cv2.circle(frame, (120, 170), 50, (180, 150, 140), -1)
-                cv2.ellipse(frame, (120, 300), (90, 80), 0, 0, 180, (80, 100, 120), -1)
-                injected_dets.append(
-                    DetectionResult(box=[40.0, 100.0, 200.0, 380.0], confidence=0.89, class_id=0, class_name="person")
-                )
-
-            if hasattr(pipeline.detector, "set_injected_detections"):
-                pipeline.detector.set_injected_detections(injected_dets)
-
-            output = pipeline.process_frame(frame, session_id=current_session["session_id"], candidate_name=current_session["candidate_name"])
-            _, encoded_jpeg = cv2.imencode('.jpg', output.annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            video_placeholder.image(encoded_jpeg.tobytes(), output_format="JPEG", width="stretch")
-
     with col_right:
-        st.subheader("Live Threat Analysis")
+        st.markdown("#### ⚡ Real-Time Threat Analysis")
         
-        # Read latest risk evaluation from WebRTC processor or pipeline
+        # Read latest risk metrics from WebRTC processor
         latest_risk_score = 0.0
         latest_risk_level = "LOW"
         active_violations = []
         person_count = 1
         yaw_val, pitch_val = 0.0, 0.0
 
-        if "WebRTC" in video_source_mode and 'webrtc_ctx' in locals() and webrtc_ctx.video_processor:
+        if 'webrtc_ctx' in locals() and webrtc_ctx.video_processor:
             with webrtc_ctx.video_processor.lock:
                 out = webrtc_ctx.video_processor.latest_output
                 if out:
@@ -390,23 +441,23 @@ if menu_option == "📹 Live Proctoring":
                     person_count = out.pose_gaze.face_count if out.pose_gaze.face_detected else len(out.detections)
                     yaw_val, pitch_val = out.pose_gaze.yaw, out.pose_gaze.pitch
 
-        # Alert Badge
+        # Threat Alert Banner
         if active_violations:
             st.error(f"🚨 **ACTIVE ALERT**: {' • '.join(active_violations)}")
         else:
-            st.success("✅ **Status Normal**: Candidate within compliance limits.")
+            st.success("✅ **Integrity Compliant**: Candidate within threshold limits.")
 
-        # Plotly Gauge Chart
+        # Plotly Risk Meter Gauge
         gauge_fig = create_gauge_chart(latest_risk_score, latest_risk_level)
         st.plotly_chart(gauge_fig, width="stretch", key="webrtc_live_gauge")
 
-        # Telemetry Metrics
+        # Telemetry Metrics Grid
         t_col1, t_col2, t_col3 = st.columns(3)
-        t_col1.metric("Persons Tracked", person_count)
-        t_col2.metric("Head Yaw (L/R)", f"{yaw_val:+.1f}°")
-        t_col3.metric("Head Pitch (U/D)", f"{pitch_val:+.1f}°")
+        t_col1.metric("Persons", person_count)
+        t_col2.metric("Yaw (L/R)", f"{yaw_val:+.1f}°")
+        t_col3.metric("Pitch (U/D)", f"{pitch_val:+.1f}°")
 
-        # Timeline Chart
+        # Live Session Timeline Chart
         recent_metrics = db_manager.get_session_metrics(st.session_state.active_session_id, limit=50)
         timeline_fig = create_timeline_chart(recent_metrics)
         st.plotly_chart(timeline_fig, width="stretch", key="webrtc_timeline")
@@ -415,7 +466,7 @@ if menu_option == "📹 Live Proctoring":
 # ---------------- TAB 2: INCIDENT VAULT & EVIDENCE REVIEW ----------------
 elif menu_option == "🔍 Incident Vault":
     st.markdown("## 🔍 Security Incident Vault & Evidence Review")
-    st.markdown("Review flagged violations with automated video clips, snapshots, and explainable AI justifications.")
+    st.caption("Review flagged violations with automated video clips, snapshots, and explainable AI justifications.")
 
     incidents = db_manager.get_session_incidents(st.session_state.active_session_id)
 
@@ -482,7 +533,13 @@ elif menu_option == "🔍 Incident Vault":
                             color="Weight %",
                             color_continuous_scale="Reds"
                         )
-                        fig_bar.update_layout(height=200, margin=dict(l=10, r=10, t=30, b=10))
+                        fig_bar.update_layout(
+                            height=200,
+                            margin=dict(l=10, r=10, t=30, b=10),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font=dict(color="#E2E8F0")
+                        )
                         st.plotly_chart(fig_bar, width="stretch", key=f"xai_chart_{inc['id']}")
 
                     if details.get("recommended_action"):
@@ -546,6 +603,7 @@ elif menu_option == "📊 Analytics & Reports":
             v_df = pd.Series(v_types).value_counts().reset_index()
             v_df.columns = ["Violation Type", "Count"]
             fig_pie = px.pie(v_df, values="Count", names="Violation Type", hole=0.4, color_discrete_sequence=px.colors.sequential.RdBu)
+            fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#E2E8F0"))
             st.plotly_chart(fig_pie, width="stretch")
         else:
             st.info("No violations recorded for this candidate.")
@@ -592,7 +650,7 @@ elif menu_option == "📊 Analytics & Reports":
         report_md += f"| #{inc['id']} | {inc['timestamp']} | {inc['violation_type']} | {inc['severity']} | {inc['risk_score']} | {inc['proctor_verdict']} | {inc['reason_summary']} |\n"
 
     st.download_button(
-        label="📥 Download Integrity Report (Markdown/Text)",
+        label="📥 Download Integrity Report (Markdown)",
         data=report_md,
         file_name=f"EviGuard_Report_{current_session.get('session_id')}.md",
         mime="text/markdown"
@@ -602,13 +660,13 @@ elif menu_option == "📊 Analytics & Reports":
 # ---------------- TAB 4: SETTINGS & SENSITIVITY ----------------
 elif menu_option == "⚙️ Settings & Sensitivity":
     st.markdown("## ⚙️ Proctoring Sensitivity & Threshold Configuration")
-    st.markdown("Customize model confidence, gaze tolerance limits, and risk weights dynamically.")
+    st.caption("Customize model confidence, gaze tolerance limits, and risk weights dynamically.")
 
     with st.form("settings_form"):
-        st.subheader("1. Object Detection Parameters")
+        st.subheader("1. Object Detection & Tracking Parameters")
         c1, c2 = st.columns(2)
         conf_thresh = c1.slider("YOLOv8 Confidence Threshold", 0.1, 0.9, 0.45, 0.05)
-        iou_thresh = c2.slider("IoU NMS Threshold", 0.1, 0.9, 0.45, 0.05)
+        person_conf = c2.slider("Person Detection Confidence Cutoff", 0.3, 0.9, 0.55, 0.05)
 
         st.subheader("2. Head Pose & Gaze Limits (Degrees)")
         g1, g2, g3 = st.columns(3)
@@ -623,12 +681,13 @@ elif menu_option == "⚙️ Settings & Sensitivity":
         w_absent = r3.slider("Face Absent Weight", 10.0, 100.0, 40.0, 5.0)
         w_gaze = r4.slider("Gaze Deviation Weight", 5.0, 60.0, 25.0, 5.0)
 
-        submitted = st.form_submit_state = st.form_submit_button("💾 Save & Apply Configuration")
+        submitted = st.form_submit_button("💾 Save & Apply Configuration")
         if submitted:
             # Update config file
             updated_cfg = {
                 "system": {"app_name": "EviGuard AI", "version": "1.0.0", "inference_stride": 3},
-                "detection": {"confidence_threshold": conf_thresh, "iou_threshold": iou_thresh, "imgsz": 320},
+                "detection": {"confidence_threshold": conf_thresh, "imgsz": 320},
+                "tracking": {"person_conf_threshold": person_conf, "person_nms_iou": 0.45},
                 "pose_gaze": {
                     "head_pose": {"yaw_limit_left": -yaw_limit, "yaw_limit_right": yaw_limit, "pitch_limit_down": -pitch_limit},
                     "face_absence": {"absence_frames_threshold": absence_timeout}
