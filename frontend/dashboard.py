@@ -92,9 +92,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ---------------- THREADED BACKGROUND CAMERA CAPTURE ----------------
-class ThreadedCamera:
-    """Non-blocking threaded webcam reader to decouple hardware I/O from UI updates."""
+# ---------------- BUFFERLESS REAL-TIME CAMERA CAPTURE ----------------
+class FreshFrameReader:
+    """Bufferless real-time video capture reader.
+    Continuously runs cap.grab() in a dedicated background thread so only
+    the single latest real-time frame is stored and retrieved, eliminating video latency.
+    """
     
     def __init__(self, src: int = 0, width: int = 640, height: int = 480):
         self.src = src
@@ -103,7 +106,7 @@ class ThreadedCamera:
         self.cap = None
         self.running = False
         self.thread = None
-        self.frame = None
+        self.latest_frame = None
         self.lock = threading.Lock()
 
     def start(self, src: int = 0):
@@ -113,37 +116,51 @@ class ThreadedCamera:
         self.src = src
         self.running = True
         try:
-            self.cap = cv2.VideoCapture(int(src))
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            # On Windows, try DirectShow for immediate hardware connection
+            if sys.platform == "win32":
+                self.cap = cv2.VideoCapture(int(src), cv2.CAP_DSHOW)
+                if not self.cap.isOpened():
+                    self.cap = cv2.VideoCapture(int(src))
+            else:
+                self.cap = cv2.VideoCapture(int(src))
+
+            if self.cap is not None and self.cap.isOpened():
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         except Exception:
             self.cap = None
 
-        self.thread = threading.Thread(target=self._capture_worker, daemon=True)
+        self.thread = threading.Thread(target=self._grab_worker, daemon=True)
         self.thread.start()
 
-    def _capture_worker(self):
+    def _grab_worker(self):
+        """Continuously pulls latest frames to flush hardware buffer in real-time."""
         while self.running:
             if self.cap is not None and self.cap.isOpened():
-                ret, frame = self.cap.read()
-                if ret and frame is not None:
-                    if frame.shape[1] != self.width or frame.shape[0] != self.height:
-                        frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
-                    with self.lock:
-                        self.frame = frame
+                grabbed = self.cap.grab()
+                if grabbed:
+                    ret, frame = self.cap.retrieve()
+                    if ret and frame is not None:
+                        if frame.shape[1] != self.width or frame.shape[0] != self.height:
+                            frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
+                        with self.lock:
+                            self.latest_frame = frame
                 else:
-                    time.sleep(0.02)
+                    time.sleep(0.005)
             else:
-                time.sleep(0.05)
-            time.sleep(0.01)
+                time.sleep(0.02)
 
     def read(self) -> Optional[np.ndarray]:
+        """Always retrieves single freshest frame and drops all older queued frames."""
         with self.lock:
-            return self.frame.copy() if self.frame is not None else None
+            return self.latest_frame.copy() if self.latest_frame is not None else None
 
     def stop(self):
         self.running = False
+        if self.thread is not None:
+            self.thread.join(timeout=0.5)
+            self.thread = None
         if self.cap is not None:
             try:
                 self.cap.release()
@@ -151,7 +168,7 @@ class ThreadedCamera:
                 pass
             self.cap = None
         with self.lock:
-            self.frame = None
+            self.latest_frame = None
 
 
 # ---------------- INITIALIZATION & CACHING ----------------
@@ -165,7 +182,7 @@ def get_pipeline():
 
 @st.cache_resource
 def get_camera():
-    return ThreadedCamera(src=0, width=640, height=480)
+    return FreshFrameReader(src=0, width=640, height=480)
 
 
 db_manager = get_db_manager()

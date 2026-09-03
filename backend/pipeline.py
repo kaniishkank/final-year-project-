@@ -7,9 +7,10 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 import os
+import sys
 import threading
 import time
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 import cv2
 import numpy as np
 import yaml
@@ -34,6 +35,88 @@ class PipelineOutput:
     incident_logged: Optional[Dict[str, Any]]
     frame_index: int
     fps: float
+
+
+class FreshFrameReader:
+    """Bufferless real-time video capture reader.
+    Runs a dedicated background thread calling cap.grab() to always maintain ONLY
+    the single latest camera frame, preventing OpenCV buffer lag.
+    """
+
+    def __init__(self, src: Any = 0, width: int = 640, height: int = 480):
+        self.src = src
+        self.width = width
+        self.height = height
+        self.cap = None
+        self.running = False
+        self.thread = None
+        self.latest_frame = None
+        self.lock = threading.Lock()
+
+    def start(self, src: Optional[Any] = None):
+        if src is not None:
+            self.src = src
+        if self.running and self.cap is not None and self.cap.isOpened():
+            return
+        self.stop()
+        self.running = True
+        
+        try:
+            # On Windows, try DirectShow for instant initialization
+            camera_idx = int(self.src) if isinstance(self.src, (int, str)) and str(self.src).isdigit() else self.src
+            if isinstance(camera_idx, int) and sys.platform == "win32":
+                self.cap = cv2.VideoCapture(camera_idx, cv2.CAP_DSHOW)
+                if not self.cap.isOpened():
+                    self.cap = cv2.VideoCapture(camera_idx)
+            else:
+                self.cap = cv2.VideoCapture(camera_idx)
+
+            if self.cap is not None and self.cap.isOpened():
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            self.cap = None
+
+        self.thread = threading.Thread(target=self._grab_worker, daemon=True)
+        self.thread.start()
+
+    def _grab_worker(self):
+        """Continuously grabs newest frames from camera to flush hardware buffer."""
+        while self.running:
+            if self.cap is not None and self.cap.isOpened():
+                # grab() fetches frame without full decode overhead
+                grabbed = self.cap.grab()
+                if grabbed:
+                    ret, frame = self.cap.retrieve()
+                    if ret and frame is not None:
+                        if frame.shape[1] != self.width or frame.shape[0] != self.height:
+                            frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
+                        with self.lock:
+                            self.latest_frame = frame
+                else:
+                    time.sleep(0.005)
+            else:
+                time.sleep(0.02)
+
+    def read(self) -> Optional[np.ndarray]:
+        """Returns the single freshest frame, dropping all stale buffered frames."""
+        with self.lock:
+            return self.latest_frame.copy() if self.latest_frame is not None else None
+
+    def stop(self):
+        self.running = False
+        if self.thread is not None:
+            self.thread.join(timeout=0.5)
+            self.thread = None
+        if self.cap is not None:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+            self.cap = None
+        with self.lock:
+            self.latest_frame = None
 
 
 class EviGuardPipeline:
