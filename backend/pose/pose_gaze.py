@@ -1,7 +1,7 @@
 """
 Pose and Gaze Estimation Module
 Calculates 3D Head Pose (Yaw, Pitch, Roll) and Gaze Direction using MediaPipe FaceMesh and solvePnP.
-Features cropped bounding box optimization for ultra-fast landmark compute and relaxed angle thresholds.
+Features cropped bounding box optimization for ultra-fast landmark compute and strict angle thresholds.
 """
 
 from dataclasses import dataclass
@@ -62,16 +62,16 @@ class PoseGazeEstimator:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.config = config or {}
         
-        # Relaxed thresholds for snappier angle detection
+        # Strict High-Security Thresholds (Degrees)
         head_cfg = self.config.get("head_pose", {})
-        self.yaw_limit_left = head_cfg.get("yaw_limit_left", -20.0)
-        self.yaw_limit_right = head_cfg.get("yaw_limit_right", 20.0)
-        self.pitch_limit_down = head_cfg.get("pitch_limit_down", -18.0)
-        self.pitch_limit_up = head_cfg.get("pitch_limit_up", 22.0)
-        self.roll_limit = head_cfg.get("roll_limit", 22.0)
+        self.yaw_limit_left = head_cfg.get("yaw_limit_left", -16.0) # Catches glancing left/right
+        self.yaw_limit_right = head_cfg.get("yaw_limit_right", 16.0)
+        self.pitch_limit_down = head_cfg.get("pitch_limit_down", -14.0) # Catches looking downward at lap/desk
+        self.pitch_limit_up = head_cfg.get("pitch_limit_up", 20.0)
+        self.roll_limit = head_cfg.get("roll_limit", 20.0)
 
         absence_cfg = self.config.get("face_absence", {})
-        self.absence_threshold = absence_cfg.get("absence_frames_threshold", 25)
+        self.absence_threshold = absence_cfg.get("absence_frames_threshold", 15) # ~0.5s rapid response
 
         self.consecutive_absence_frames = 0
         self.consecutive_lookaway_frames = 0
@@ -97,12 +97,7 @@ class PoseGazeEstimator:
             self._fallback_mode = True
 
     def estimate(self, frame: np.ndarray, bbox: Optional[List[float]] = None) -> PoseGazeResult:
-        """Processes frame (or cropped student bounding box) to compute 3D head pose and gaze orientation.
-        
-        Args:
-            frame: Raw BGR video frame.
-            bbox: Optional [x1, y1, x2, y2] bounding box to run on cropped patch.
-        """
+        """Processes frame (or cropped student bounding box) to compute 3D head pose and gaze orientation."""
         if frame is None or frame.size == 0:
             self.consecutive_absence_frames += 1
             return self._create_absent_result()
@@ -118,7 +113,6 @@ class PoseGazeEstimator:
             offset_x, offset_y = 0.0, 0.0
             if bbox is not None:
                 bx1, by1, bx2, by2 = [int(v) for v in bbox]
-                # Add 10% safety margin
                 pad_x = int((bx2 - bx1) * 0.1)
                 pad_y = int((by2 - by1) * 0.1)
                 cx1 = max(0, bx1 - pad_x)

@@ -879,21 +879,21 @@ elif menu_option == "⚙️ Settings & Sensitivity":
     with st.form("settings_form"):
         st.subheader("1. Object Detection & Tracking Parameters")
         c1, c2 = st.columns(2)
-        conf_thresh = c1.slider("YOLOv8 Confidence Threshold", 0.1, 0.9, 0.45, 0.05)
-        person_conf = c2.slider("Person Detection Confidence Cutoff", 0.3, 0.9, 0.55, 0.05)
+        conf_thresh = c1.slider("YOLOv8 Confidence Threshold", 0.10, 0.90, 0.32, 0.02)
+        person_conf = c2.slider("Person Detection Confidence Cutoff", 0.20, 0.90, 0.50, 0.05)
 
         st.subheader("2. Head Pose & Gaze Limits (Degrees)")
         g1, g2, g3 = st.columns(3)
-        yaw_limit = g1.slider("Max Yaw Angle (Turn Left/Right)", 10.0, 60.0, 25.0, 5.0)
-        pitch_limit = g2.slider("Max Pitch Angle (Looking Down)", 10.0, 60.0, 20.0, 5.0)
-        absence_timeout = g3.slider("Candidate Absence Timeout (Frames)", 10, 150, 30, 5)
+        yaw_limit = g1.slider("Max Yaw Angle (Turn Left/Right)", 5.0, 45.0, 16.0, 1.0)
+        pitch_limit = g2.slider("Max Pitch Angle (Looking Down)", 5.0, 45.0, 14.0, 1.0)
+        absence_timeout = g3.slider("Candidate Absence Timeout (Frames)", 5, 120, 15, 5)
 
         st.subheader("3. Risk Engine Factor Weights")
         r1, r2, r3, r4 = st.columns(4)
-        w_phone = r1.slider("Cell Phone Weight", 10.0, 100.0, 50.0, 5.0)
-        w_multi = r2.slider("Multiple Persons Weight", 10.0, 100.0, 45.0, 5.0)
-        w_absent = r3.slider("Face Absent Weight", 10.0, 100.0, 40.0, 5.0)
-        w_gaze = r4.slider("Gaze Deviation Weight", 5.0, 60.0, 25.0, 5.0)
+        w_phone = r1.slider("Cell Phone Weight", 10.0, 100.0, 85.0, 5.0)
+        w_multi = r2.slider("Multiple Persons Weight", 10.0, 100.0, 80.0, 5.0)
+        w_absent = r3.slider("Face Absent Weight", 10.0, 100.0, 75.0, 5.0)
+        w_gaze = r4.slider("Gaze Deviation Weight", 5.0, 100.0, 45.0, 5.0)
 
         submitted = st.form_submit_button("💾 Save Configuration")
         if submitted:

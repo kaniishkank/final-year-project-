@@ -1,4 +1,4 @@
-# EviGuard Configuration File
+# EviGuard Configuration File - Strict Zero-Tolerance High-Security Profile
 
 system:
   app_name: "EviGuard AI Proctoring System"
@@ -11,20 +11,19 @@ video:
   width: 640
   height: 480
   fps: 30
-  mock_mode: false # If true or if webcam unavailable, generates simulated testing frames
+  mock_mode: false
 
 detection:
-  model_type: "yolov8" # "yolov8" or "mock"
-  model_path: "yolov8n.pt" # Auto-downloaded by ultralytics if not local
+  model_type: "yolov8"
+  model_path: "yolov8n.pt"
   imgsz: 320 # Downscaled input tensor size for ultra-low latency inference
-  confidence_threshold: 0.45
+  confidence_threshold: 0.32 # Detects partially occluded phones/books immediately
   iou_threshold: 0.45
   target_classes:
     - "person"
     - "cell phone"
     - "book"
     - "laptop"
-  # Threshold for triggering unauthorized device alert
   device_classes:
     - "cell phone"
     - "laptop"
@@ -33,38 +32,40 @@ detection:
 
 tracking:
   max_disappeared_frames: 30
-  iou_distance_threshold: 0.5
-  expected_candidate_count: 1
+  iou_distance_threshold: 0.35
+  person_conf_threshold: 0.50 # Ensures secondary entities in background/periphery are caught
+  person_nms_iou: 0.45
+  min_person_area: 6000.0
 
 pose_gaze:
   enable_pose: true
   enable_gaze: true
   head_pose:
-    # Maximum allowed rotation angles before flagging deviation (in degrees)
-    yaw_limit_left: -25.0
-    yaw_limit_right: 25.0
-    pitch_limit_down: -20.0
-    pitch_limit_up: 25.0
-    roll_limit: 25.0
+    # Strict limits (in degrees) to catch slight glancing toward adjacent desks
+    yaw_limit_left: -16.0
+    yaw_limit_right: 16.0
+    pitch_limit_down: -14.0 # Catches looking downward at lap/desk materials
+    pitch_limit_up: 20.0
+    roll_limit: 20.0
   gaze:
-    look_away_continuous_frames: 15 # ~0.5s at 30fps
+    look_away_continuous_frames: 10
   face_absence:
-    absence_frames_threshold: 30 # ~1.0s at 30fps
+    absence_frames_threshold: 15 # ~0.5s rapid response on missing face
 
 risk_engine:
   # Score additions per active violation (0 to 100 base scale)
   weights:
-    cell_phone: 50.0
-    multiple_persons: 45.0
-    face_absent: 40.0
-    head_pose_deviation: 25.0
-    gaze_deviation: 20.0
-    suspicious_object: 30.0
-    unusual_movement: 15.0
+    cell_phone: 85.0 # Instant critical alert on detection
+    multiple_persons: 80.0 # Instant critical intruder alert
+    face_absent: 75.0 # Immediate seat abandonment flag
+    gaze_deviation: 45.0 # Accumulates to breach alert threshold in <1.5s
+    head_pose_deviation: 45.0
+    suspicious_object: 40.0
+    unusual_movement: 20.0
 
   # Temporal aggregation parameters
-  decay_rate: 0.92 # Exponential decay factor per frame when no violation
-  accumulation_rate: 0.25 # How fast score builds up with persistent violations
+  decay_rate: 0.88
+  accumulation_rate: 0.55
   
   # Alert Classification Thresholds
   thresholds:
@@ -74,10 +75,10 @@ risk_engine:
 
 evidence_recorder:
   output_dir: "data/evidence_clips"
-  pre_roll_seconds: 3 # Seconds of footage captured before the alert
-  post_roll_seconds: 3 # Seconds of footage captured after the alert
-  codec: "mp4v" # or "avc1" / "XVID"
-  cooldown_seconds: 5 # Prevent spamming multiple clips for same ongoing event
+  pre_roll_seconds: 3
+  post_roll_seconds: 3
+  codec: "mp4v"
+  cooldown_seconds: 3
 
 database:
   db_url: "sqlite:///data/eviguard.db"

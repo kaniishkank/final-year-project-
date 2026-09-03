@@ -1,7 +1,7 @@
 """
 Dynamic Risk Scoring Engine Module
 Aggregates detection, tracking, and pose/gaze signals to compute real-time suspiciousness index.
-Supports instant direct triggers for critical violations, multi-student independent risk histories, and rapid gaze accumulation.
+Configured for Strict Zero-Tolerance High-Security Proctoring with direct critical triggers.
 """
 
 from dataclasses import dataclass, field
@@ -44,18 +44,18 @@ class RiskEngine:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.config = config or {}
         
-        # Risk Weights
+        # Strict Zero-Tolerance Risk Weights
         weights_cfg = self.config.get("weights", {})
-        self.w_phone = weights_cfg.get("cell_phone", 90.0) # High critical weight
-        self.w_multiple_persons = weights_cfg.get("multiple_persons", 85.0)
-        self.w_face_absent = weights_cfg.get("face_absent", 50.0)
-        self.w_head_pose = weights_cfg.get("head_pose_deviation", 35.0)
-        self.w_gaze = weights_cfg.get("gaze_deviation", 35.0)
+        self.w_phone = weights_cfg.get("cell_phone", 85.0) # Instant critical alert
+        self.w_multiple_persons = weights_cfg.get("multiple_persons", 80.0) # Instant critical intruder alert
+        self.w_face_absent = weights_cfg.get("face_absent", 75.0) # Immediate seat abandonment
+        self.w_gaze = weights_cfg.get("gaze_deviation", 45.0) # Rapid accumulation
+        self.w_head_pose = weights_cfg.get("head_pose_deviation", 45.0)
         self.w_suspicious_object = weights_cfg.get("suspicious_object", 40.0)
 
         # Fast Temporal Parameters (~0.8s responsive window)
         self.decay_rate = self.config.get("decay_rate", 0.88)
-        self.accumulation_rate = self.config.get("accumulation_rate", 0.55) # Fast 15-frame window
+        self.accumulation_rate = self.config.get("accumulation_rate", 0.55)
 
         # Thresholds
         thresholds_cfg = self.config.get("thresholds", {})
@@ -92,10 +92,10 @@ class RiskEngine:
         factors: Dict[str, float] = {}
         is_critical_direct_trigger = False
 
-        # 1. Instant Trigger: Unauthorized mobile phones (confidence > 0.50)
+        # 1. Instant Trigger: Unauthorized mobile phones (confidence >= 0.32)
         phone_detections = [
             d for d in detections 
-            if d.class_name in ("cell phone", "phone") and d.confidence >= 0.50
+            if d.class_name in ("cell phone", "phone") and d.confidence >= 0.32
         ]
         if phone_detections:
             active_violations.append("PHONE_DETECTED")
@@ -109,7 +109,7 @@ class RiskEngine:
             is_critical_direct_trigger = True
 
         # 3. Suspicious study materials (books, notes)
-        book_detections = [d for d in detections if d.class_name in ("book", "notes") and d.confidence >= 0.50]
+        book_detections = [d for d in detections if d.class_name in ("book", "notes") and d.confidence >= 0.32]
         if book_detections:
             active_violations.append("SUSPICIOUS_OBJECT")
             factors["suspicious_object"] = self.w_suspicious_object
@@ -118,14 +118,14 @@ class RiskEngine:
         if pose_gaze.is_absent or (person_count == 0 and not pose_gaze.face_detected):
             active_violations.append("FACE_ABSENT")
             factors["face_absent"] = self.w_face_absent
-            if pose_gaze.absence_frames > 45:
+            if pose_gaze.absence_frames >= 15:
                 is_critical_direct_trigger = True
 
-        # 5. Snappy Gaze and Head Pose Deviations (responsive within ~0.8s)
+        # 5. Snappy Gaze and Head Pose Deviations
         elif pose_gaze.face_detected and pose_gaze.is_looking_away:
             if "LOOKING_DOWN" in pose_gaze.gaze_direction:
                 active_violations.append("GAZE_DOWN (DESK)")
-                factors["gaze_deviation"] = self.w_gaze + 10.0
+                factors["gaze_deviation"] = self.w_gaze + 5.0
             elif "LOOKING_LEFT" in pose_gaze.gaze_direction or "LOOKING_RIGHT" in pose_gaze.gaze_direction:
                 active_violations.append("GAZE_AWAY (SIDE)")
                 factors["head_pose_deviation"] = self.w_head_pose
@@ -140,18 +140,15 @@ class RiskEngine:
         student_smoothed = self.student_histories.get(student_id, 0.0)
 
         # Apply Instant Bypass for Critical Violations or Temporal Fast Smoothing
-        if is_critical_direct_trigger and raw_score >= 85.0:
-            # Zero-lag direct trigger: immediately elevate score > 85
+        if is_critical_direct_trigger and raw_score >= 70.0:
             student_smoothed = max(student_smoothed, raw_score)
         else:
             if raw_score > student_smoothed:
-                # Fast escalation (0.8s window)
                 student_smoothed = (
                     (1.0 - self.accumulation_rate) * student_smoothed + 
                     self.accumulation_rate * raw_score
                 )
             else:
-                # Decay towards zero
                 student_smoothed = student_smoothed * self.decay_rate
                 if student_smoothed < 1.0:
                     student_smoothed = 0.0
@@ -177,7 +174,6 @@ class RiskEngine:
         if active_violations:
             primary_violation = max(factors.keys(), key=lambda k: factors[k], default=active_violations[0])
             
-            # Triggers on first frame for critical violations or when high score reached
             should_trigger = is_critical_direct_trigger or (smoothed_score >= self.high_threshold)
             
             if should_trigger and (now - last_incident) >= self.incident_cooldown_seconds:
