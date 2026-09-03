@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring Dashboard
-Minimalist Slate & Soft-Zinc Professional Theme.
-Features WebRTC live video streaming, flat card architecture, muted enterprise color palette, and streamlined XAI audit controls.
+Modern Apple / Linear-Style Clean White & Crisp Minimalist UI.
+Features WebRTC live proctoring, pure white card architecture, soft elevation shadows, and refined enterprise typography.
 """
 
 from datetime import datetime
@@ -30,210 +30,233 @@ from backend.explainability.reason_generator import ReasonGenerator
 from backend.pipeline import EviGuardPipeline, PipelineOutput
 
 
-# ---------------- PAGE CONFIGURATION & MINIMALIST SLATE THEME ----------------
+# ---------------- PAGE CONFIGURATION & APPLE/LINEAR CLEAN WHITE THEME ----------------
 st.set_page_config(
-    page_title="EviGuard - AI Proctoring System",
+    page_title="EviGuard - AI Proctoring & Evidence Analysis",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for Minimalist Slate & Soft-Zinc Theme
+# Custom CSS for Apple / Linear Light Minimalist Aesthetics
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-    /* Global Matte Dark Slate Background */
+    /* Global Off-White Canvas Background */
     html, body, [class*="css"], .stApp {
-        background-color: #0F172A !important;
-        color: #F8FAFC !important;
-        font-family: 'Inter', sans-serif !important;
+        background-color: #F8FAFC !important;
+        color: #0F172A !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
 
-    /* Flat Clean Container Cards */
-    .slate-card {
-        background-color: #1E293B;
-        border: 1px solid #334155;
-        border-radius: 12px;
+    /* Pure White Elevation Cards */
+    .white-card {
+        background-color: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 16px;
+        padding: 20px 24px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.03);
+        margin-bottom: 20px;
+    }
+
+    /* Top 4 KPI Metric Cards */
+    .kpi-card-white {
+        background-color: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 16px;
         padding: 18px 20px;
-        margin-bottom: 16px;
-    }
-
-    /* Top 4 KPI Metric Tiles */
-    .kpi-tile {
-        background-color: #1E293B;
-        border: 1px solid #334155;
-        border-radius: 12px;
-        padding: 16px 18px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        min-height: 105px;
+        min-height: 112px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .kpi-card-white:hover {
+        transform: translateY(-2px);
+        border-color: #CBD5E1;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     }
     .kpi-label {
         font-size: 0.75rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #94A3B8;
-    }
-    .kpi-title {
-        font-size: 1.25rem;
         font-weight: 700;
-        color: #F8FAFC;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #64748B;
+    }
+    .kpi-value {
+        font-size: 1.45rem;
+        font-weight: 800;
+        color: #0F172A;
         margin-top: 4px;
         line-height: 1.2;
+        letter-spacing: -0.02em;
     }
     .kpi-meta {
         font-size: 0.75rem;
-        color: #64748B;
+        color: #94A3B8;
         font-family: 'JetBrains Mono', monospace;
         margin-top: 6px;
     }
 
     /* Soft Integrity Scores */
     .score-high-safe {
-        color: #34D399 !important;
+        color: #10B981 !important;
     }
     .score-mid-warn {
-        color: #FBBF24 !important;
+        color: #F59E0B !important;
     }
     .score-low-crit {
-        color: #F87171 !important;
+        color: #EF4444 !important;
     }
 
-    /* Muted Status Badges */
-    .badge-safe {
+    /* Soft Pastel Badges */
+    .badge-compliant-light {
         display: inline-flex;
         align-items: center;
-        background-color: #064E3B;
-        color: #6EE7B7;
-        border: 1px solid #047857;
-        border-radius: 6px;
-        padding: 3px 10px;
+        background-color: #DCFCE7;
+        color: #15803D;
+        border: 1px solid #BBF7D0;
+        border-radius: 20px;
+        padding: 4px 12px;
         font-size: 0.78rem;
-        font-weight: 600;
+        font-weight: 700;
     }
-    .badge-alert {
+    .badge-flagged-light {
         display: inline-flex;
         align-items: center;
-        background-color: #881337;
-        color: #FDA4AF;
-        border: 1px solid #BE123C;
-        border-radius: 6px;
-        padding: 3px 10px;
+        background-color: #FEE2E2;
+        color: #B91C1C;
+        border: 1px solid #FECACA;
+        border-radius: 20px;
+        padding: 4px 12px;
         font-size: 0.78rem;
-        font-weight: 600;
+        font-weight: 700;
     }
-    .badge-id {
-        background-color: #334155;
-        color: #94A3B8;
-        border-radius: 4px;
-        padding: 2px 6px;
+    .badge-id-light {
+        background-color: #F1F5F9;
+        color: #475569;
+        border: 1px solid #E2E8F0;
+        border-radius: 6px;
+        padding: 2px 8px;
         font-size: 0.72rem;
         font-family: 'JetBrains Mono', monospace;
+        font-weight: 600;
     }
 
-    /* Itemized Telemetry Checklist */
-    .telemetry-row {
+    /* Clean Itemized Telemetry Rows */
+    .telemetry-row-light {
         display: flex;
         justify-content: space-between;
         align-items: center;
         padding: 10px 14px;
-        background-color: #0F172A;
-        border: 1px solid #334155;
-        border-radius: 8px;
+        background-color: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
         margin-bottom: 8px;
     }
-    .telemetry-name {
+    .telemetry-name-light {
         font-size: 0.82rem;
-        font-weight: 500;
-        color: #94A3B8;
-    }
-    .telemetry-value {
-        font-size: 0.88rem;
         font-weight: 600;
+        color: #475569;
+    }
+    .telemetry-value-light {
+        font-size: 0.90rem;
+        font-weight: 700;
         font-family: 'JetBrains Mono', monospace;
-        color: #F8FAFC;
+        color: #0F172A;
     }
 
-    /* Minimalist Buttons */
+    /* Sleek Linear/Apple Buttons */
     div.stButton > button {
-        border-radius: 8px !important;
+        border-radius: 10px !important;
         font-weight: 600 !important;
-        font-family: 'Inter', sans-serif !important;
-        border: 1px solid #334155 !important;
-        background-color: #1E293B !important;
-        color: #F8FAFC !important;
-        padding: 8px 18px !important;
-        transition: background-color 0.2s ease, border-color 0.2s ease !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        border: 1px solid #E2E8F0 !important;
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+        padding: 9px 18px !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+        transition: all 0.2s ease !important;
     }
     div.stButton > button:hover {
-        background-color: #334155 !important;
-        border-color: #475569 !important;
-        color: #FFFFFF !important;
+        background-color: #F8FAFC !important;
+        border-color: #CBD5E1 !important;
+        color: #4F46E5 !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08) !important;
     }
 
     /* Primary Accent Download Button */
     div.stDownloadButton > button {
-        border-radius: 8px !important;
+        border-radius: 10px !important;
         background-color: #4F46E5 !important;
-        border: 1px solid #4338CA !important;
+        border: none !important;
         color: #FFFFFF !important;
         font-weight: 600 !important;
-        padding: 8px 20px !important;
+        padding: 10px 22px !important;
+        box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.25) !important;
+        transition: all 0.2s ease !important;
     }
     div.stDownloadButton > button:hover {
         background-color: #4338CA !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 12px -2px rgba(79, 70, 229, 0.35) !important;
     }
 
-    /* Minimalist Sidebar */
+    /* Crisp White Sidebar Drawer */
     section[data-testid="stSidebar"] {
-        background-color: #0B1120 !important;
-        border-right: 1px solid #1E293B !important;
+        background-color: #FFFFFF !important;
+        border-right: 1px solid #E2E8F0 !important;
     }
     section[data-testid="stSidebar"] div[role="radiogroup"] {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 8px;
     }
     section[data-testid="stSidebar"] div[role="radiogroup"] > label {
-        background-color: transparent !important;
-        border: 1px solid transparent !important;
-        border-radius: 8px !important;
-        padding: 9px 12px !important;
-        color: #94A3B8 !important;
-        transition: background-color 0.15s ease !important;
+        background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 10px !important;
+        padding: 10px 14px !important;
+        color: #475569 !important;
+        transition: all 0.2s ease !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
     }
     section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
-        background-color: #1E293B !important;
-        color: #F8FAFC !important;
+        background-color: #F8FAFC !important;
+        color: #0F172A !important;
+        border-color: #CBD5E1 !important;
     }
     section[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"],
     section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {
-        background-color: #1E293B !important;
-        border: 1px solid #334155 !important;
-        border-left: 3px solid #6366F1 !important;
-        color: #F8FAFC !important;
+        background-color: #EEF2FF !important;
+        border: 1px solid #C7D2FE !important;
+        color: #4338CA !important;
+        font-weight: 700 !important;
+        box-shadow: 0 1px 3px rgba(79, 70, 229, 0.1) !important;
     }
 
-    /* Inputs, Selects */
+    /* Inputs, Selectboxes */
     .stSelectbox div[data-baseweb="select"], .stTextInput input {
-        background-color: #0F172A !important;
-        border: 1px solid #334155 !important;
-        border-radius: 8px !important;
-        color: #F8FAFC !important;
+        background-color: #FFFFFF !important;
+        border: 1px solid #CBD5E1 !important;
+        border-radius: 10px !important;
+        color: #0F172A !important;
     }
     .stSelectbox div[data-baseweb="select"]:hover, .stTextInput input:focus {
-        border-color: #6366F1 !important;
+        border-color: #4F46E5 !important;
+        box-shadow: 0 0 0 1px #4F46E5 !important;
     }
 
     /* Accordion Expanders */
     .streamlit-expanderHeader {
-        background-color: #1E293B !important;
-        border: 1px solid #334155 !important;
-        border-radius: 8px !important;
+        background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 10px !important;
         font-weight: 600 !important;
+        color: #0F172A !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -296,7 +319,7 @@ class ProctorVideoProcessor(VideoProcessorBase):
 
 # ---------------- HELPER PLOT FUNCTIONS ----------------
 def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
-    """Renders a clean, minimalist Plotly risk meter gauge."""
+    """Renders a clean, minimalist Plotly risk meter gauge for the light theme."""
     color_map = {
         "LOW": "#10B981",
         "MEDIUM": "#F59E0B",
@@ -308,18 +331,18 @@ def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
         mode="gauge+number",
         value=score,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': f"Risk Score: {risk_level}", 'font': {'size': 14, 'color': '#94A3B8', 'family': 'Inter'}},
-        number={'font': {'size': 30, 'color': '#F8FAFC', 'family': 'JetBrains Mono'}},
+        title={'text': f"Risk Score: {risk_level}", 'font': {'size': 14, 'color': '#475569', 'family': 'Plus Jakarta Sans'}},
+        number={'font': {'size': 32, 'color': '#0F172A', 'family': 'JetBrains Mono'}},
         gauge={
-            'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#475569"},
+            'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#CBD5E1"},
             'bar': {'color': bar_color, 'thickness': 0.3},
-            'bgcolor': "#0F172A",
+            'bgcolor': "#F1F5F9",
             'borderwidth': 1,
-            'bordercolor': "#334155",
+            'bordercolor': "#E2E8F0",
             'steps': [
-                {'range': [0, 30], 'color': "rgba(16, 185, 129, 0.1)"},
-                {'range': [30, 70], 'color': "rgba(245, 158, 11, 0.1)"},
-                {'range': [70, 100], 'color': "rgba(239, 68, 68, 0.15)"},
+                {'range': [0, 30], 'color': "rgba(16, 185, 129, 0.12)"},
+                {'range': [30, 70], 'color': "rgba(245, 158, 11, 0.12)"},
+                {'range': [70, 100], 'color': "rgba(239, 68, 68, 0.12)"},
             ],
             'threshold': {
                 'line': {'color': "#EF4444", 'width': 2},
@@ -328,17 +351,17 @@ def create_gauge_chart(score: float, risk_level: str) -> go.Figure:
             }
         }
     ))
-    fig.update_layout(height=180, margin=dict(l=10, r=10, t=25, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+    fig.update_layout(height=185, margin=dict(l=10, r=10, t=25, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     return fig
 
 
 def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
-    """Renders dynamic risk evolution line chart with clean slate styling."""
+    """Renders dynamic risk evolution line chart with clean light styling."""
     if not metrics:
         fig = go.Figure()
         fig.update_layout(
-            title={'text': "Awaiting Session Telemetry...", 'font': {'color': '#64748B', 'size': 12}},
-            height=180,
+            title={'text': "Awaiting Session Telemetry...", 'font': {'color': '#94A3B8', 'size': 12}},
+            height=185,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)"
         )
@@ -354,15 +377,15 @@ def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
     )
     fig.add_hline(y=70, line_dash="dash", line_color="#EF4444", annotation_text="Alert 70+", annotation_font_color="#EF4444")
     fig.add_hline(y=30, line_dash="dot", line_color="#F59E0B", annotation_text="Warn 30+", annotation_font_color="#F59E0B")
-    fig.update_traces(line_color="#6366F1", line_width=2)
+    fig.update_traces(line_color="#4F46E5", line_width=2)
     fig.update_layout(
-        height=180,
+        height=185,
         margin=dict(l=10, r=10, t=25, b=10),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#94A3B8", family="Inter"),
-        xaxis=dict(gridcolor="#334155"),
-        yaxis=dict(gridcolor="#334155", range=[0, 100])
+        font=dict(color="#64748B", family="Plus Jakarta Sans"),
+        xaxis=dict(gridcolor="#E2E8F0"),
+        yaxis=dict(gridcolor="#E2E8F0", range=[0, 100])
     )
     return fig
 
@@ -370,11 +393,11 @@ def create_timeline_chart(metrics: List[Dict[str, Any]]) -> go.Figure:
 # ---------------- SIDEBAR NAVIGATION ----------------
 with st.sidebar:
     st.markdown("""
-    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+    <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px; margin-bottom: 2px;">
         <span style="font-size: 1.4rem;">🛡️</span>
-        <span style="font-size: 1.15rem; font-weight: 700; color: #F8FAFC;">EviGuard</span>
+        <span style="font-size: 1.2rem; font-weight: 800; color: #0F172A; letter-spacing: -0.02em;">EviGuard</span>
     </div>
-    <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 18px;">Automated Exam Proctoring Suite</div>
+    <div style="font-size: 0.72rem; color: #64748B; margin-bottom: 16px;">AI-Powered Exam Proctoring & XAI Verification</div>
     """, unsafe_allow_html=True)
 
     menu_option = st.radio(
@@ -399,7 +422,7 @@ with st.sidebar:
             st.session_state.active_session_id = default_id
 
     st.markdown("""
-    <div style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: #94A3B8; margin-bottom: 6px;">Active Exam Session</div>
+    <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748B; margin-bottom: 6px;">Active Exam Session</div>
     """, unsafe_allow_html=True)
 
     selected_session = st.selectbox(
@@ -424,10 +447,10 @@ with st.sidebar:
     # Footer System Status
     st.markdown("---")
     st.markdown("""
-    <div style="font-size: 0.70rem; color: #64748B; line-height: 1.5;">
-        <div>Engine: <span style="color: #94A3B8;">YOLOv8 + MediaPipe</span></div>
-        <div>Stream: <span style="color: #94A3B8;">WebRTC Live (30 FPS)</span></div>
-        <div>Database: <span style="color: #34D399;">● Connected</span></div>
+    <div style="font-size: 0.72rem; color: #64748B; line-height: 1.6;">
+        <div>Engine: <span style="font-weight: 600; color: #0F172A;">YOLOv8 + MediaPipe</span></div>
+        <div>Stream: <span style="font-weight: 600; color: #0F172A;">WebRTC Live (30 FPS)</span></div>
+        <div>Database: <span style="color: #15803D; font-weight: 700;">● Connected</span></div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -449,41 +472,41 @@ if menu_option == "📹 Live Proctoring":
     total_inc = current_session.get('total_incidents', 0)
     is_compliant = (total_inc == 0)
 
-    # Top 4 Uniform Flat KPI Tiles
+    # Top 4 Clean White KPI Cards
     kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
 
     with kpi_col1:
         st.markdown(f"""
-        <div class="kpi-tile">
-            <div class="kpi-label">Candidate</div>
-            <div class="kpi-title">{current_session.get('candidate_name', 'Alex Johnson')}</div>
-            <div class="kpi-meta"><span class="badge-id">{current_session.get('candidate_id', 'STD-101')}</span></div>
+        <div class="kpi-card-white">
+            <div class="kpi-label">👤 Candidate Profile</div>
+            <div class="kpi-value">{current_session.get('candidate_name', 'Alex Johnson')}</div>
+            <div class="kpi-meta"><span class="badge-id-light">ID: {current_session.get('candidate_id', 'STD-101')}</span></div>
         </div>
         """, unsafe_allow_html=True)
 
     with kpi_col2:
         st.markdown(f"""
-        <div class="kpi-tile">
-            <div class="kpi-label">Subject & Course</div>
-            <div class="kpi-title" style="font-size: 1.05rem;">{current_session.get('exam_title', 'AI Assessment')}</div>
-            <div class="kpi-meta">Ref: {current_session.get('session_id')}</div>
+        <div class="kpi-card-white">
+            <div class="kpi-label">📚 Subject & Exam</div>
+            <div class="kpi-value" style="font-size: 1.15rem;">{current_session.get('exam_title', 'AI Assessment')}</div>
+            <div class="kpi-meta">Ref: <code>{current_session.get('session_id')}</code></div>
         </div>
         """, unsafe_allow_html=True)
 
     with kpi_col3:
         st.markdown(f"""
-        <div class="kpi-tile">
-            <div class="kpi-label">Live Integrity Score</div>
-            <div class="kpi-title {score_color_cls}">{integrity_score:.1f}%</div>
-            <div class="kpi-meta">Incidents: {total_inc}</div>
+        <div class="kpi-card-white">
+            <div class="kpi-label">🛡️ Live Integrity Score</div>
+            <div class="kpi-value {score_color_cls}">{integrity_score:.1f}%</div>
+            <div class="kpi-meta">Flagged Incidents: {total_inc}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with kpi_col4:
-        badge_html = '<span class="badge-safe">● COMPLIANT</span>' if is_compliant else '<span class="badge-alert">● FLAGGED</span>'
+        badge_html = '<span class="badge-compliant-light">● COMPLIANT</span>' if is_compliant else '<span class="badge-flagged-light">● FLAGGED</span>'
         st.markdown(f"""
-        <div class="kpi-tile">
-            <div class="kpi-label">Session Status</div>
+        <div class="kpi-card-white">
+            <div class="kpi-label">🚦 Session Status</div>
             <div style="margin-top: 4px;">{badge_html}</div>
             <div class="kpi-meta">WebRTC Feed Active</div>
         </div>
@@ -496,10 +519,10 @@ if menu_option == "📹 Live Proctoring":
 
     with col_left:
         st.markdown("""
-        <div class="slate-card">
+        <div class="white-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <span style="font-size: 0.95rem; font-weight: 600; color: #F8FAFC;">Live Video Stream & AI HUD</span>
-                <span style="font-size: 0.72rem; color: #64748B; font-family: 'JetBrains Mono';">640x480 • 30 FPS</span>
+                <span style="font-size: 1.0rem; font-weight: 700; color: #0F172A;">Live Video Stream & AI HUD</span>
+                <span style="font-size: 0.75rem; color: #64748B; font-family: 'JetBrains Mono'; font-weight: 600;">640x480 • 30 FPS</span>
             </div>
         """, unsafe_allow_html=True)
 
@@ -525,8 +548,8 @@ if menu_option == "📹 Live Proctoring":
 
     with col_right:
         st.markdown("""
-        <div class="slate-card">
-            <div style="font-size: 0.95rem; font-weight: 600; color: #F8FAFC; margin-bottom: 10px;">Threat Analysis & Telemetry</div>
+        <div class="white-card">
+            <div style="font-size: 1.0rem; font-weight: 700; color: #0F172A; margin-bottom: 12px;">Threat Analysis & Telemetry</div>
         """, unsafe_allow_html=True)
 
         # Read latest risk metrics from WebRTC processor
@@ -560,21 +583,21 @@ if menu_option == "📹 Live Proctoring":
 
         # Itemized Telemetry Checklist
         st.markdown(f"""
-        <div class="telemetry-row">
-            <span class="telemetry-name">👥 Person Count</span>
-            <span class="telemetry-value">{person_count}</span>
+        <div class="telemetry-row-light">
+            <span class="telemetry-name-light">👥 Person Count</span>
+            <span class="telemetry-value-light">{person_count}</span>
         </div>
-        <div class="telemetry-row">
-            <span class="telemetry-name">🔄 Head Pose Yaw (L/R)</span>
-            <span class="telemetry-value">{yaw_val:+.1f}°</span>
+        <div class="telemetry-row-light">
+            <span class="telemetry-name-light">🔄 Head Pose Yaw (L/R)</span>
+            <span class="telemetry-value-light">{yaw_val:+.1f}°</span>
         </div>
-        <div class="telemetry-row">
-            <span class="telemetry-name">📐 Head Pose Pitch (U/D)</span>
-            <span class="telemetry-value">{pitch_val:+.1f}°</span>
+        <div class="telemetry-row-light">
+            <span class="telemetry-name-light">📐 Head Pose Pitch (U/D)</span>
+            <span class="telemetry-value-light">{pitch_val:+.1f}°</span>
         </div>
-        <div class="telemetry-row">
-            <span class="telemetry-name">👀 Gaze Tracking</span>
-            <span class="telemetry-value">{gaze_status}</span>
+        <div class="telemetry-row-light">
+            <span class="telemetry-name-light">👀 Gaze Tracking</span>
+            <span class="telemetry-value-light">{gaze_status}</span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -660,14 +683,14 @@ elif menu_option == "🔍 Incident Vault":
                             margin=dict(l=10, r=10, t=30, b=10),
                             paper_bgcolor="rgba(0,0,0,0)",
                             plot_bgcolor="rgba(0,0,0,0)",
-                            font=dict(color="#94A3B8", family="Inter")
+                            font=dict(color="#475569", family="Plus Jakarta Sans")
                         )
                         st.plotly_chart(fig_bar, width="stretch", key=f"xai_chart_{inc['id']}")
 
                     if details.get("recommended_action"):
                         st.info(f"**Recommended Action**: {details['recommended_action']}")
 
-                    # Proctor Verification Action Form
+                    # Proctor Decision Controls
                     st.markdown("---")
                     st.markdown("##### Proctor Decision")
                     v_col1, v_col2, v_col3 = st.columns(3)
@@ -723,8 +746,8 @@ elif menu_option == "📊 Analytics & Reports":
             v_types = [i["violation_type"] for i in incidents]
             v_df = pd.Series(v_types).value_counts().reset_index()
             v_df.columns = ["Violation Type", "Count"]
-            fig_pie = px.pie(v_df, values="Count", names="Violation Type", hole=0.4, color_discrete_sequence=px.colors.sequential.Darkmint)
-            fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#F8FAFC", family="Inter"))
+            fig_pie = px.pie(v_df, values="Count", names="Violation Type", hole=0.45, color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#0F172A", family="Plus Jakarta Sans"))
             st.plotly_chart(fig_pie, width="stretch")
         else:
             st.info("No violations recorded for this candidate.")
