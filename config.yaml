@@ -17,7 +17,14 @@ detection:
   model_type: "yolov8"
   model_path: "yolov8n.pt"
   imgsz: 320 # Downscaled input tensor size for ultra-low latency inference
-  confidence_threshold: 0.32 # Detects partially occluded phones/books immediately
+  confidence_threshold: 0.32 # General detector baseline
+  phone_confidence_threshold: 0.55 # Raised threshold specifically for mobile phones to eliminate false positives
+  person_confidence_threshold: 0.50 # Ensures secondary entities are caught
+  phone_min_area: 2800.0 # 40x70 pixels minimum area check
+  phone_min_w: 35.0
+  phone_min_h: 45.0
+  phone_min_aspect_ratio: 1.35
+  phone_max_aspect_ratio: 2.65 # Eliminates narrow cylindrical objects (inhalers, pens, lip balm)
   iou_threshold: 0.45
   target_classes:
     - "person"
@@ -34,7 +41,7 @@ tracking:
   max_disappeared_frames: 30
   iou_distance_threshold: 0.35
   person_conf_threshold: 0.50 # Ensures secondary entities in background/periphery are caught
-  person_nms_iou: 0.45
+  person_nms_iou: 0.45 # Strict NMS overlap suppression to prevent double-counting a single student
   min_person_area: 6000.0
 
 pose_gaze:
@@ -42,9 +49,11 @@ pose_gaze:
   enable_gaze: true
   head_pose:
     # Strict limits (in degrees) to catch slight glancing toward adjacent desks
+    max_yaw_angle: 16.0
+    max_pitch_angle: 14.0
     yaw_limit_left: -16.0
     yaw_limit_right: 16.0
-    pitch_limit_down: -14.0 # Catches looking downward at lap/desk materials
+    pitch_limit_down: 14.0 # Catches looking downward at lap/desk materials
     pitch_limit_up: 20.0
     roll_limit: 20.0
   gaze:

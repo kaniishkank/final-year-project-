@@ -82,10 +82,10 @@ class RiskEngine:
         factors: Dict[str, float] = {}
         is_critical_direct_trigger = False
 
-        # 1. Instant Trigger: Unauthorized mobile phones (confidence >= 0.32)
+        # 1. Instant Trigger: Unauthorized mobile phones (confidence >= 0.50)
         phone_detections = [
             d for d in detections 
-            if d.class_name in ("cell phone", "phone") and d.confidence >= 0.32
+            if d.class_name in ("cell phone", "phone") and d.confidence >= 0.50
         ]
         if phone_detections:
             active_violations.append("PHONE_DETECTED")
