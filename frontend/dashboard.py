@@ -27,6 +27,7 @@ from backend.db.models import DatabaseManager, ExamSession, Incident, RiskMetric
 from backend.detection.base import DetectionResult
 from backend.explainability.reason_generator import ReasonGenerator
 from backend.pipeline import EviGuardPipeline, PipelineOutput
+from backend.reporting.report_generator import generate_candidate_pdf_report, generate_candidate_csv_report
 
 
 # ---------------- PAGE CONFIGURATION & REFINED ENTERPRISE THEME ----------------
@@ -537,18 +538,6 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    pdf_path = os.path.join("docs", "YOLO_Accuracy_and_Integration_Reference.pdf")
-    if os.path.exists(pdf_path):
-        with open(pdf_path, "rb") as f_pdf:
-            pdf_bytes = f_pdf.read()
-        st.download_button(
-            label="📄 Download YOLO Reference PDF",
-            data=pdf_bytes,
-            file_name="YOLO_Accuracy_and_Integration_Reference.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
-
 
 # ---------------- TAB 1: LIVE PROCTORING ----------------
 if menu_option == "📹 Live Proctoring":
@@ -971,58 +960,36 @@ elif menu_option == "📊 Analytics & Reports":
 
     st.markdown("---")
     st.subheader("📄 Export Formal Integrity Report")
-    
-    report_data = {
-        "Session ID": current_session.get("session_id"),
-        "Candidate ID": current_session.get("candidate_id"),
-        "Candidate Name": current_session.get("candidate_name"),
-        "Exam Title": current_session.get("exam_title"),
-        "Integrity Index": f"{current_session.get('integrity_index', 100.0):.1f}%",
-        "Total Incidents": len(incidents),
-        "Peak Risk Score": current_session.get("peak_risk_score", 0.0),
-        "Status": current_session.get("status")
-    }
+    st.caption("Generate audit-grade institutional candidate malpractice reports and tabular incident logs.")
 
-    report_md = f"""# EviGuard Academic Integrity Proctoring Report
-**Generated on**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-## Candidate & Exam Details
-- **Candidate Name**: {report_data['Candidate Name']} ({report_data['Candidate ID']})
-- **Exam Title**: {report_data['Exam Title']}
-- **Session Reference**: `{report_data['Session ID']}`
-- **Overall Integrity Index**: **{report_data['Integrity Index']}**
-- **Total Flagged Incidents**: {report_data['Total Incidents']}
-- **Peak Risk Recorded**: {report_data['Peak Risk Score']}/100
-
-## Incident Summary Table
-| Incident ID | Timestamp | Violation Type | Severity | Risk Score | Proctor Verdict | Reason |
-|---|---|---|---|---|---|---|
-"""
-    for inc in incidents:
-        report_md += f"| #{inc['id']} | {inc['timestamp']} | {inc['violation_type']} | {inc['severity']} | {inc['risk_score']} | {inc['proctor_verdict']} | {inc['reason_summary']} |\n"
-
-    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-    c_dl1, c_dl2 = st.columns(2)
-    with c_dl1:
-        st.download_button(
-            label="📥 Download Integrity Report (.md)",
-            data=report_md,
-            file_name=f"EviGuard_Report_{current_session.get('session_id')}.md",
-            mime="text/markdown",
-            use_container_width=True
-        )
-    with c_dl2:
-        pdf_path = os.path.join("docs", "YOLO_Accuracy_and_Integration_Reference.pdf")
-        if os.path.exists(pdf_path):
-            with open(pdf_path, "rb") as f_pdf:
-                pdf_bytes = f_pdf.read()
+    col_dl1, col_dl2 = st.columns(2)
+    with col_dl1:
+        try:
+            cand_pdf_data = generate_candidate_pdf_report(current_session.get("session_id"), db_manager)
             st.download_button(
-                label="📄 Download YOLO Reference (.pdf)",
-                data=pdf_bytes,
-                file_name="YOLO_Accuracy_and_Integration_Reference.pdf",
+                label="📄 Download Candidate Integrity Report (.pdf)",
+                data=cand_pdf_data,
+                file_name=f"EviGuard_Integrity_Report_{current_session.get('session_id')}.pdf",
                 mime="application/pdf",
+                help="Download formal academic integrity report with candidate identity, incident breakdown, and proctor sign-off.",
                 use_container_width=True
             )
+        except Exception as e:
+            st.error(f"Error compiling PDF report: {e}")
+
+    with col_dl2:
+        try:
+            cand_csv_data = generate_candidate_csv_report(current_session.get("session_id"), db_manager)
+            st.download_button(
+                label="📊 Export Incident Audit Trail (.csv)",
+                data=cand_csv_data,
+                file_name=f"EviGuard_Audit_Trail_{current_session.get('session_id')}.csv",
+                mime="text/csv",
+                help="Export complete tabular incident logs and AI confidence metrics for university archives.",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Error compiling CSV export: {e}")
 
 
 # ---------------- TAB 4: SETTINGS & SENSITIVITY ----------------
