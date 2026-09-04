@@ -46,18 +46,7 @@ class ReasonGenerator:
         candidate_name: str = "Candidate",
         timestamp_str: Optional[str] = None
     ) -> IncidentExplanation:
-        """Constructs audit-grade natural language explanation and factor attributions.
-        
-        Args:
-            risk: Risk evaluation from RiskEngine.
-            detections: List of detected objects.
-            pose_gaze: Pose & Gaze state.
-            candidate_name: Name of the student.
-            timestamp_str: Formatted time string.
-            
-        Returns:
-            IncidentExplanation object.
-        """
+        """Constructs audit-grade natural language explanation and factor attributions."""
         if not timestamp_str:
             timestamp_str = datetime.now().strftime("%H:%M:%S")
 
@@ -116,17 +105,27 @@ class ReasonGenerator:
             )
             actions.append("Check if candidate left the workstation or if camera connection was blocked.")
 
-        # 5. Prolonged Gaze Malpractice (>2.0s)
-        if "prolonged_gaze_malpractice" in factors:
+        # 5. Hand / Finger Signalling Malpractice
+        if "hand_signalling" in factors or getattr(pose_gaze, "hand_signalling", False):
+            headlines.append("Suspicious Hand / Finger Signalling Detected")
+            sentences.append(
+                f"Candidate exhibited sustained suspicious hand/finger signalling "
+                f"({getattr(pose_gaze, 'hand_gesture_label', 'finger counting')}) "
+                f"indicative of communicating options or answers to peers."
+            )
+            actions.append("Issue integrity warning; instruct candidate to keep hands on keyboard/desk.")
+
+        # 6. Prolonged Gaze Malpractice (>2.0s)
+        elif "prolonged_gaze_malpractice" in factors:
             sec_val = max(2.0, round(getattr(pose_gaze, "gaze_violation_seconds", 2.0), 1))
-            headlines.append(f"Malpractice: Sustained Gaze/Eye Deviation ({pose_gaze.gaze_direction}) for {sec_val}s")
+            headlines.append(f"Malpractice: Sustained Gaze Deviation ({pose_gaze.gaze_direction}) for {sec_val}s")
             sentences.append(
                 f"Candidate maintained prolonged gaze deviation ({pose_gaze.gaze_direction}) "
                 f"continuously for {sec_val}s without refocusing on the exam display."
             )
             actions.append("Flag for academic review; instruct student to look directly at the screen.")
 
-        # 6. Transient Gaze / Head Pose Deviations
+        # 7. Transient Gaze / Head Pose Deviations
         elif "head_pose_deviation" in factors or "gaze_deviation" in factors:
             if "LOOKING DOWN" in pose_gaze.gaze_direction:
                 headlines.append("Sustained Downward Gaze (Desk/Lap)")
@@ -156,10 +155,10 @@ class ReasonGenerator:
             f"with an aggregate risk score of {risk.smoothed_score}/100. " + " ".join(sentences)
         )
         recommended_action = " | ".join(actions[:2])
-        overall_confidence = float(sum(confidences) / len(confidences)) if confidences else 0.85
+        overall_confidence = float(sum(confidences) / len(confidences)) if confidences else 0.88
 
         # Determine severity level
-        if "cell_phone" in factors or "multiple_persons" in factors or "prolonged_gaze_malpractice" in factors or risk.smoothed_score >= 80.0:
+        if "cell_phone" in factors or "multiple_persons" in factors or "prolonged_gaze_malpractice" in factors or "hand_signalling" in factors or risk.smoothed_score >= 80.0:
             severity = "CRITICAL"
         elif risk.smoothed_score >= 60.0:
             severity = "HIGH"

@@ -1,10 +1,12 @@
 """
 Multi-Object and Person Tracker Module
 Maintains identity persistence across frames using IoU & centroid matching.
-Includes robust Non-Maximum Suppression (NMS), confidence filtering, and primary candidate identification.
+Includes robust Non-Maximum Suppression (NMS), confidence filtering, 
+and strict secondary person centroid distance validation (>150px) to prevent false intruder alerts from arm/posture movements.
 """
 
 from typing import List, Dict, Any, Optional, Tuple
+import math
 import numpy as np
 from ..detection.base import DetectionResult
 
@@ -54,9 +56,10 @@ class PersonTracker:
         self.config = config or {}
         self.max_disappeared = self.config.get("max_disappeared_frames", 30)
         self.iou_threshold = self.config.get("iou_distance_threshold", 0.35)
-        self.person_conf_threshold = self.config.get("person_conf_threshold", 0.55)
+        self.person_conf_threshold = self.config.get("person_conf_threshold", 0.50)
         self.person_nms_iou = self.config.get("person_nms_iou", 0.45)
         self.min_person_area = self.config.get("min_person_area", 6000.0) # Filter out tiny noise boxes
+        self.min_person_distance = self.config.get("min_person_distance", 150.0) # Minimum 150px centroid separation for genuine secondary person
         
         self.next_track_id = 1
         self.tracks: Dict[int, TrackedObject] = {}
@@ -91,8 +94,15 @@ class PersonTracker:
 
         return intersection / min_area if min_area > 0 else 0.0
 
+    @staticmethod
+    def compute_centroid_distance(box1: List[float], box2: List[float]) -> float:
+        """Computes Euclidean distance between bounding box centers."""
+        c1_x, c1_y = (box1[0] + box1[2]) / 2.0, (box1[1] + box1[3]) / 2.0
+        c2_x, c2_y = (box2[0] + box2[2]) / 2.0, (box2[1] + box2[3]) / 2.0
+        return math.sqrt((c1_x - c2_x) ** 2 + (c1_y - c2_y) ** 2)
+
     def _filter_and_nms_persons(self, detections: List[DetectionResult]) -> List[DetectionResult]:
-        """Filters low-confidence persons and applies NMS to prevent double counting a single individual."""
+        """Filters low-confidence persons and applies strict NMS + spatial distance check to prevent double-counting."""
         person_dets = [d for d in detections if d.class_name == "person" and d.confidence >= self.person_conf_threshold]
         other_dets = [d for d in detections if d.class_name != "person"]
 
@@ -112,9 +122,10 @@ class PersonTracker:
             for kept in kept_persons:
                 iou = self.compute_iou(det.box, kept.box)
                 i_min = self.compute_intersection_over_min(det.box, kept.box)
+                dist = self.compute_centroid_distance(det.box, kept.box)
                 
-                # If high IoU or one box is inside another, suppress duplicate
-                if iou >= self.person_nms_iou or i_min >= 0.70:
+                # If high IoU, one box is inside another, or centroid distance < 150px, merge as single individual (extended arm/gesture)
+                if iou >= self.person_nms_iou or i_min >= 0.55 or dist < self.min_person_distance:
                     should_keep = False
                     break
 
@@ -202,13 +213,5 @@ class PersonTracker:
         return filtered_detections
 
     def get_person_count(self) -> int:
-        """Returns the number of verified, distinct persons in the frame."""
-        return sum(
-            1 for t in self.tracks.values()
-            if t.class_name == "person" and t.disappeared_count == 0
-        )
-
-    def reset(self):
-        """Clears all tracking state."""
-        self.tracks.clear()
-        self.next_track_id = 1
+        """Returns count of active tracked persons."""
+        return sum(1 for t in self.tracks.values() if t.class_name == "person" and t.disappeared_count == 0)

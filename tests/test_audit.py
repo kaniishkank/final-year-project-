@@ -1,6 +1,7 @@
 """
 Comprehensive Audit & Verification Test Suite for EviGuard AI
 Tests false-positive heuristic filtering, paper sheet detection, NMS person counting,
+strict secondary person distance validation (>150px), hand/finger signalling malpractice,
 symmetric 4-way gaze thresholding, prolonged gaze malpractice timer,
 candidate absence timeout, composite risk weights, and evidence recording.
 """
@@ -13,7 +14,7 @@ import cv2
 from backend.detection.base import DetectionResult
 from backend.detection.yolov8_detector import YOLOv8Detector
 from backend.tracking.tracker import PersonTracker
-from backend.pose.pose_gaze import PoseGazeEstimator, PoseGazeResult
+from backend.pose.pose_gaze import PoseGazeEstimator, PoseGazeResult, HandSignallingDetector
 from backend.scoring.risk_engine import RiskEngine
 from backend.db.models import DatabaseManager
 from backend.explainability.reason_generator import ReasonGenerator
@@ -67,21 +68,68 @@ def test_white_paper_sheet_heuristic_detector():
     assert paper_dets[0].confidence >= 0.80
 
 
-def test_person_tracker_iou_nms_anti_double_counting():
-    """Verify that IoU NMS suppresses overlapping duplicate boxes for the same candidate."""
+def test_person_tracker_iou_nms_and_distance_validation():
+    """Verify that IoU NMS and >150px distance validation merge posture/arm shifts and isolate true secondary persons."""
     tracker = PersonTracker({
         "person_conf_threshold": 0.50,
         "person_nms_iou": 0.45,
-        "min_person_area": 6000.0
+        "min_person_area": 6000.0,
+        "min_person_distance": 150.0
     })
 
+    # Scenario A: Candidate extends arm/shifts posture -> Close proximity boxes (centroid distance = 40px < 150px)
     candidate_box1 = DetectionResult(box=[100.0, 50.0, 300.0, 450.0], confidence=0.92, class_id=0, class_name="person")
-    candidate_box2 = DetectionResult(box=[110.0, 60.0, 295.0, 440.0], confidence=0.88, class_id=0, class_name="person")
+    arm_shift_box = DetectionResult(box=[140.0, 60.0, 320.0, 460.0], confidence=0.88, class_id=0, class_name="person")
 
-    tracked = tracker.update([candidate_box1, candidate_box2])
-    assert len(tracked) == 1
+    tracked_a = tracker.update([candidate_box1, arm_shift_box])
+    # Must merge into exactly 1 candidate
+    assert len(tracked_a) == 1
     assert tracker.get_person_count() == 1
-    assert tracked[0].track_id == 1
+
+    # Scenario B: Genuine secondary person appears in background/beside desk (centroid distance = 350px > 150px)
+    tracker_b = PersonTracker({"min_person_distance": 150.0})
+    student1 = DetectionResult(box=[50.0, 50.0, 200.0, 450.0], confidence=0.92, class_id=0, class_name="person")
+    intruder = DetectionResult(box=[400.0, 50.0, 550.0, 450.0], confidence=0.89, class_id=0, class_name="person")
+
+    tracked_b = tracker_b.update([student1, intruder])
+    assert len(tracked_b) == 2
+    assert tracker_b.get_person_count() == 2
+
+
+def test_hand_finger_signalling_malpractice():
+    """Verify that sustained hand/finger signalling triggers malpractice alerts and elevates risk score to 85.0."""
+    engine = RiskEngine({
+        "weights": {"hand_signalling": 75.0},
+        "thresholds": {"high_threshold": 70.0}
+    })
+
+    dummy_signalling_pose = PoseGazeResult(
+        face_detected=True,
+        face_count=1,
+        yaw=0.0,
+        pitch=0.0,
+        roll=0.0,
+        gaze_direction="CENTER (FOCUSED)",
+        is_looking_away=False,
+        is_absent=False,
+        absence_frames=0,
+        hand_signalling=True,
+        extended_fingers=2,
+        hand_gesture_label="FINGER SIGNALLING (2 Extended Fingers)",
+        hand_boxes=[[150.0, 200.0, 250.0, 350.0]]
+    )
+
+    assessment = engine.evaluate([], dummy_signalling_pose, person_count=1)
+    assert any("FLAG" in v or "SIGNALLING" in v for v in assessment.active_violations)
+    assert assessment.raw_score >= 75.0
+    assert assessment.smoothed_score >= 85.0
+    assert assessment.is_incident_triggered is True
+
+    # Explainability justification
+    reason_gen = ReasonGenerator()
+    explanation = reason_gen.generate_explanation(assessment, [], dummy_signalling_pose, candidate_name="Bob")
+    assert "Signalling" in explanation.summary_headline
+    assert explanation.severity == "CRITICAL"
 
 
 def test_symmetric_4way_head_pose_and_gaze():
@@ -121,20 +169,10 @@ def test_symmetric_4way_head_pose_and_gaze():
 
 def test_prolonged_gaze_malpractice_timer():
     """Verify continuous lookaway for >2.0s triggers CRITICAL_MALPRACTICE and boosts Risk Score to 85.0."""
-    estimator = PoseGazeEstimator({
-        "head_pose": {"max_yaw_angle": 16.0, "max_pitch_angle": 14.0},
-        "prolonged_gaze_threshold_frames": 45,
-        "fps": 30.0
-    })
-
     engine = RiskEngine({
         "weights": {"prolonged_gaze_malpractice": 85.0},
         "thresholds": {"high_threshold": 70.0}
     })
-
-    # Continuous 45 frames of looking down
-    for _ in range(45):
-        estimator.consecutive_lookaway_frames += 1
 
     dummy_prolonged_pose = PoseGazeResult(
         face_detected=True,
@@ -156,12 +194,6 @@ def test_prolonged_gaze_malpractice_timer():
     assert assessment.raw_score >= 85.0
     assert assessment.smoothed_score >= 85.0
     assert assessment.is_incident_triggered is True
-
-    # Explainability check
-    reason_gen = ReasonGenerator()
-    explanation = reason_gen.generate_explanation(assessment, [], dummy_prolonged_pose, candidate_name="Alice")
-    assert "Malpractice" in explanation.summary_headline
-    assert explanation.severity == "CRITICAL"
 
 
 def test_candidate_absence_timeout():

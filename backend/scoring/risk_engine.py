@@ -1,8 +1,8 @@
 """
 Dynamic Risk Scoring Engine Module
-Aggregates detection, tracking, and pose/gaze signals to compute real-time suspiciousness index.
+Aggregates detection, tracking, pose/gaze, and hand/finger signalling signals to compute real-time suspiciousness index.
 Configured for Strict Zero-Tolerance High-Security Proctoring with direct triggers for cell phones,
-multiple persons, unauthorized paper/notes, candidate absence, and prolonged gaze malpractice.
+multiple persons, unauthorized paper/notes, candidate absence, prolonged gaze malpractice, and finger signalling.
 """
 
 from dataclasses import dataclass, field
@@ -50,6 +50,7 @@ class RiskEngine:
         self.w_phone = float(weights_cfg.get("cell_phone", 85.0)) # Instant critical alert
         self.w_multiple_persons = float(weights_cfg.get("multiple_persons", 80.0)) # Instant critical intruder alert
         self.w_face_absent = float(weights_cfg.get("face_absent", 75.0)) # Immediate seat abandonment
+        self.w_hand_signalling = float(weights_cfg.get("hand_signalling", 75.0)) # Finger/hand gesture cheating
         self.w_gaze = float(weights_cfg.get("gaze_deviation", 45.0)) # Gaze accumulation (+45.0)
         self.w_head_pose = float(weights_cfg.get("head_pose_deviation", 45.0))
         self.w_suspicious_object = float(weights_cfg.get("suspicious_object", 40.0))
@@ -79,7 +80,7 @@ class RiskEngine:
         person_count: int,
         student_id: int = 1
     ) -> RiskAssessment:
-        """Evaluates proctoring signals with instant triggers for critical threats and prolonged gaze."""
+        """Evaluates proctoring signals with instant triggers for critical threats, hand gestures, and prolonged gaze."""
         active_violations: List[str] = []
         factors: Dict[str, float] = {}
         is_critical_direct_trigger = False
@@ -94,7 +95,7 @@ class RiskEngine:
             factors["cell_phone"] = self.w_phone
             is_critical_direct_trigger = True
 
-        # 2. Instant Trigger: Multiple persons / unauthorized secondary intruder
+        # 2. Strict Real Secondary Person Validation (require genuine secondary presence)
         if person_count > 1 or pose_gaze.face_count > 1:
             active_violations.append("MULTIPLE_PERSONS")
             factors["multiple_persons"] = self.w_multiple_persons
@@ -118,8 +119,15 @@ class RiskEngine:
             if pose_gaze.absence_frames >= 15:
                 is_critical_direct_trigger = True
 
-        # 5. Prolonged Gaze Malpractice (continuous sustained deviation > 2.0s / ~45-60 frames)
-        elif pose_gaze.face_detected and (
+        # 5. Hand / Finger Signalling Malpractice (e.g. signaling 1-4 fingers to communicate answers)
+        if getattr(pose_gaze, "hand_signalling", False) or getattr(pose_gaze, "hand_gesture_label", ""):
+            label = getattr(pose_gaze, "hand_gesture_label", "FINGER SIGNALLING") or "FINGER SIGNALLING"
+            active_violations.append(f"FLAG: {label}")
+            factors["hand_signalling"] = self.w_hand_signalling
+            is_critical_direct_trigger = True
+
+        # 6. Prolonged Gaze Malpractice (continuous sustained deviation > 2.0s / ~45-60 frames)
+        if pose_gaze.face_detected and (
             pose_gaze.is_prolonged_lookaway or 
             getattr(pose_gaze, "gaze_violation_frames", 0) >= 45 or
             getattr(pose_gaze, "gaze_violation_seconds", 0.0) >= 2.0
@@ -131,7 +139,7 @@ class RiskEngine:
             factors["prolonged_gaze_malpractice"] = self.w_prolonged_gaze
             is_critical_direct_trigger = True
 
-        # 6. Standard 4-Way Gaze & Head Pose Deviations (LEFT, RIGHT, DOWN, UP)
+        # 7. Standard 4-Way Gaze & Head Pose Deviations (LEFT, RIGHT, DOWN, UP)
         elif pose_gaze.face_detected and (pose_gaze.is_looking_away or ("CENTER" not in pose_gaze.gaze_direction.upper())):
             gaze_dir = pose_gaze.gaze_direction.upper()
             if "LOOKING LEFT" in gaze_dir or "LEFT" in gaze_dir:
@@ -162,6 +170,8 @@ class RiskEngine:
         # Apply Instant Bypass for Critical Violations or Fast Smoothing
         if is_critical_direct_trigger and raw_score >= 70.0:
             student_smoothed = max(student_smoothed, raw_score)
+            if factors.get("hand_signalling"):
+                student_smoothed = max(student_smoothed, 85.0)
         else:
             if raw_score > student_smoothed:
                 student_smoothed = (

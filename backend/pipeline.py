@@ -412,7 +412,25 @@ class EviGuardPipeline:
             cv2.rectangle(frame, (x1, max(0, y1 - 20)), (x1 + lw + 8, max(0, y1)), color, -1)
             cv2.putText(frame, label, (x1 + 4, max(0, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
 
-        # 2. Draw 3D Gaze / Head Pose Vector
+        # 2. Draw Hand Signalling Bounding Boxes
+        if getattr(pose_gaze, "hand_boxes", None):
+            for h_box in pose_gaze.hand_boxes:
+                hx1, hy1, hx2, hy2 = [int(v) for v in h_box]
+                is_signalling = getattr(pose_gaze, "hand_signalling", False)
+                fingers = getattr(pose_gaze, "extended_fingers", 0)
+                if is_signalling:
+                    h_color = (0, 0, 255) # Red
+                    h_label = f"FLAG: SUSPICIOUS HAND GESTURE / FINGER SIGNALLING ({fingers} Fingers)"
+                else:
+                    h_color = (0, 215, 255) # Yellow/Amber
+                    h_label = f"HAND DETECTED ({fingers} Fingers)"
+
+                cv2.rectangle(frame, (hx1, hy1), (hx2, hy2), h_color, 2)
+                (hw, hh), _ = cv2.getTextSize(h_label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+                cv2.rectangle(frame, (hx1, max(0, hy1 - 20)), (hx1 + hw + 8, max(0, hy1)), h_color, -1)
+                cv2.putText(frame, h_label, (hx1 + 4, max(0, hy1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1, cv2.LINE_AA)
+
+        # 3. Draw 3D Gaze / Head Pose Vector
         if pose_gaze.face_detected and pose_gaze.landmarks_2d:
             nose_pt = pose_gaze.landmarks_2d[0]
             p1 = (int(nose_pt[0]), int(nose_pt[1]))
@@ -425,7 +443,7 @@ class EviGuardPipeline:
             for pt in pose_gaze.landmarks_2d:
                 cv2.circle(frame, (int(pt[0]), int(pt[1])), 2, (0, 255, 255), -1)
 
-        # 3. Render Top HUD Banner
+        # 4. Render Top HUD Banner
         overlay = frame.copy()
         cv2.rectangle(overlay, (0, 0), (w, 55), (20, 20, 25), -1)
         cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)

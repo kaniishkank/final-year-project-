@@ -46,6 +46,7 @@ tracking:
   person_conf_threshold: 0.50 # Ensures secondary entities in background/periphery are caught
   person_nms_iou: 0.45 # Strict NMS overlap suppression to prevent double-counting a single student
   min_person_area: 6000.0
+  min_person_distance: 150.0 # Require >150px centroid separation before flagging secondary person
 
 pose_gaze:
   enable_pose: true
@@ -62,6 +63,9 @@ pose_gaze:
   gaze:
     look_away_continuous_frames: 10
     prolonged_gaze_threshold_frames: 45 # >2.0s continuous lookaway triggers CRITICAL_MALPRACTICE
+  hand_signalling:
+    enable: true
+    hand_signalling_frames: 35 # >1.2s - 1.5s continuous finger gesture triggers hand_signalling
   face_absence:
     absence_frames_threshold: 15 # ~0.5s rapid response on missing face
 
@@ -71,6 +75,7 @@ risk_engine:
     cell_phone: 85.0 # Instant critical alert on detection
     multiple_persons: 80.0 # Instant critical intruder alert
     face_absent: 75.0 # Immediate seat abandonment flag
+    hand_signalling: 75.0 # Suspicious finger gesture / answer signalling
     prolonged_gaze_malpractice: 85.0 # Sustained >2.0s deviation instant critical alert
     gaze_deviation: 45.0 # Accumulates to breach alert threshold in <1.5s
     head_pose_deviation: 45.0
