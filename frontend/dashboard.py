@@ -289,7 +289,7 @@ pipeline = get_pipeline()
 
 # ---------------- HIGH-SPEED THREADED OPENCV CAMERA WORKER ----------------
 class ThreadedCamera:
-    """Zero-latency threaded hardware camera capture worker with DirectShow backend."""
+    """Zero-latency threaded hardware camera capture worker with multi-backend fallback and simulation guard."""
 
     def __init__(self, src: int = 0, width: int = 640, height: int = 480):
         self.src = src
@@ -300,24 +300,56 @@ class ThreadedCamera:
         self.running = False
         self.lock = threading.Lock()
         self.thread: Optional[threading.Thread] = None
+        self.is_hardware_camera = False
 
     def start(self):
         if self.running:
             return self
 
-        # Initialize hardware capture device (DirectShow on Windows for instant response)
+        # Try multiple camera backends safely to prevent DirectShow C++ driver crashes
+        backends_to_try = []
         if os.name == 'nt':
-            self.cap = cv2.VideoCapture(self.src, cv2.CAP_DSHOW)
+            backends_to_try = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
         else:
-            self.cap = cv2.VideoCapture(self.src)
+            backends_to_try = [cv2.CAP_V4L2, cv2.CAP_ANY]
 
-        if not self.cap or not self.cap.isOpened():
-            self.cap = cv2.VideoCapture(self.src)
+        self.cap = None
+        for backend in backends_to_try:
+            try:
+                cap = cv2.VideoCapture(self.src, backend)
+                if cap is not None and cap.isOpened():
+                    # Test a single frame retrieval safely
+                    ret, test_frame = cap.read()
+                    if ret and test_frame is not None and test_frame.size > 0:
+                        self.cap = cap
+                        self.is_hardware_camera = True
+                        break
+                    else:
+                        cap.release()
+            except Exception as e:
+                logger.debug(f"OpenCV backend {backend} initialization failed: {e}")
+                continue
 
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        self.cap.set(cv2.CAP_PROP_FPS, 30)
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        # Fallback to default VideoCapture if backend-specific attempts failed
+        if self.cap is None or not self.cap.isOpened():
+            try:
+                cap = cv2.VideoCapture(self.src)
+                if cap is not None and cap.isOpened():
+                    self.cap = cap
+                    self.is_hardware_camera = True
+            except Exception as e:
+                logger.warning(f"Default VideoCapture({self.src}) failed: {e}")
+                self.cap = None
+
+        # Safely configure capture resolution inside try/except guard
+        if self.cap is not None and self.cap.isOpened():
+            try:
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                self.cap.set(cv2.CAP_PROP_FPS, 30)
+                self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception as e:
+                logger.warning(f"Could not set camera properties: {e}")
 
         self.running = True
         self.thread = threading.Thread(target=self._capture_worker, daemon=True)
@@ -325,15 +357,45 @@ class ThreadedCamera:
         return self
 
     def _capture_worker(self):
+        sim_step = 0
         while self.running:
-            if self.cap and self.cap.isOpened():
-                ret = self.cap.grab()
-                if ret:
-                    _, frame = self.cap.retrieve()
-                    if frame is not None and frame.size > 0:
-                        with self.lock:
-                            self.frame = frame
-            time.sleep(0.005)
+            frame_grabbed = False
+            if self.cap is not None and self.cap.isOpened():
+                try:
+                    ret = self.cap.grab()
+                    if ret:
+                        _, frame = self.cap.retrieve()
+                        if frame is not None and frame.size > 0:
+                            with self.lock:
+                                self.frame = frame
+                            frame_grabbed = True
+                except Exception as e:
+                    logger.debug(f"Frame capture grab exception: {e}")
+
+            if not frame_grabbed:
+                # If hardware camera is busy/disconnected, synthesize an animated proctoring test pattern
+                sim_step += 1
+                h, w = self.height, self.width
+                sim_frame = np.zeros((h, w, 3), dtype=np.uint8)
+                sim_frame[:] = (20, 24, 32)
+                
+                # Synthetic candidate representation
+                center_x = int(w / 2 + math.sin(sim_step * 0.05) * 15)
+                center_y = int(h / 2)
+                
+                cv2.circle(sim_frame, (center_x, center_y - 20), 45, (55, 65, 80), -1)
+                cv2.circle(sim_frame, (center_x, center_y - 20), 45, (0, 200, 255), 2)
+                cv2.ellipse(sim_frame, (center_x, center_y + 110), (90, 70), 0, 0, 360, (45, 52, 65), -1)
+                
+                cv2.putText(sim_frame, "EVIGUARD CAMERA FEED INITIALIZING", (30, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 220, 255), 2, cv2.LINE_AA)
+                cv2.putText(sim_frame, "Verifying hardware camera connection...", (30, h - 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.42, (150, 150, 160), 1, cv2.LINE_AA)
+                
+                with self.lock:
+                    self.frame = sim_frame
+
+            time.sleep(0.015)
 
     def read(self) -> Optional[np.ndarray]:
         with self.lock:
@@ -342,9 +404,13 @@ class ThreadedCamera:
     def stop(self):
         self.running = False
         if self.thread and self.thread.is_alive():
-            self.thread.join(timeout=1.0)
-        if self.cap and self.cap.isOpened():
-            self.cap.release()
+            self.thread.join(timeout=0.5)
+        if self.cap is not None:
+            try:
+                if self.cap.isOpened():
+                    self.cap.release()
+            except Exception:
+                pass
         self.cap = None
         self.frame = None
 
