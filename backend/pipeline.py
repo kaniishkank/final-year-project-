@@ -207,15 +207,26 @@ class EviGuardPipeline:
         if is_inference_frame:
             detections = self.detector.detect(frame)
             tracked_detections = self.tracker.update(detections)
-            person_count = self.tracker.get_person_count()
-
-            # Multi-student tracking
+            # Multi-student tracking & Count-Based Verification
             person_dets = [d for d in tracked_detections if d.class_name == "person"]
             if person_dets:
-                self.active_student_ids = [d.track_id for d in person_dets if d.track_id is not None]
-                if not self.active_student_ids:
-                    self.active_student_ids = [1]
+                person_dets.sort(key=lambda d: d.area, reverse=True)
+                primary_person = person_dets[0]
+                
+                # Check for genuine secondary persons (distance > 120px from primary candidate)
+                valid_secondaries = []
+                for p in person_dets[1:]:
+                    dist = math.sqrt(
+                        ((p.box[0] + p.box[2]) / 2.0 - (primary_person.box[0] + primary_person.box[2]) / 2.0) ** 2 +
+                        ((p.box[1] + p.box[3]) / 2.0 - (primary_person.box[1] + primary_person.box[3]) / 2.0) ** 2
+                    )
+                    if dist > 120.0:
+                        valid_secondaries.append(p)
+
+                person_count = 1 + len(valid_secondaries)
+                self.active_student_ids = [d.track_id for d in person_dets if d.track_id is not None] or [1]
             else:
+                person_count = 0
                 self.active_student_ids = [1]
 
             # Fair round-robin selection for cropped FaceMesh calculation
@@ -385,6 +396,10 @@ class EviGuardPipeline:
         """Draws sleek HUD overlays, bounding boxes, gaze vectors, and status cards."""
         h, w = frame.shape[:2]
 
+        # Identify person detections and primary student (largest box)
+        person_dets = [d for d in detections if d.class_name == "person"]
+        primary_person = max(person_dets, key=lambda d: d.area) if person_dets else None
+
         # 1. Draw Object Detection Bounding Boxes
         for det in detections:
             x1, y1, x2, y2 = [int(v) for v in det.box]
@@ -397,12 +412,22 @@ class EviGuardPipeline:
                 color = (0, 165, 255) # High-visibility Amber/Yellow
                 label = f"UNAUTHORIZED PAPER/NOTES ({det.confidence*100:.0f}%)"
             elif "person" in cls_name:
-                if det.track_id == 1:
-                    color = (255, 180, 0) # Cyan for primary candidate
-                    label = f"Student #1 (Candidate) ({det.confidence*100:.0f}%)"
+                if det is primary_person or len(person_dets) == 1:
+                    color = (255, 200, 0) # Cyan / Neutral for primary candidate
+                    label = f"Student (Active) ({det.confidence*100:.0f}%)"
                 else:
-                    color = (0, 0, 255) # Red for unauthorized second person
-                    label = f"ALERT: Secondary Person #{det.track_id} ({det.confidence*100:.0f}%)"
+                    dist = 0.0
+                    if primary_person:
+                        dist = math.sqrt(
+                            ((det.box[0] + det.box[2]) / 2.0 - (primary_person.box[0] + primary_person.box[2]) / 2.0) ** 2 +
+                            ((det.box[1] + det.box[3]) / 2.0 - (primary_person.box[1] + primary_person.box[3]) / 2.0) ** 2
+                        )
+                    if len(person_dets) > 1 and dist > 120.0:
+                        color = (0, 0, 255) # Red for unauthorized second person
+                        label = f"ALERT: Secondary Person (Intruder) ({det.confidence*100:.0f}%)"
+                    else:
+                        color = (255, 200, 0)
+                        label = f"Student (Active) ({det.confidence*100:.0f}%)"
             else:
                 color = (0, 255, 0)
                 label = f"{det.class_name} ({det.confidence*100:.0f}%)"
