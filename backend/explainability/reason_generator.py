@@ -75,7 +75,7 @@ class ReasonGenerator:
         actions: List[str] = []
         confidences: List[float] = []
 
-        # 1. Device Detections
+        # 1. Device Detections (Phone)
         phones = [d for d in detections if d.class_name in ("cell phone", "phone")]
         if phones:
             p_conf = max(p.confidence for p in phones)
@@ -87,14 +87,14 @@ class ReasonGenerator:
             )
             actions.append("Issue immediate warning; request student to place phone out of reach.")
 
-        # 2. Study Material Detections
-        books = [d for d in detections if d.class_name in ("book", "notes")]
-        if books:
-            b_conf = max(b.confidence for b in books)
+        # 2. Paper & Study Material Detections
+        papers = [d for d in detections if d.class_name in ("book", "notes", "unauthorized paper/notes", "paper")]
+        if papers:
+            b_conf = max(b.confidence for b in papers)
             confidences.append(b_conf)
-            headlines.append("Unauthorized Reference Materials")
+            headlines.append("Unauthorized Paper / Cheat Notes Detected")
             sentences.append(
-                f"Suspicious physical study material/book was detected on the desk "
+                f"Physical notes or unauthorized paper material was detected on the desk surface "
                 f"(confidence: {b_conf * 100:.1f}%)."
             )
             actions.append("Request a clear 360-degree camera pan of desk surface.")
@@ -116,16 +116,26 @@ class ReasonGenerator:
             )
             actions.append("Check if candidate left the workstation or if camera connection was blocked.")
 
-        # 5. Gaze / Head Pose
-        if "head_pose_deviation" in factors or "gaze_deviation" in factors:
-            if "LOOKING_DOWN" in pose_gaze.gaze_direction:
+        # 5. Prolonged Gaze Malpractice (>2.0s)
+        if "prolonged_gaze_malpractice" in factors:
+            sec_val = max(2.0, round(getattr(pose_gaze, "gaze_violation_seconds", 2.0), 1))
+            headlines.append(f"Malpractice: Sustained Gaze/Eye Deviation ({pose_gaze.gaze_direction}) for {sec_val}s")
+            sentences.append(
+                f"Candidate maintained prolonged gaze deviation ({pose_gaze.gaze_direction}) "
+                f"continuously for {sec_val}s without refocusing on the exam display."
+            )
+            actions.append("Flag for academic review; instruct student to look directly at the screen.")
+
+        # 6. Transient Gaze / Head Pose Deviations
+        elif "head_pose_deviation" in factors or "gaze_deviation" in factors:
+            if "LOOKING DOWN" in pose_gaze.gaze_direction:
                 headlines.append("Sustained Downward Gaze (Desk/Lap)")
                 sentences.append(
-                    f"Candidate exhibited sustained downward head pitch ({pose_gaze.pitch:.1f}°) "
+                    f"Candidate exhibited downward head pitch ({pose_gaze.pitch:.1f}°) "
                     f"indicating attention focused below the screen."
                 )
-            elif "LOOKING_LEFT" in pose_gaze.gaze_direction or "LOOKING_RIGHT" in pose_gaze.gaze_direction:
-                direction = "left" if "LOOKING_LEFT" in pose_gaze.gaze_direction else "right"
+            elif "LOOKING LEFT" in pose_gaze.gaze_direction or "LOOKING RIGHT" in pose_gaze.gaze_direction:
+                direction = "left" if "LOOKING LEFT" in pose_gaze.gaze_direction else "right"
                 headlines.append(f"Gaze Deviation (Turned {direction.capitalize()})")
                 sentences.append(
                     f"Candidate turned head significantly to the {direction} (Yaw: {pose_gaze.yaw:.1f}°) "
@@ -149,7 +159,7 @@ class ReasonGenerator:
         overall_confidence = float(sum(confidences) / len(confidences)) if confidences else 0.85
 
         # Determine severity level
-        if "cell_phone" in factors or "multiple_persons" in factors or risk.smoothed_score >= 80.0:
+        if "cell_phone" in factors or "multiple_persons" in factors or "prolonged_gaze_malpractice" in factors or risk.smoothed_score >= 80.0:
             severity = "CRITICAL"
         elif risk.smoothed_score >= 60.0:
             severity = "HIGH"

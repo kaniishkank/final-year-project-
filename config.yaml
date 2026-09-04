@@ -20,6 +20,8 @@ detection:
   confidence_threshold: 0.32 # General detector baseline
   phone_confidence_threshold: 0.55 # Raised threshold specifically for mobile phones to eliminate false positives
   person_confidence_threshold: 0.50 # Ensures secondary entities are caught
+  book_confidence_threshold: 0.40 # Target COCO class 73 (book/paper) threshold
+  enable_paper_heuristic: true # White rectangular sheet contour detector on desk
   phone_min_area: 2800.0 # 40x70 pixels minimum area check
   phone_min_w: 35.0
   phone_min_h: 45.0
@@ -36,6 +38,7 @@ detection:
     - "laptop"
   material_classes:
     - "book"
+    - "unauthorized paper/notes"
 
 tracking:
   max_disappeared_frames: 30
@@ -58,6 +61,7 @@ pose_gaze:
     roll_limit: 20.0
   gaze:
     look_away_continuous_frames: 10
+    prolonged_gaze_threshold_frames: 45 # >2.0s continuous lookaway triggers CRITICAL_MALPRACTICE
   face_absence:
     absence_frames_threshold: 15 # ~0.5s rapid response on missing face
 
@@ -67,6 +71,7 @@ risk_engine:
     cell_phone: 85.0 # Instant critical alert on detection
     multiple_persons: 80.0 # Instant critical intruder alert
     face_absent: 75.0 # Immediate seat abandonment flag
+    prolonged_gaze_malpractice: 85.0 # Sustained >2.0s deviation instant critical alert
     gaze_deviation: 45.0 # Accumulates to breach alert threshold in <1.5s
     head_pose_deviation: 45.0
     suspicious_object: 40.0

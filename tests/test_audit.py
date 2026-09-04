@@ -1,6 +1,7 @@
 """
 Comprehensive Audit & Verification Test Suite for EviGuard AI
-Tests false-positive heuristic filtering, NMS person counting, symmetric 4-way gaze thresholding,
+Tests false-positive heuristic filtering, paper sheet detection, NMS person counting,
+symmetric 4-way gaze thresholding, prolonged gaze malpractice timer,
 candidate absence timeout, composite risk weights, and evidence recording.
 """
 
@@ -8,12 +9,14 @@ import os
 import time
 import numpy as np
 import pytest
+import cv2
 from backend.detection.base import DetectionResult
 from backend.detection.yolov8_detector import YOLOv8Detector
 from backend.tracking.tracker import PersonTracker
 from backend.pose.pose_gaze import PoseGazeEstimator, PoseGazeResult
 from backend.scoring.risk_engine import RiskEngine
 from backend.db.models import DatabaseManager
+from backend.explainability.reason_generator import ReasonGenerator
 from backend.pipeline import EviGuardPipeline
 
 
@@ -50,6 +53,20 @@ def test_phone_heuristic_and_area_filtering():
     assert detector._is_valid_phone_geometry(square_box) is False
 
 
+def test_white_paper_sheet_heuristic_detector():
+    """Verify that a high-contrast rectangular white paper sheet is flagged as unauthorized paper/notes."""
+    detector = YOLOv8Detector({"enable_paper_heuristic": True})
+
+    # Create synthetic frame with a dark background and a white rectangular paper sheet (100x140 px, area 14000 px^2)
+    frame = np.full((480, 640, 3), 40, dtype=np.uint8)
+    cv2.rectangle(frame, (200, 200), (300, 340), (245, 245, 245), -1)
+
+    paper_dets = detector._detect_white_paper_sheets(frame)
+    assert len(paper_dets) >= 1
+    assert paper_dets[0].class_name == "unauthorized paper/notes"
+    assert paper_dets[0].confidence >= 0.80
+
+
 def test_person_tracker_iou_nms_anti_double_counting():
     """Verify that IoU NMS suppresses overlapping duplicate boxes for the same candidate."""
     tracker = PersonTracker({
@@ -58,12 +75,10 @@ def test_person_tracker_iou_nms_anti_double_counting():
         "min_person_area": 6000.0
     })
 
-    # Two overlapping person detections for the exact same student (e.g., upper body + whole body detector artifacts)
     candidate_box1 = DetectionResult(box=[100.0, 50.0, 300.0, 450.0], confidence=0.92, class_id=0, class_name="person")
     candidate_box2 = DetectionResult(box=[110.0, 60.0, 295.0, 440.0], confidence=0.88, class_id=0, class_name="person")
 
     tracked = tracker.update([candidate_box1, candidate_box2])
-    # NMS must merge them into exactly 1 tracked person
     assert len(tracked) == 1
     assert tracker.get_person_count() == 1
     assert tracked[0].track_id == 1
@@ -104,19 +119,62 @@ def test_symmetric_4way_head_pose_and_gaze():
     assert away_u is True
 
 
+def test_prolonged_gaze_malpractice_timer():
+    """Verify continuous lookaway for >2.0s triggers CRITICAL_MALPRACTICE and boosts Risk Score to 85.0."""
+    estimator = PoseGazeEstimator({
+        "head_pose": {"max_yaw_angle": 16.0, "max_pitch_angle": 14.0},
+        "prolonged_gaze_threshold_frames": 45,
+        "fps": 30.0
+    })
+
+    engine = RiskEngine({
+        "weights": {"prolonged_gaze_malpractice": 85.0},
+        "thresholds": {"high_threshold": 70.0}
+    })
+
+    # Continuous 45 frames of looking down
+    for _ in range(45):
+        estimator.consecutive_lookaway_frames += 1
+
+    dummy_prolonged_pose = PoseGazeResult(
+        face_detected=True,
+        face_count=1,
+        yaw=0.0,
+        pitch=20.0,
+        roll=0.0,
+        gaze_direction="LOOKING DOWN",
+        is_looking_away=True,
+        is_absent=False,
+        absence_frames=0,
+        gaze_violation_frames=46,
+        gaze_violation_seconds=2.1,
+        is_prolonged_lookaway=True
+    )
+
+    assessment = engine.evaluate([], dummy_prolonged_pose, person_count=1)
+    assert any("CRITICAL_MALPRACTICE" in v for v in assessment.active_violations)
+    assert assessment.raw_score >= 85.0
+    assert assessment.smoothed_score >= 85.0
+    assert assessment.is_incident_triggered is True
+
+    # Explainability check
+    reason_gen = ReasonGenerator()
+    explanation = reason_gen.generate_explanation(assessment, [], dummy_prolonged_pose, candidate_name="Alice")
+    assert "Malpractice" in explanation.summary_headline
+    assert explanation.severity == "CRITICAL"
+
+
 def test_candidate_absence_timeout():
     """Verify candidate absence only triggers after 15 continuous missing frames."""
     estimator = PoseGazeEstimator({
         "face_absence": {"absence_frames_threshold": 15}
     })
 
-    # Feed 14 empty frames -> is_absent should be False (transient flicker tolerance)
     for _ in range(14):
         res = estimator.estimate(None)
         assert res.face_detected is False
         assert res.is_absent is False
 
-    # 15th frame -> is_absent must trigger True
     res15 = estimator.estimate(None)
     assert res15.face_detected is False
     assert res15.is_absent is True
@@ -187,7 +245,6 @@ def test_evidence_clip_and_db_logging(tmp_path):
     evidence_dir = tmp_path / "evidence_clips"
     evidence_dir.mkdir(parents=True, exist_ok=True)
 
-    # Verify logging incident to DB
     inc = db_mgr.log_incident(
         session_id="SESSION_AUDIT_1",
         frame_index=10,
@@ -206,7 +263,6 @@ def test_evidence_clip_and_db_logging(tmp_path):
     assert inc.violation_type == "PHONE_DETECTED"
     assert inc.severity == "CRITICAL"
 
-    # Verify retrieval
     incidents = db_mgr.get_session_incidents("SESSION_AUDIT_1")
     assert len(incidents) == 1
     assert incidents[0]["risk_score"] == 85.0

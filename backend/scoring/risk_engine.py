@@ -1,7 +1,8 @@
 """
 Dynamic Risk Scoring Engine Module
 Aggregates detection, tracking, and pose/gaze signals to compute real-time suspiciousness index.
-Configured for Strict Zero-Tolerance High-Security Proctoring with direct 4-way gaze violation triggers.
+Configured for Strict Zero-Tolerance High-Security Proctoring with direct triggers for cell phones,
+multiple persons, unauthorized paper/notes, candidate absence, and prolonged gaze malpractice.
 """
 
 from dataclasses import dataclass, field
@@ -49,9 +50,10 @@ class RiskEngine:
         self.w_phone = float(weights_cfg.get("cell_phone", 85.0)) # Instant critical alert
         self.w_multiple_persons = float(weights_cfg.get("multiple_persons", 80.0)) # Instant critical intruder alert
         self.w_face_absent = float(weights_cfg.get("face_absent", 75.0)) # Immediate seat abandonment
-        self.w_gaze = float(weights_cfg.get("gaze_deviation", 45.0)) # Rapid accumulation (+45.0)
+        self.w_gaze = float(weights_cfg.get("gaze_deviation", 45.0)) # Gaze accumulation (+45.0)
         self.w_head_pose = float(weights_cfg.get("head_pose_deviation", 45.0))
         self.w_suspicious_object = float(weights_cfg.get("suspicious_object", 40.0))
+        self.w_prolonged_gaze = float(weights_cfg.get("prolonged_gaze_malpractice", 85.0))
 
         # Fast Temporal Parameters (~0.8s responsive window)
         self.decay_rate = float(self.config.get("decay_rate", 0.88))
@@ -77,7 +79,7 @@ class RiskEngine:
         person_count: int,
         student_id: int = 1
     ) -> RiskAssessment:
-        """Evaluates proctoring signals with instant triggers for 4-way directional gaze and object threats."""
+        """Evaluates proctoring signals with instant triggers for critical threats and prolonged gaze."""
         active_violations: List[str] = []
         factors: Dict[str, float] = {}
         is_critical_direct_trigger = False
@@ -98,20 +100,38 @@ class RiskEngine:
             factors["multiple_persons"] = self.w_multiple_persons
             is_critical_direct_trigger = True
 
-        # 3. Suspicious study materials (books, notes)
-        book_detections = [d for d in detections if d.class_name in ("book", "notes") and d.confidence >= 0.32]
-        if book_detections:
-            active_violations.append("SUSPICIOUS_OBJECT")
-            factors["suspicious_object"] = self.w_suspicious_object
+        # 3. Unauthorized Paper / Study Notes / Book Detection (confidence >= 0.40)
+        paper_detections = [
+            d for d in detections 
+            if d.class_name in ("book", "notes", "unauthorized paper/notes", "paper") and d.confidence >= 0.40
+        ]
+        if paper_detections:
+            active_violations.append("UNAUTHORIZED PAPER/NOTES")
+            factors["suspicious_object"] = self.w_suspicious_object + 20.0
+            if any(d.confidence >= 0.60 for d in paper_detections):
+                is_critical_direct_trigger = True
 
-        # 4. Candidate absence
+        # 4. Candidate absence (missing face)
         if pose_gaze.is_absent or (person_count == 0 and not pose_gaze.face_detected):
             active_violations.append("FACE_ABSENT")
             factors["face_absent"] = self.w_face_absent
             if pose_gaze.absence_frames >= 15:
                 is_critical_direct_trigger = True
 
-        # 5. Snappy 4-Way Gaze & Head Pose Deviations (LEFT, RIGHT, DOWN, UP)
+        # 5. Prolonged Gaze Malpractice (continuous sustained deviation > 2.0s / ~45-60 frames)
+        elif pose_gaze.face_detected and (
+            pose_gaze.is_prolonged_lookaway or 
+            getattr(pose_gaze, "gaze_violation_frames", 0) >= 45 or
+            getattr(pose_gaze, "gaze_violation_seconds", 0.0) >= 2.0
+        ):
+            direction = pose_gaze.gaze_direction
+            seconds = max(2.0, round(getattr(pose_gaze, "gaze_violation_seconds", 2.0), 1))
+            malpractice_label = f"CRITICAL_MALPRACTICE: Sustained Gaze Deviation ({direction}) for {seconds}s"
+            active_violations.append(malpractice_label)
+            factors["prolonged_gaze_malpractice"] = self.w_prolonged_gaze
+            is_critical_direct_trigger = True
+
+        # 6. Standard 4-Way Gaze & Head Pose Deviations (LEFT, RIGHT, DOWN, UP)
         elif pose_gaze.face_detected and (pose_gaze.is_looking_away or ("CENTER" not in pose_gaze.gaze_direction.upper())):
             gaze_dir = pose_gaze.gaze_direction.upper()
             if "LOOKING LEFT" in gaze_dir or "LEFT" in gaze_dir:

@@ -1,11 +1,13 @@
 """
 YOLOv8 Detector Implementation
 Wraps Ultralytics YOLOv8 for real-time object detection with target class filtering,
-confidence thresholds per class, and heuristic geometric filtering for cell phones to eliminate false positives.
+confidence thresholds per class, heuristic geometric filtering for cell phones,
+and real-time white paper sheet / unauthorized notes heuristic detection.
 """
 
 import logging
 from typing import List, Dict, Any, Optional
+import cv2
 import numpy as np
 from .base import BaseDetector, DetectionResult
 
@@ -13,7 +15,7 @@ logger = logging.getLogger("EviGuard.Detector")
 
 
 class YOLOv8Detector(BaseDetector):
-    """Object detector powered by Ultralytics YOLOv8 with heuristic geometric filtering."""
+    """Object detector powered by Ultralytics YOLOv8 with heuristic geometric filtering and paper detection."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__(config)
@@ -24,6 +26,7 @@ class YOLOv8Detector(BaseDetector):
         # Specific Confidence Thresholds per object class
         self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.55))
         self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.50))
+        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.40))
         self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.32))
 
         # Heuristic Filtering Parameters for Cell Phones
@@ -32,6 +35,9 @@ class YOLOv8Detector(BaseDetector):
         self.phone_min_h = float(self.config.get("phone_min_h", 45.0))
         self.phone_min_aspect_ratio = float(self.config.get("phone_min_aspect_ratio", 1.35))
         self.phone_max_aspect_ratio = float(self.config.get("phone_max_aspect_ratio", 2.65))
+
+        # Paper detection enabling
+        self.enable_paper_heuristic = self.config.get("enable_paper_heuristic", True)
 
         self.model = None
         self._fallback_mode = False
@@ -61,15 +67,67 @@ class YOLOv8Detector(BaseDetector):
             return False
 
         # 2. Aspect Ratio Check (smartphones are typically ~1.6:1 to 2.3:1)
-        # Accounting for portrait or landscape orientation:
         aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
         if aspect_ratio < self.phone_min_aspect_ratio or aspect_ratio > self.phone_max_aspect_ratio:
             return False
 
         return True
 
+    def _detect_white_paper_sheets(self, frame: np.ndarray) -> List[DetectionResult]:
+        """Heuristic detector for high-contrast white paper sheets / cheat notes on desk/hand."""
+        paper_dets: List[DetectionResult] = []
+        if not self.enable_paper_heuristic or frame is None or frame.size == 0:
+            return paper_dets
+
+        try:
+            h, w = frame.shape[:2]
+            
+            # Convert to HSV to isolate bright, low-saturation white sheet regions
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            # High brightness (V >= 185) and low saturation (S <= 65)
+            lower_white = np.array([0, 0, 185], dtype=np.uint8)
+            upper_white = np.array([180, 65, 255], dtype=np.uint8)
+            mask = cv2.inRange(hsv, lower_white, upper_white)
+
+            # Morphological closing to fill small gaps/text on sheet
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+            closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+            contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                # Area filter: > 3000px and < 40% of screen to avoid background walls
+                if area < 3000.0 or area > (h * w * 0.40):
+                    continue
+
+                x, y, bw, bh = cv2.boundingRect(cnt)
+                
+                # Exclude top center where candidate's face normally rests
+                if y < h * 0.15 and (x > w * 0.25 and (x + bw) < w * 0.75):
+                    continue
+
+                # Aspect ratio check (A4 / Letter sheets are ~1.2 to 1.8)
+                aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
+                if 1.15 <= aspect_ratio <= 1.85:
+                    rect_area = bw * bh
+                    fill_ratio = area / (rect_area + 1e-6)
+                    # Rectangularity check
+                    if fill_ratio > 0.60:
+                        paper_dets.append(
+                            DetectionResult(
+                                box=[float(x), float(y), float(x + bw), float(y + bh)],
+                                confidence=0.85,
+                                class_id=73,
+                                class_name="unauthorized paper/notes"
+                            )
+                        )
+        except Exception as e:
+            logger.debug(f"Paper sheet detection exception: {e}")
+
+        return paper_dets
+
     def detect(self, frame: np.ndarray) -> List[DetectionResult]:
-        """Detects target objects (persons, cell phones, books, laptops) with geometric validation."""
+        """Detects target objects (persons, cell phones, books/paper, laptops) with geometric validation."""
         if frame is None or frame.size == 0:
             return []
 
@@ -77,7 +135,6 @@ class YOLOv8Detector(BaseDetector):
             return self._fallback_detect(frame)
 
         try:
-            # Run YOLOv8 prediction with base confidence threshold
             results = self.model.predict(
                 source=frame,
                 imgsz=self.imgsz,
@@ -98,25 +155,30 @@ class YOLOv8Detector(BaseDetector):
                     cls_id = int(boxes.cls[i].cpu().numpy())
                     cls_name = r.names.get(cls_id, str(cls_id)).lower()
 
-                    # Target class filtering
-                    if self.target_classes and cls_name not in self.target_classes:
-                        continue
-
-                    # 1. Specific Validation for Cell Phone (Class 67)
+                    # 1. Validation for Cell Phone (Class 67)
                     if cls_name in ("cell phone", "phone") or cls_id == 67:
                         if conf < self.phone_conf_threshold: # >= 0.55 cutoff
                             continue
                         if not self._is_valid_phone_geometry(box):
-                            # Rejected: non-phone geometry (inhaler, pen, lip balm)
                             continue
+                        cls_name = "cell phone"
 
-                    # 2. Specific Validation for Person (Class 0)
+                    # 2. Validation for Book / Paper / Notes (COCO Class 73)
+                    elif cls_name in ("book", "notes", "paper") or cls_id == 73:
+                        if conf < self.book_conf_threshold: # >= 0.40 cutoff
+                            continue
+                        cls_name = "unauthorized paper/notes"
+
+                    # 3. Validation for Person (Class 0)
                     elif cls_name == "person" or cls_id == 0:
                         if conf < self.person_conf_threshold: # >= 0.50 cutoff
                             continue
+                        cls_name = "person"
 
-                    # 3. Other Allowed Objects (books, laptops, etc.)
+                    # 4. Other Target Objects (e.g. laptop)
                     else:
+                        if self.target_classes and cls_name not in self.target_classes:
+                            continue
                         if conf < self.default_conf_threshold:
                             continue
 
@@ -129,6 +191,26 @@ class YOLOv8Detector(BaseDetector):
                         )
                     )
 
+            # Integrate White Paper Sheet Heuristic Detections
+            heuristic_papers = self._detect_white_paper_sheets(frame)
+            for hp in heuristic_papers:
+                # Avoid duplicate if YOLO already found a book in the same area
+                is_duplicate = False
+                for d in detections:
+                    if d.class_name in ("unauthorized paper/notes", "book"):
+                        # Check IoU overlap
+                        x1 = max(hp.box[0], d.box[0])
+                        y1 = max(hp.box[1], d.box[1])
+                        x2 = min(hp.box[2], d.box[2])
+                        y2 = min(hp.box[3], d.box[3])
+                        inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+                        a1 = (hp.box[2] - hp.box[0]) * (hp.box[3] - hp.box[1])
+                        if inter / (a1 + 1e-6) > 0.40:
+                            is_duplicate = True
+                            break
+                if not is_duplicate:
+                    detections.append(hp)
+
             return detections
         except Exception as e:
             logger.error(f"Error during YOLOv8 detection: {e}. Using fallback.")
@@ -140,7 +222,6 @@ class YOLOv8Detector(BaseDetector):
         detections: List[DetectionResult] = []
 
         try:
-            import cv2
             face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             faces = face_cascade.detectMultiScale(gray, 1.3, 5)
@@ -167,6 +248,10 @@ class YOLOv8Detector(BaseDetector):
                     class_name="person"
                 )
             )
+
+        # Include paper sheets in fallback mode as well
+        paper_sheets = self._detect_white_paper_sheets(frame)
+        detections.extend(paper_sheets)
 
         return detections
 

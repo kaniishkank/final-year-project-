@@ -1,7 +1,8 @@
 """
 Pose and Gaze Estimation Module
 Calculates 3D Head Pose (Yaw, Pitch, Roll) and Gaze Direction using MediaPipe FaceMesh and solvePnP.
-Features exact symmetric 6-point 3D-to-2D facial landmark mapping and 4-way directional thresholding (LEFT, RIGHT, DOWN, UP).
+Features exact symmetric 6-point 3D-to-2D facial landmark mapping, 4-way directional thresholding (LEFT, RIGHT, DOWN, UP),
+and continuous prolonged gaze malpractice tracking (>2.0 seconds).
 """
 
 from dataclasses import dataclass
@@ -26,6 +27,9 @@ class PoseGazeResult:
     is_looking_away: bool
     is_absent: bool
     absence_frames: int
+    gaze_violation_frames: int = 0
+    gaze_violation_seconds: float = 0.0
+    is_prolonged_lookaway: bool = False
     face_box: Optional[List[float]] = None
     landmarks_2d: Optional[List[Tuple[float, float]]] = None
     nose_projection_2d: Optional[Tuple[float, float]] = None
@@ -41,6 +45,9 @@ class PoseGazeResult:
             "is_looking_away": self.is_looking_away,
             "is_absent": self.is_absent,
             "absence_frames": self.absence_frames,
+            "gaze_violation_frames": self.gaze_violation_frames,
+            "gaze_violation_seconds": round(self.gaze_violation_seconds, 2),
+            "is_prolonged_lookaway": self.is_prolonged_lookaway,
         }
 
 
@@ -68,6 +75,10 @@ class PoseGazeEstimator:
         self.max_yaw_angle = abs(float(head_cfg.get("max_yaw_angle", head_cfg.get("yaw_limit_right", 16.0))))
         self.max_pitch_angle = abs(float(head_cfg.get("max_pitch_angle", head_cfg.get("pitch_limit_down", 14.0))))
         self.max_roll_angle = abs(float(head_cfg.get("max_roll_angle", head_cfg.get("roll_limit", 22.0))))
+
+        # Continuous Prolonged Gaze Malpractice Threshold (~2.0 seconds / 45-60 frames)
+        self.fps = float(self.config.get("fps", 30.0))
+        self.prolonged_gaze_threshold_frames = int(self.config.get("prolonged_gaze_threshold_frames", 45))
 
         absence_cfg = self.config.get("face_absence", {})
         self.absence_threshold = int(absence_cfg.get("absence_frames_threshold", 15)) # ~0.5s rapid response
@@ -99,6 +110,7 @@ class PoseGazeEstimator:
         """Processes frame to compute 3D head pose (Yaw, Pitch, Roll) and 4-way gaze direction."""
         if frame is None or frame.size == 0:
             self.consecutive_absence_frames += 1
+            self.consecutive_lookaway_frames = 0
             return self._create_absent_result()
 
         if self._fallback_mode or self.face_mesh is None:
@@ -133,6 +145,7 @@ class PoseGazeEstimator:
 
             if not results.multi_face_landmarks:
                 self.consecutive_absence_frames += 1
+                self.consecutive_lookaway_frames = 0
                 return self._create_absent_result()
 
             # Face detected -> reset absence counter
@@ -186,10 +199,14 @@ class PoseGazeEstimator:
             # Symmetric 4-Way Directional Classification
             gaze_direction, is_looking_away = self._classify_gaze(yaw, pitch, roll)
 
+            # Prolonged Gaze Malpractice Tracking
             if is_looking_away:
                 self.consecutive_lookaway_frames += 1
             else:
-                self.consecutive_lookaway_frames = max(0, self.consecutive_lookaway_frames - 1)
+                self.consecutive_lookaway_frames = 0
+
+            gaze_seconds = self.consecutive_lookaway_frames / max(1.0, self.fps)
+            is_prolonged = self.consecutive_lookaway_frames >= self.prolonged_gaze_threshold_frames
 
             # Extract face bounding box mapped to global image
             all_x = [lm.x * w + offset_x for lm in primary_face.landmark]
@@ -206,6 +223,9 @@ class PoseGazeEstimator:
                 is_looking_away=is_looking_away,
                 is_absent=False,
                 absence_frames=0,
+                gaze_violation_frames=self.consecutive_lookaway_frames,
+                gaze_violation_seconds=gaze_seconds,
+                is_prolonged_lookaway=is_prolonged,
                 face_box=face_box,
                 landmarks_2d=[(pt[0], pt[1]) for pt in image_points_2d],
                 nose_projection_2d=p_nose_2d
@@ -248,11 +268,14 @@ class PoseGazeEstimator:
             gaze_direction="NO FACE DETECTED",
             is_looking_away=True,
             is_absent=is_absent,
-            absence_frames=self.consecutive_absence_frames
+            absence_frames=self.consecutive_absence_frames,
+            gaze_violation_frames=0,
+            gaze_violation_seconds=0.0,
+            is_prolonged_lookaway=False
         )
 
     def _fallback_estimate(self, frame: np.ndarray) -> PoseGazeResult:
-        """Lightweight OpenCV Haar Cascade fallback with calibrated 4-way directional gaze."""
+        """Lightweight OpenCV Haar Cascade fallback with calibrated 4-way directional gaze and duration tracking."""
         h, w = frame.shape[:2]
         try:
             face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -261,6 +284,7 @@ class PoseGazeEstimator:
 
             if len(faces) == 0:
                 self.consecutive_absence_frames += 1
+                self.consecutive_lookaway_frames = 0
                 return self._create_absent_result()
 
             self.consecutive_absence_frames = 0
@@ -269,13 +293,19 @@ class PoseGazeEstimator:
             face_center_y = y + fh / 2.0
 
             # Proportional angular estimation from center of screen
-            # Horizontal deviation: [-35.0 deg, +35.0 deg]
             yaw = float((face_center_x - w / 2.0) / (w / 2.0) * 35.0)
-            # Vertical deviation: [+30.0 deg (down), -30.0 deg (up)]
             pitch = float((face_center_y - h / 2.0) / (h / 2.0) * 30.0)
             roll = 0.0
 
             gaze_direction, is_looking_away = self._classify_gaze(yaw, pitch, roll)
+
+            if is_looking_away:
+                self.consecutive_lookaway_frames += 1
+            else:
+                self.consecutive_lookaway_frames = 0
+
+            gaze_seconds = self.consecutive_lookaway_frames / max(1.0, self.fps)
+            is_prolonged = self.consecutive_lookaway_frames >= self.prolonged_gaze_threshold_frames
 
             return PoseGazeResult(
                 face_detected=True,
@@ -287,12 +317,16 @@ class PoseGazeEstimator:
                 is_looking_away=is_looking_away,
                 is_absent=False,
                 absence_frames=0,
+                gaze_violation_frames=self.consecutive_lookaway_frames,
+                gaze_violation_seconds=gaze_seconds,
+                is_prolonged_lookaway=is_prolonged,
                 face_box=[float(x), float(y), float(x + fw), float(y + fh)],
                 landmarks_2d=[(face_center_x, face_center_y)],
                 nose_projection_2d=(face_center_x + yaw * 2.5, face_center_y + pitch * 2.5)
             )
         except Exception:
             self.consecutive_absence_frames = 0
+            self.consecutive_lookaway_frames = 0
             return PoseGazeResult(
                 face_detected=True,
                 face_count=1,
@@ -303,5 +337,8 @@ class PoseGazeEstimator:
                 is_looking_away=False,
                 is_absent=False,
                 absence_frames=0,
+                gaze_violation_frames=0,
+                gaze_violation_seconds=0.0,
+                is_prolonged_lookaway=False,
                 face_box=[float(w * 0.3), float(h * 0.2), float(w * 0.7), float(h * 0.7)]
             )
