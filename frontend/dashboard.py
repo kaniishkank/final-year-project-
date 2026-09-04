@@ -516,7 +516,7 @@ with st.sidebar:
 
     st.markdown("<div style='margin-top: 14px; margin-bottom: 14px; border-top: 1px solid #232D3F;'></div>", unsafe_allow_html=True)
     st.markdown("""
-    <div style="background: #151C2C; border: 1px solid #283347; border-radius: 10px; padding: 12px 14px; font-size: 0.72rem; line-height: 1.6; color: #94A3B8;">
+    <div style="background: #151C2C; border: 1px solid #283347; border-radius: 10px; padding: 12px 14px; font-size: 0.72rem; line-height: 1.6; color: #94A3B8; margin-bottom: 10px;">
         <div style="font-weight: 700; color: #64748B; text-transform: uppercase; font-size: 0.68rem; margin-bottom: 4px;">System Diagnostics</div>
         <div style="display: flex; justify-content: space-between;">
             <span>AI Detector</span>
@@ -536,6 +536,18 @@ with st.sidebar:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    pdf_path = os.path.join("docs", "YOLO_Accuracy_and_Integration_Reference.pdf")
+    if os.path.exists(pdf_path):
+        with open(pdf_path, "rb") as f_pdf:
+            pdf_bytes = f_pdf.read()
+        st.download_button(
+            label="📄 Download YOLO Reference PDF",
+            data=pdf_bytes,
+            file_name="YOLO_Accuracy_and_Integration_Reference.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
 
 
 # ---------------- TAB 1: LIVE PROCTORING ----------------
@@ -989,12 +1001,28 @@ elif menu_option == "📊 Analytics & Reports":
     for inc in incidents:
         report_md += f"| #{inc['id']} | {inc['timestamp']} | {inc['violation_type']} | {inc['severity']} | {inc['risk_score']} | {inc['proctor_verdict']} | {inc['reason_summary']} |\n"
 
-    st.download_button(
-        label="📥 Download Integrity Report (Markdown)",
-        data=report_md,
-        file_name=f"EviGuard_Report_{current_session.get('session_id')}.md",
-        mime="text/markdown"
-    )
+    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+    c_dl1, c_dl2 = st.columns(2)
+    with c_dl1:
+        st.download_button(
+            label="📥 Download Integrity Report (.md)",
+            data=report_md,
+            file_name=f"EviGuard_Report_{current_session.get('session_id')}.md",
+            mime="text/markdown",
+            use_container_width=True
+        )
+    with c_dl2:
+        pdf_path = os.path.join("docs", "YOLO_Accuracy_and_Integration_Reference.pdf")
+        if os.path.exists(pdf_path):
+            with open(pdf_path, "rb") as f_pdf:
+                pdf_bytes = f_pdf.read()
+            st.download_button(
+                label="📄 Download YOLO Reference (.pdf)",
+                data=pdf_bytes,
+                file_name="YOLO_Accuracy_and_Integration_Reference.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
 
 
 # ---------------- TAB 4: SETTINGS & SENSITIVITY ----------------
