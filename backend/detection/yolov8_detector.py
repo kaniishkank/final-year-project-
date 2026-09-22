@@ -15,11 +15,11 @@ logger = logging.getLogger("EviGuard.Detector")
 
 
 class YOLOv8Detector(BaseDetector):
-    """Object detector powered by Ultralytics YOLOv8 with heuristic geometric filtering and paper detection."""
+    """Object detector powered by Ultralytics YOLO (YOLO26 / YOLOv8) with heuristic geometric filtering and paper detection."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__(config)
-        self.model_path = self.config.get("model_path", "yolov8n.pt")
+        self.model_path = self.config.get("model_path", "yolo26n.pt")
         self.iou_threshold = float(self.config.get("iou_threshold", 0.45))
         self.imgsz = int(self.config.get("imgsz", 320))
         
@@ -45,14 +45,20 @@ class YOLOv8Detector(BaseDetector):
         self._load_model()
 
     def _load_model(self):
-        """Attempts to load the YOLOv8 model, falling back gracefully if unavailable."""
+        """Attempts to load the YOLO model (YOLO26 / YOLOv8), falling back gracefully if unavailable."""
         try:
+            import os
             from ultralytics import YOLO
-            logger.info(f"Loading YOLOv8 model from {self.model_path}...")
-            self.model = YOLO(self.model_path)
-            logger.info("YOLOv8 model loaded successfully.")
+            target = self.model_path if os.path.exists(self.model_path) else (
+                "yolo26n.pt" if os.path.exists("yolo26n.pt") else (
+                    "yolov8n.pt" if os.path.exists("yolov8n.pt") else self.model_path
+                )
+            )
+            logger.info(f"Loading YOLO model from {target}...")
+            self.model = YOLO(target)
+            logger.info(f"YOLO model ({target}) loaded successfully via Ultralytics.")
         except Exception as e:
-            logger.warning(f"Could not load YOLOv8 model ({e}). Initializing simulated/heuristic detector fallback.")
+            logger.warning(f"Could not load YOLO model ({e}). Initializing simulated/heuristic detector fallback.")
             self._fallback_mode = True
 
     def _is_valid_phone_geometry(self, box: List[float]) -> bool:

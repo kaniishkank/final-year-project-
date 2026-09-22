@@ -521,7 +521,7 @@ with st.sidebar:
         <div style="font-weight: 700; color: #64748B; text-transform: uppercase; font-size: 0.68rem; margin-bottom: 4px;">System Diagnostics</div>
         <div style="display: flex; justify-content: space-between;">
             <span>AI Detector</span>
-            <span style="color: #F8FAFC; font-family: 'JetBrains Mono'; font-weight: 600;">YOLOv8</span>
+            <span style="color: #F8FAFC; font-family: 'JetBrains Mono'; font-weight: 600;">YOLO26</span>
         </div>
         <div style="display: flex; justify-content: space-between;">
             <span>Gaze / 3D Pose</span>

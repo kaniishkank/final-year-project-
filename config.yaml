@@ -14,8 +14,8 @@ video:
   mock_mode: false
 
 detection:
-  model_type: "yolov8"
-  model_path: "yolov8n.pt"
+  model_type: "yolo26"
+  model_path: "yolo26n.pt"
   imgsz: 320 # Downscaled input tensor size for ultra-low latency inference
   confidence_threshold: 0.32 # General detector baseline
   phone_confidence_threshold: 0.55 # Raised threshold specifically for mobile phones to eliminate false positives
