@@ -17,25 +17,27 @@ detection:
   model_type: "yolo26"
   model_path: "yolo26n.pt"
   imgsz: 320 # Downscaled input tensor size for ultra-low latency inference
-  confidence_threshold: 0.25 # General detector baseline
-  phone_confidence_threshold: 0.30 # Calibrated phone detection threshold
-  person_confidence_threshold: 0.40 # Ensures candidate and secondary entities are caught
-  book_confidence_threshold: 0.30 # Target COCO class 73 (book/paper) threshold
-  enable_paper_heuristic: false # Disabled naive color heuristic to prevent false alerts on white shirts/walls
-  phone_min_area: 400.0 # Responsive area check
-  phone_min_w: 15.0
-  phone_min_h: 15.0
+  confidence_threshold: 0.20 # General detector baseline
+  phone_confidence_threshold: 0.22 # Calibrated phone detection threshold
+  person_confidence_threshold: 0.35 # Ensures candidate and secondary entities are caught
+  book_confidence_threshold: 0.22 # Target COCO class 73 (book/paper) threshold
+  enable_paper_heuristic: true # Enables intelligent paper sheet and note detection
+  phone_min_area: 300.0 # Responsive area check
+  phone_min_w: 12.0
+  phone_min_h: 12.0
   phone_min_aspect_ratio: 1.0
-  phone_max_aspect_ratio: 4.0 # Handles vertical, horizontal, and diagonal orientations
+  phone_max_aspect_ratio: 4.2 # Handles vertical, horizontal, and diagonal orientations
   iou_threshold: 0.45
   target_classes:
     - "person"
     - "cell phone"
     - "book"
     - "laptop"
+    - "remote"
   device_classes:
     - "cell phone"
     - "laptop"
+    - "remote"
   material_classes:
     - "book"
     - "unauthorized paper/notes"

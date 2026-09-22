@@ -33,10 +33,10 @@ class YOLO26Detector(BaseDetector):
         self.nms_free = self.config.get("nms_free", True)
         
         # Specific Confidence Thresholds per object class
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.25))
-        self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.38))
-        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.30))
-        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.22))
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.22))
+        self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.35))
+        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.22))
+        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.20))
 
         # Geometric Validation Parameters for Cell Phones
         self.phone_min_area = float(self.config.get("phone_min_area", 300.0))
@@ -45,8 +45,8 @@ class YOLO26Detector(BaseDetector):
         self.phone_min_aspect_ratio = float(self.config.get("phone_min_aspect_ratio", 1.0))
         self.phone_max_aspect_ratio = float(self.config.get("phone_max_aspect_ratio", 4.2))
 
-        # Paper detection enabling
-        self.enable_paper_heuristic = self.config.get("enable_paper_heuristic", False)
+        # Paper detection enabled by default for exam notes/paper sheets
+        self.enable_paper_heuristic = self.config.get("enable_paper_heuristic", True)
 
         self.model = None
         self._fallback_mode = False
@@ -88,49 +88,44 @@ class YOLO26Detector(BaseDetector):
         return True
 
     def _detect_white_paper_sheets(self, frame: np.ndarray, person_boxes: Optional[List[List[float]]] = None) -> List[DetectionResult]:
-        """Heuristic detector for white paper sheets strictly on desk surface, excluding person's clothing."""
+        """Detects white/light sheets of paper, notebooks, or cheat sheets in workspace or held in hand."""
         paper_dets: List[DetectionResult] = []
         if not self.enable_paper_heuristic or frame is None or frame.size == 0:
             return paper_dets
 
         try:
             h, w = frame.shape[:2]
-            desk_y_start = int(h * 0.45)
-            desk_roi = frame[desk_y_start:h, 0:w]
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            hsv = cv2.cvtColor(desk_roi, cv2.COLOR_BGR2HSV)
-            lower_white = np.array([0, 0, 195], dtype=np.uint8)
-            upper_white = np.array([180, 50, 255], dtype=np.uint8)
-            mask = cv2.inRange(hsv, lower_white, upper_white)
+            # Bright white/light region segmentation
+            bright_mask = cv2.inRange(gray, 185, 255)
 
+            # Exclude upper head/face region if person boxes provided
             if person_boxes:
                 for pbox in person_boxes:
                     px1, py1, px2, py2 = [int(v) for v in pbox]
-                    ry1 = max(0, py1 - desk_y_start)
-                    ry2 = min(h - desk_y_start, py2 - desk_y_start)
-                    rx1 = max(0, px1)
-                    rx2 = min(w, px2)
-                    if ry2 > ry1 and rx2 > rx1:
-                        mask[ry1:ry2, rx1:rx2] = 0
+                    # Exclude upper 40% of person box (face/hair/neck)
+                    face_y2 = min(h, py1 + int((py2 - py1) * 0.40))
+                    bright_mask[max(0, py1):face_y2, max(0, px1):min(w, px2)] = 0
 
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
-            closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+            closed = cv2.morphologyEx(bright_mask, cv2.MORPH_CLOSE, kernel)
 
             contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                if area < 3000.0 or area > (h * w * 0.30):
+                if area < 3500.0 or area > (h * w * 0.45):
                     continue
 
                 x, y, bw, bh = cv2.boundingRect(cnt)
                 aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
-                if 1.15 <= aspect_ratio <= 1.85:
+                if 1.05 <= aspect_ratio <= 3.2:
                     rect_area = bw * bh
                     fill_ratio = area / (rect_area + 1e-6)
-                    if fill_ratio > 0.65:
+                    if fill_ratio > 0.60:
                         paper_dets.append(
                             DetectionResult(
-                                box=[float(x), float(y + desk_y_start), float(x + bw), float(y + desk_y_start + bh)],
+                                box=[float(x), float(y), float(x + bw), float(y + bh)],
                                 confidence=0.85,
                                 class_id=73,
                                 class_name="unauthorized paper/notes"
@@ -164,8 +159,14 @@ class YOLO26Detector(BaseDetector):
 
             for r in results:
                 boxes = r.boxes
-                if boxes is None:
+                if boxes is None or len(boxes) == 0:
                     continue
+
+                for i in range(len(boxes)):
+                    box = boxes.xyxy[i].cpu().numpy().tolist()  # [x1, y1, x2, y2]
+                    conf = float(boxes.conf[i].cpu().numpy())
+                    cls_id = int(boxes.cls[i].cpu().numpy())
+                    cls_name = r.names.get(cls_id, str(cls_id)).lower()
 
                     bw = abs(box[2] - box[0])
                     bh = abs(box[3] - box[1])
@@ -183,16 +184,12 @@ class YOLO26Detector(BaseDetector):
 
                     # 2. Validation for Book / Paper / Notes (COCO Class 73)
                     elif cls_name in ("book", "notebook", "paper") or cls_id == 73:
-                        # If the detected 'book' is phone-sized (aspect ratio 1.2-3.8, area < 35000 px^2),
-                        # it is almost certainly the flat back case of a smartphone
-                        if 1.15 <= aspect_ratio <= 3.8 and box_area <= 35000.0 and self._is_valid_phone_geometry(box):
-                            cls_name = "cell phone"
-                            cls_id = 67
-                        else:
-                            if conf < self.book_conf_threshold:
-                                continue
-                            cls_name = "book"
-                            cls_id = 73
+                        # If the detected 'book' is phone-sized (aspect ratio 1.2-3.8, area < 25000 px^2),
+                        # and has dark glass/remote features, allow it as cell phone; otherwise keep as book
+                        if conf < self.book_conf_threshold:
+                            continue
+                        cls_name = "book"
+                        cls_id = 73
 
                     # 3. Validation for Person (Class 0)
                     elif cls_name == "person" or cls_id == 0:
