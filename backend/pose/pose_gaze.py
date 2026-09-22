@@ -1,13 +1,14 @@
 """
 Pose, Gaze, and Hand Signalling Estimation Module
 Calculates 3D Head Pose (Yaw, Pitch, Roll), Gaze Direction, and detects suspicious finger signalling / hand gestures
-using MediaPipe FaceMesh & Hands solutions with robust fallback.
+using modern MediaPipe Tasks (FaceLandmarker & HandLandmarker) with legacy and mathematical fallbacks.
 """
 
 from collections import deque
 from dataclasses import dataclass, field
 import logging
 import math
+import os
 from typing import Dict, Any, List, Optional, Tuple
 import cv2
 import numpy as np
@@ -20,10 +21,10 @@ class PoseGazeResult:
     """Encapsulates pose, gaze, and hand gesture metrics extracted from a video frame."""
     face_detected: bool
     face_count: int
-    yaw: float # Negative = left, Positive = right
-    pitch: float # Positive = down (desk/phone), Negative = up (ceiling)
-    roll: float # Negative = tilt left, Positive = tilt right
-    gaze_direction: str # CENTER (FOCUSED), LOOKING LEFT, LOOKING RIGHT, LOOKING DOWN, LOOKING UP
+    yaw: float  # Negative = left, Positive = right
+    pitch: float  # Positive = down (desk/phone), Negative = up (ceiling)
+    roll: float  # Negative = tilt left, Positive = tilt right
+    gaze_direction: str  # CENTER (FOCUSED), LOOKING LEFT, LOOKING RIGHT, LOOKING DOWN, LOOKING UP
     is_looking_away: bool
     is_absent: bool
     absence_frames: int
@@ -64,37 +65,56 @@ class PoseGazeResult:
 
 
 class HandSignallingDetector:
-    """Detects suspicious hand gesturing / finger counting with landmark stability and 3-of-5 temporal persistence."""
+    """Detects suspicious hand gesturing / finger counting with landmark stability and temporal persistence."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.config = config or {}
         self.fps = float(self.config.get("fps", 30.0))
-        self.stability_threshold_px = float(self.config.get("hand_stability_px", 35.0))
+        self.stability_threshold_px = float(self.config.get("hand_stability_px", 45.0))
         
-        # 5.2 Inter-frame tracking & Temporal 3-of-5 voting buffer
+        # Temporal voting buffer
         self.recent_gestures = deque(maxlen=5)
         self.prev_hand_landmarks: List[List[Tuple[float, float]]] = []
-        self.consecutive_gesture_frames = 0
         
-        self.mp_hands = None
-        self.hands_detector = None
+        self.task_detector = None
+        self.legacy_detector = None
         self._fallback_mode = False
 
-        self._init_mediapipe()
+        self._init_detector()
 
-    def _init_mediapipe(self):
+    def _init_detector(self):
+        # 1. Try MediaPipe Tasks HandLandmarker
+        task_model_path = self.config.get("hand_task_model", "hand_landmarker.task")
+        if os.path.exists(task_model_path):
+            try:
+                import mediapipe as mp
+                from mediapipe.tasks import python
+                from mediapipe.tasks.python import vision
+                base_options = python.BaseOptions(model_asset_path=task_model_path)
+                options = vision.HandLandmarkerOptions(base_options=base_options, num_hands=2)
+                self.task_detector = vision.HandLandmarker.create_from_options(options)
+                logger.info(f"MediaPipe Tasks HandLandmarker initialized successfully from {task_model_path}.")
+                return
+            except Exception as e:
+                logger.warning(f"MediaPipe Tasks HandLandmarker init failed: {e}")
+
+        # 2. Try MediaPipe legacy solutions
         try:
             import mediapipe as mp
-            self.mp_hands = mp.solutions.hands
-            self.hands_detector = self.mp_hands.Hands(
-                max_num_hands=2,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
-            )
-            logger.info("MediaPipe Hands initialized successfully.")
-        except Exception as e:
-            logger.warning(f"MediaPipe Hands unavailable ({e}). Utilizing skin-contour heuristic fallback.")
-            self._fallback_mode = True
+            if hasattr(mp, "solutions") and hasattr(mp.solutions, "hands"):
+                self.legacy_detector = mp.solutions.hands.Hands(
+                    max_num_hands=2,
+                    min_detection_confidence=0.5,
+                    min_tracking_confidence=0.5
+                )
+                logger.info("MediaPipe legacy Hands initialized successfully.")
+                return
+        except Exception:
+            pass
+
+        # 3. Fallback
+        logger.info("HandSignallingDetector using skin contour / heuristic fallback.")
+        self._fallback_mode = True
 
     def _calculate_landmark_displacement(self, current_pts: List[Tuple[float, float]]) -> float:
         """Computes mean Euclidean displacement of hand landmarks between consecutive frames."""
@@ -112,7 +132,7 @@ class HandSignallingDetector:
         return float(np.mean(displacements))
 
     def detect(self, frame: np.ndarray) -> Tuple[bool, int, str, List[List[float]], List[Any]]:
-        """Analyzes frame for raised hands with stable extended fingers (signaling options A/B/C/D)."""
+        """Analyzes frame for raised hands with extended fingers (signaling options A/B/C/D)."""
         if frame is None or frame.size == 0:
             self.recent_gestures.append(0)
             self.prev_hand_landmarks = []
@@ -124,13 +144,55 @@ class HandSignallingDetector:
         gesture_detected = False
         gesture_label = ""
         hand_landmarks_list: List[Any] = []
-        is_hand_stable = True
 
-        if not self._fallback_mode and self.hands_detector is not None:
+        # 1. Modern Tasks Detector
+        if self.task_detector is not None:
+            try:
+                import mediapipe as mp
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                result = self.task_detector.detect(mp_image)
+
+                if result.hand_landmarks:
+                    for lms in result.hand_landmarks:
+                        pts = [(lm.x * w, lm.y * h) for lm in lms]
+                        xs = [p[0] for p in pts]
+                        ys = [p[1] for p in pts]
+                        x1, y1, x2, y2 = max(0, min(xs) - 10), max(0, min(ys) - 10), min(w, max(xs) + 10), min(h, max(ys) + 10)
+                        hand_boxes.append([float(x1), float(y1), float(x2), float(y2)])
+                        hand_landmarks_list.append(pts)
+
+                        wrist_y = lms[0].y
+                        if wrist_y < 0.92:
+                            fingers = 0
+                            # Index (8 vs 6)
+                            if lms[8].y < lms[6].y:
+                                fingers += 1
+                            # Middle (12 vs 10)
+                            if lms[12].y < lms[10].y:
+                                fingers += 1
+                            # Ring (16 vs 14)
+                            if lms[16].y < lms[14].y:
+                                fingers += 1
+                            # Pinky (20 vs 18)
+                            if lms[20].y < lms[18].y:
+                                fingers += 1
+                            # Thumb (4 vs 2)
+                            if abs(lms[4].x - lms[2].x) > 0.035 or (lms[4].y < lms[3].y and lms[4].y < lms[2].y):
+                                fingers += 1
+
+                            extended_fingers_count = max(extended_fingers_count, fingers)
+                            if 1 <= fingers <= 4:
+                                gesture_detected = True
+                                gesture_label = f"FINGER SIGNALLING ({fingers} Extended Fingers)"
+            except Exception as e:
+                logger.debug(f"MediaPipe Tasks HandLandmarker exception: {e}")
+
+        # 2. Legacy MediaPipe Detector
+        elif self.legacy_detector is not None:
             try:
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                results = self.hands_detector.process(rgb_frame)
-
+                results = self.legacy_detector.process(rgb_frame)
                 if results.multi_hand_landmarks:
                     for hand_lms in results.multi_hand_landmarks:
                         pts = [(lm.x * w, lm.y * h) for lm in hand_lms.landmark]
@@ -140,16 +202,8 @@ class HandSignallingDetector:
                         hand_boxes.append([float(x1), float(y1), float(x2), float(y2)])
                         hand_landmarks_list.append(pts)
 
-                        # Check inter-frame landmark stability (< stability_threshold_px)
-                        displacement = self._calculate_landmark_displacement(pts)
-                        if self.prev_hand_landmarks and displacement > self.stability_threshold_px:
-                            is_hand_stable = False
-
                         wrist_y = hand_lms.landmark[0].y
-                        # Check if hand is raised in front of camera (wrist_y < 0.90)
-                        if wrist_y < 0.90:
-                            # Count extended fingers:
-                            # Index (tip 8 vs pip 6), Middle (12 vs 10), Ring (16 vs 14), Pinky (20 vs 18), Thumb (4 vs 2)
+                        if wrist_y < 0.92:
                             fingers = 0
                             if hand_lms.landmark[8].y < hand_lms.landmark[6].y:
                                 fingers += 1
@@ -159,18 +213,18 @@ class HandSignallingDetector:
                                 fingers += 1
                             if hand_lms.landmark[20].y < hand_lms.landmark[18].y:
                                 fingers += 1
-                            if abs(hand_lms.landmark[4].x - hand_lms.landmark[2].x) > 0.04:
+                            if abs(hand_lms.landmark[4].x - hand_lms.landmark[2].x) > 0.035:
                                 fingers += 1
 
                             extended_fingers_count = max(extended_fingers_count, fingers)
-                            if 1 <= fingers <= 4 and is_hand_stable:
+                            if 1 <= fingers <= 4:
                                 gesture_detected = True
                                 gesture_label = f"FINGER SIGNALLING ({fingers} Extended Fingers)"
             except Exception as e:
-                logger.debug(f"MediaPipe Hands detection exception: {e}")
+                logger.debug(f"MediaPipe legacy Hands exception: {e}")
 
-        # Fallback skin contour / hand detection
-        if self._fallback_mode or self.hands_detector is None:
+        # 3. Fallback skin contour / hand heuristic
+        else:
             try:
                 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
                 lower_skin = np.array([0, 25, 60], dtype=np.uint8)
@@ -197,12 +251,11 @@ class HandSignallingDetector:
             except Exception as e:
                 logger.debug(f"Heuristic hand fallback exception: {e}")
 
-        # Update previous landmarks
         self.prev_hand_landmarks = hand_landmarks_list
 
-        # Section 5.2: Append to length-5 buffer and require 3 of 5 frames
+        # Append to length-5 buffer and require 2 of 5 frames (rapid yet stable)
         self.recent_gestures.append(1 if gesture_detected else 0)
-        is_sustained = sum(self.recent_gestures) >= 3 or (len(self.recent_gestures) < 3 and gesture_detected)
+        is_sustained = sum(self.recent_gestures) >= 2 or (len(self.recent_gestures) < 2 and gesture_detected)
 
         return is_sustained, extended_fingers_count, gesture_label, hand_boxes, hand_landmarks_list
 
@@ -236,33 +289,58 @@ class PoseGazeEstimator:
         self.prolonged_gaze_threshold_frames = int(self.config.get("prolonged_gaze_threshold_frames", 45))
 
         absence_cfg = self.config.get("face_absence", {})
-        self.absence_threshold = int(absence_cfg.get("absence_frames_threshold", 15)) # ~0.5s rapid response
+        self.absence_threshold = int(absence_cfg.get("absence_frames_threshold", 15))
 
         self.consecutive_absence_frames = 0
         self.consecutive_lookaway_frames = 0
-        self.face_mesh = None
+        
+        self.task_detector = None
+        self.legacy_face_mesh = None
         self._fallback_mode = False
 
         # Initialize Hand Signalling Detector
         self.hand_detector = HandSignallingDetector(self.config)
 
-        self._init_mediapipe()
+        self._init_face_mesh()
 
-    def _init_mediapipe(self):
-        """Initializes MediaPipe Face Mesh with fallback handling."""
+    def _init_face_mesh(self):
+        """Initializes MediaPipe FaceLandmarker Task or legacy FaceMesh."""
+        task_model_path = self.config.get("face_task_model", "face_landmarker.task")
+        if os.path.exists(task_model_path):
+            try:
+                import mediapipe as mp
+                from mediapipe.tasks import python
+                from mediapipe.tasks.python import vision
+                base_options = python.BaseOptions(model_asset_path=task_model_path)
+                options = vision.FaceLandmarkerOptions(
+                    base_options=base_options,
+                    output_face_blendshapes=False,
+                    output_facial_transformation_matrixes=False,
+                    num_faces=2
+                )
+                self.task_detector = vision.FaceLandmarker.create_from_options(options)
+                logger.info(f"MediaPipe Tasks FaceLandmarker initialized successfully from {task_model_path}.")
+                return
+            except Exception as e:
+                logger.warning(f"MediaPipe Tasks FaceLandmarker init failed: {e}")
+
+        # Legacy FaceMesh
         try:
             import mediapipe as mp
-            self.mp_face_mesh = mp.solutions.face_mesh
-            self.face_mesh = self.mp_face_mesh.FaceMesh(
-                max_num_faces=2,
-                refine_landmarks=False,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
-            )
-            logger.info("MediaPipe FaceMesh initialized successfully.")
-        except Exception as e:
-            logger.warning(f"MediaPipe FaceMesh unavailable ({e}). Using OpenCV/Mathematical fallback.")
-            self._fallback_mode = True
+            if hasattr(mp, "solutions") and hasattr(mp.solutions, "face_mesh"):
+                self.legacy_face_mesh = mp.solutions.face_mesh.FaceMesh(
+                    max_num_faces=2,
+                    refine_landmarks=False,
+                    min_detection_confidence=0.5,
+                    min_tracking_confidence=0.5
+                )
+                logger.info("MediaPipe legacy FaceMesh initialized successfully.")
+                return
+        except Exception:
+            pass
+
+        logger.info("FaceMesh unavailable. Using OpenCV Haar Cascade fallback.")
+        self._fallback_mode = True
 
     def estimate(self, frame: np.ndarray, bbox: Optional[List[float]] = None) -> PoseGazeResult:
         """Processes frame to compute 3D head pose, 4-way gaze direction, and hand gesture signalling."""
@@ -280,145 +358,215 @@ class PoseGazeEstimator:
             res.hand_landmarks = hand_lms
             return res
 
-        if self._fallback_mode or self.face_mesh is None:
-            res = self._fallback_estimate(frame)
-            res.hand_signalling = is_hand_signalling
-            res.extended_fingers = ext_fingers
-            res.hand_gesture_label = gest_label
-            res.hand_boxes = hand_boxes
-            res.hand_landmarks = hand_lms
-            return res
+        # 2. Modern MediaPipe Tasks FaceLandmarker
+        if self.task_detector is not None:
+            try:
+                import mediapipe as mp
+                h_full, w_full = frame.shape[:2]
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                result = self.task_detector.detect(mp_image)
 
-        try:
-            h_full, w_full = frame.shape[:2]
-            
-            # Crop optimization if bounding box provided
-            offset_x, offset_y = 0.0, 0.0
-            if bbox is not None:
-                bx1, by1, bx2, by2 = [int(v) for v in bbox]
-                pad_x = int((bx2 - bx1) * 0.1)
-                pad_y = int((by2 - by1) * 0.1)
-                cx1 = max(0, bx1 - pad_x)
-                cy1 = max(0, by1 - pad_y)
-                cx2 = min(w_full, bx2 + pad_x)
-                cy2 = min(h_full, by2 + pad_y)
-                
-                if (cx2 - cx1) > 50 and (cy2 - cy1) > 50:
-                    crop_patch = frame[cy1:cy2, cx1:cx2]
-                    offset_x, offset_y = float(cx1), float(cy1)
-                    process_img = crop_patch
+                if not result.face_landmarks:
+                    self.consecutive_absence_frames += 1
+                    self.consecutive_lookaway_frames = 0
+                    res = self._create_absent_result()
+                    res.hand_signalling = is_hand_signalling
+                    res.extended_fingers = ext_fingers
+                    res.hand_gesture_label = gest_label
+                    res.hand_boxes = hand_boxes
+                    res.hand_landmarks = hand_lms
+                    return res
+
+                self.consecutive_absence_frames = 0
+                face_count = len(result.face_landmarks)
+                primary_face = result.face_landmarks[0]
+
+                # Extract 2D points for PnP
+                image_points_2d = []
+                for idx in self.LANDMARK_INDICES:
+                    lm = primary_face[idx]
+                    image_points_2d.append([lm.x * w_full, lm.y * h_full])
+                image_points_2d = np.array(image_points_2d, dtype=np.float64)
+
+                focal_length = float(w_full)
+                center = (w_full / 2.0, h_full / 2.0)
+                camera_matrix = np.array([
+                    [focal_length, 0, center[0]],
+                    [0, focal_length, center[1]],
+                    [0, 0, 1]
+                ], dtype=np.float64)
+                dist_coeffs = np.zeros((4, 1))
+
+                success, rvec, tvec = cv2.solvePnP(
+                    self.MODEL_POINTS_3D,
+                    image_points_2d,
+                    camera_matrix,
+                    dist_coeffs,
+                    flags=cv2.SOLVEPNP_ITERATIVE
+                )
+
+                if not success:
+                    res = self._fallback_estimate(frame)
+                    res.hand_signalling = is_hand_signalling
+                    res.extended_fingers = ext_fingers
+                    res.hand_gesture_label = gest_label
+                    res.hand_boxes = hand_boxes
+                    res.hand_landmarks = hand_lms
+                    return res
+
+                rmat, _ = cv2.Rodrigues(rvec)
+                angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
+                pitch = float(angles[0])
+                yaw = float(angles[1])
+                roll = float(angles[2])
+
+                nose_end_point3D = np.array([[0.0, 0.0, 500.0]], dtype=np.float64)
+                nose_end_point2D, _ = cv2.projectPoints(nose_end_point3D, rvec, tvec, camera_matrix, dist_coeffs)
+                p_nose_2d = (float(nose_end_point2D[0][0][0]), float(nose_end_point2D[0][0][1]))
+
+                gaze_direction, is_looking_away = self._classify_gaze(yaw, pitch, roll)
+
+                if is_looking_away:
+                    self.consecutive_lookaway_frames += 1
                 else:
-                    process_img = frame
-            else:
-                process_img = frame
+                    self.consecutive_lookaway_frames = 0
 
-            h, w = process_img.shape[:2]
-            rgb_frame = cv2.cvtColor(process_img, cv2.COLOR_BGR2RGB)
-            results = self.face_mesh.process(rgb_frame)
+                gaze_seconds = self.consecutive_lookaway_frames / max(1.0, self.fps)
+                is_prolonged = self.consecutive_lookaway_frames >= self.prolonged_gaze_threshold_frames
 
-            if not results.multi_face_landmarks:
-                self.consecutive_absence_frames += 1
-                self.consecutive_lookaway_frames = 0
-                res = self._create_absent_result()
-                res.hand_signalling = is_hand_signalling
-                res.extended_fingers = ext_fingers
-                res.hand_gesture_label = gest_label
-                res.hand_boxes = hand_boxes
-                res.hand_landmarks = hand_lms
-                return res
+                all_x = [lm.x * w_full for lm in primary_face]
+                all_y = [lm.y * h_full for lm in primary_face]
+                face_box = [float(min(all_x)), float(min(all_y)), float(max(all_x)), float(max(all_y))]
 
-            self.consecutive_absence_frames = 0
-            face_count = len(results.multi_face_landmarks)
-            primary_face = results.multi_face_landmarks[0]
+                return PoseGazeResult(
+                    face_detected=True,
+                    face_count=face_count,
+                    yaw=yaw,
+                    pitch=pitch,
+                    roll=roll,
+                    gaze_direction=gaze_direction,
+                    is_looking_away=is_looking_away,
+                    is_absent=False,
+                    absence_frames=0,
+                    gaze_violation_frames=self.consecutive_lookaway_frames,
+                    gaze_violation_seconds=gaze_seconds,
+                    is_prolonged_lookaway=is_prolonged,
+                    hand_signalling=is_hand_signalling,
+                    extended_fingers=ext_fingers,
+                    hand_gesture_label=gest_label,
+                    hand_boxes=hand_boxes,
+                    hand_landmarks=hand_lms,
+                    face_box=face_box,
+                    landmarks_2d=[(pt[0], pt[1]) for pt in image_points_2d],
+                    nose_projection_2d=p_nose_2d
+                )
+            except Exception as e:
+                logger.debug(f"MediaPipe Tasks FaceLandmarker execution error: {e}")
 
-            image_points_2d = []
-            for idx in self.LANDMARK_INDICES:
-                lm = primary_face.landmark[idx]
-                image_points_2d.append([lm.x * w + offset_x, lm.y * h + offset_y])
-            image_points_2d = np.array(image_points_2d, dtype=np.float64)
+        # 3. Legacy MediaPipe FaceMesh
+        if self.legacy_face_mesh is not None:
+            try:
+                h_full, w_full = frame.shape[:2]
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                results = self.legacy_face_mesh.process(rgb_frame)
 
-            focal_length = w_full
-            center = (w_full / 2.0, h_full / 2.0)
-            camera_matrix = np.array([
-                [focal_length, 0, center[0]],
-                [0, focal_length, center[1]],
-                [0, 0, 1]
-            ], dtype=np.float64)
-            dist_coeffs = np.zeros((4, 1))
+                if not results.multi_face_landmarks:
+                    self.consecutive_absence_frames += 1
+                    self.consecutive_lookaway_frames = 0
+                    res = self._create_absent_result()
+                    res.hand_signalling = is_hand_signalling
+                    res.extended_fingers = ext_fingers
+                    res.hand_gesture_label = gest_label
+                    res.hand_boxes = hand_boxes
+                    res.hand_landmarks = hand_lms
+                    return res
 
-            success, rvec, tvec = cv2.solvePnP(
-                self.MODEL_POINTS_3D,
-                image_points_2d,
-                camera_matrix,
-                dist_coeffs,
-                flags=cv2.SOLVEPNP_ITERATIVE
-            )
+                self.consecutive_absence_frames = 0
+                face_count = len(results.multi_face_landmarks)
+                primary_face = results.multi_face_landmarks[0]
 
-            if not success:
-                res = self._fallback_estimate(frame)
-                res.hand_signalling = is_hand_signalling
-                res.extended_fingers = ext_fingers
-                res.hand_gesture_label = gest_label
-                res.hand_boxes = hand_boxes
-                res.hand_landmarks = hand_lms
-                return res
+                image_points_2d = []
+                for idx in self.LANDMARK_INDICES:
+                    lm = primary_face.landmark[idx]
+                    image_points_2d.append([lm.x * w_full, lm.y * h_full])
+                image_points_2d = np.array(image_points_2d, dtype=np.float64)
 
-            rmat, _ = cv2.Rodrigues(rvec)
-            angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
-            pitch = float(angles[0])
-            yaw = float(angles[1])
-            roll = float(angles[2])
+                focal_length = float(w_full)
+                center = (w_full / 2.0, h_full / 2.0)
+                camera_matrix = np.array([
+                    [focal_length, 0, center[0]],
+                    [0, focal_length, center[1]],
+                    [0, 0, 1]
+                ], dtype=np.float64)
+                dist_coeffs = np.zeros((4, 1))
 
-            nose_end_point3D = np.array([[0.0, 0.0, 500.0]], dtype=np.float64)
-            nose_end_point2D, _ = cv2.projectPoints(nose_end_point3D, rvec, tvec, camera_matrix, dist_coeffs)
-            p_nose_2d = (float(nose_end_point2D[0][0][0]), float(nose_end_point2D[0][0][1]))
+                success, rvec, tvec = cv2.solvePnP(
+                    self.MODEL_POINTS_3D,
+                    image_points_2d,
+                    camera_matrix,
+                    dist_coeffs,
+                    flags=cv2.SOLVEPNP_ITERATIVE
+                )
 
-            gaze_direction, is_looking_away = self._classify_gaze(yaw, pitch, roll)
+                if success:
+                    rmat, _ = cv2.Rodrigues(rvec)
+                    angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
+                    pitch = float(angles[0])
+                    yaw = float(angles[1])
+                    roll = float(angles[2])
 
-            if is_looking_away:
-                self.consecutive_lookaway_frames += 1
-            else:
-                self.consecutive_lookaway_frames = 0
+                    nose_end_point3D = np.array([[0.0, 0.0, 500.0]], dtype=np.float64)
+                    nose_end_point2D, _ = cv2.projectPoints(nose_end_point3D, rvec, tvec, camera_matrix, dist_coeffs)
+                    p_nose_2d = (float(nose_end_point2D[0][0][0]), float(nose_end_point2D[0][0][1]))
 
-            gaze_seconds = self.consecutive_lookaway_frames / max(1.0, self.fps)
-            is_prolonged = self.consecutive_lookaway_frames >= self.prolonged_gaze_threshold_frames
+                    gaze_direction, is_looking_away = self._classify_gaze(yaw, pitch, roll)
 
-            all_x = [lm.x * w + offset_x for lm in primary_face.landmark]
-            all_y = [lm.y * h + offset_y for lm in primary_face.landmark]
-            face_box = [float(min(all_x)), float(min(all_y)), float(max(all_x)), float(max(all_y))]
+                    if is_looking_away:
+                        self.consecutive_lookaway_frames += 1
+                    else:
+                        self.consecutive_lookaway_frames = 0
 
-            return PoseGazeResult(
-                face_detected=True,
-                face_count=face_count,
-                yaw=yaw,
-                pitch=pitch,
-                roll=roll,
-                gaze_direction=gaze_direction,
-                is_looking_away=is_looking_away,
-                is_absent=False,
-                absence_frames=0,
-                gaze_violation_frames=self.consecutive_lookaway_frames,
-                gaze_violation_seconds=gaze_seconds,
-                is_prolonged_lookaway=is_prolonged,
-                hand_signalling=is_hand_signalling,
-                extended_fingers=ext_fingers,
-                hand_gesture_label=gest_label,
-                hand_boxes=hand_boxes,
-                hand_landmarks=hand_lms,
-                face_box=face_box,
-                landmarks_2d=[(pt[0], pt[1]) for pt in image_points_2d],
-                nose_projection_2d=p_nose_2d
-            )
+                    gaze_seconds = self.consecutive_lookaway_frames / max(1.0, self.fps)
+                    is_prolonged = self.consecutive_lookaway_frames >= self.prolonged_gaze_threshold_frames
 
-        except Exception as e:
-            logger.error(f"Error in pose & gaze estimation: {e}. Utilizing fallback.")
-            res = self._fallback_estimate(frame)
-            res.hand_signalling = is_hand_signalling
-            res.extended_fingers = ext_fingers
-            res.hand_gesture_label = gest_label
-            res.hand_boxes = hand_boxes
-            res.hand_landmarks = hand_lms
-            return res
+                    all_x = [lm.x * w_full for lm in primary_face.landmark]
+                    all_y = [lm.y * h_full for lm in primary_face.landmark]
+                    face_box = [float(min(all_x)), float(min(all_y)), float(max(all_x)), float(max(all_y))]
+
+                    return PoseGazeResult(
+                        face_detected=True,
+                        face_count=face_count,
+                        yaw=yaw,
+                        pitch=pitch,
+                        roll=roll,
+                        gaze_direction=gaze_direction,
+                        is_looking_away=is_looking_away,
+                        is_absent=False,
+                        absence_frames=0,
+                        gaze_violation_frames=self.consecutive_lookaway_frames,
+                        gaze_violation_seconds=gaze_seconds,
+                        is_prolonged_lookaway=is_prolonged,
+                        hand_signalling=is_hand_signalling,
+                        extended_fingers=ext_fingers,
+                        hand_gesture_label=gest_label,
+                        hand_boxes=hand_boxes,
+                        hand_landmarks=hand_lms,
+                        face_box=face_box,
+                        landmarks_2d=[(pt[0], pt[1]) for pt in image_points_2d],
+                        nose_projection_2d=p_nose_2d
+                    )
+            except Exception as e:
+                logger.debug(f"MediaPipe legacy FaceMesh execution error: {e}")
+
+        # 4. Mathematical / Haar Cascade Fallback
+        res = self._fallback_estimate(frame)
+        res.hand_signalling = is_hand_signalling
+        res.extended_fingers = ext_fingers
+        res.hand_gesture_label = gest_label
+        res.hand_boxes = hand_boxes
+        res.hand_landmarks = hand_lms
+        return res
 
     def _classify_gaze(self, yaw: float, pitch: float, roll: float) -> Tuple[str, bool]:
         """Symmetric 4-way directional thresholding for LEFT, RIGHT, DOWN, UP, and CENTER."""
@@ -471,10 +619,7 @@ class PoseGazeEstimator:
 
             self.consecutive_absence_frames = 0
             x, y, fw, fh = faces[0]
-            face_center_x = x + fw / 2.0
-            face_center_y = y + fh / 2.0
 
-            # Compute relative yaw and pitch from facial features within the cropped face box
             yaw = 0.0
             pitch = 0.0
             roll = 0.0
@@ -484,18 +629,15 @@ class PoseGazeEstimator:
                 face_roi_gray = gray[y:y + int(fh * 0.65), x:x + fw]
                 eyes = eye_cascade.detectMultiScale(face_roi_gray, 1.15, 3)
                 if len(eyes) >= 2:
-                    # Sort eyes by X position
                     eyes_sorted = sorted(eyes, key=lambda e: e[0])
                     e1_center_x = eyes_sorted[0][0] + eyes_sorted[0][2] / 2.0
                     e2_center_x = eyes_sorted[-1][0] + eyes_sorted[-1][2] / 2.0
                     eye_mid_x = (e1_center_x + e2_center_x) / 2.0
-                    # Shift from face center (normalized)
                     yaw = float(((eye_mid_x - fw / 2.0) / (fw / 2.0 + 1e-6)) * 40.0)
 
                     e1_center_y = eyes_sorted[0][1] + eyes_sorted[0][3] / 2.0
                     e2_center_y = eyes_sorted[-1][1] + eyes_sorted[-1][3] / 2.0
                     eye_mid_y = (e1_center_y + e2_center_y) / 2.0
-                    # Normal eye level is around 35% of face height
                     pitch = float(((eye_mid_y - fh * 0.35) / (fh * 0.35 + 1e-6)) * 30.0)
             except Exception:
                 yaw = 0.0
@@ -528,29 +670,8 @@ class PoseGazeEstimator:
                 extended_fingers=0,
                 hand_gesture_label="",
                 hand_boxes=[],
-                face_box=[float(x), float(y), float(x + fw), float(y + fh)],
-                landmarks_2d=[(face_center_x, face_center_y)],
-                nose_projection_2d=(face_center_x + yaw * 2.5, face_center_y + pitch * 2.5)
+                face_box=[float(x), float(y), float(x + fw), float(y + fh)]
             )
-        except Exception:
-            self.consecutive_absence_frames = 0
-            self.consecutive_lookaway_frames = 0
-            return PoseGazeResult(
-                face_detected=True,
-                face_count=1,
-                yaw=0.0,
-                pitch=0.0,
-                roll=0.0,
-                gaze_direction="CENTER (FOCUSED)",
-                is_looking_away=False,
-                is_absent=False,
-                absence_frames=0,
-                gaze_violation_frames=0,
-                gaze_violation_seconds=0.0,
-                is_prolonged_lookaway=False,
-                hand_signalling=False,
-                extended_fingers=0,
-                hand_gesture_label="",
-                hand_boxes=[],
-                face_box=[float(w * 0.3), float(h * 0.2), float(w * 0.7), float(h * 0.7)]
-            )
+        except Exception as e:
+            logger.debug(f"OpenCV fallback estimation exception: {e}")
+            return self._create_absent_result()

@@ -615,8 +615,12 @@ if menu_option == "📹 Live Proctoring":
                         candidate_name=candidate_name
                     )
 
-                    # 1. Update Video Frame Display (Every Frame - Full Speed)
-                    video_placeholder.image(output.annotated_frame, channels="BGR", use_container_width=True)
+                    # 1. Update Video Frame Display (Every Frame - Optimized Pre-encoded JPEG for Zero-Lag Delivery)
+                    ret_enc, encoded_jpeg = cv2.imencode('.jpg', output.annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    if ret_enc:
+                        video_placeholder.image(encoded_jpeg.tobytes(), use_container_width=True)
+                    else:
+                        video_placeholder.image(output.annotated_frame, channels="BGR", use_container_width=True)
 
                     # 2. Extract metrics
                     risk_score = float(output.risk.smoothed_score)
