@@ -4,6 +4,7 @@ Calculates 3D Head Pose (Yaw, Pitch, Roll), Gaze Direction, and detects suspicio
 using MediaPipe FaceMesh & Hands solutions with robust fallback.
 """
 
+from collections import deque
 from dataclasses import dataclass, field
 import logging
 import math
@@ -63,13 +64,18 @@ class PoseGazeResult:
 
 
 class HandSignallingDetector:
-    """Detects suspicious hand gesturing / finger counting (e.g. signaling 1, 2, 3, 4 fingers to neighbors)."""
+    """Detects suspicious hand gesturing / finger counting with landmark stability and 3-of-5 temporal persistence."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.config = config or {}
         self.fps = float(self.config.get("fps", 30.0))
-        self.gesture_threshold_frames = int(self.config.get("hand_signalling_frames", 35)) # ~1.2s - 1.5s
+        self.stability_threshold_px = float(self.config.get("hand_stability_px", 35.0))
+        
+        # 5.2 Inter-frame tracking & Temporal 3-of-5 voting buffer
+        self.recent_gestures = deque(maxlen=5)
+        self.prev_hand_landmarks: List[List[Tuple[float, float]]] = []
         self.consecutive_gesture_frames = 0
+        
         self.mp_hands = None
         self.hands_detector = None
         self._fallback_mode = False
@@ -90,10 +96,26 @@ class HandSignallingDetector:
             logger.warning(f"MediaPipe Hands unavailable ({e}). Utilizing skin-contour heuristic fallback.")
             self._fallback_mode = True
 
+    def _calculate_landmark_displacement(self, current_pts: List[Tuple[float, float]]) -> float:
+        """Computes mean Euclidean displacement of hand landmarks between consecutive frames."""
+        if not self.prev_hand_landmarks or not current_pts:
+            return 0.0
+        
+        prev_pts = self.prev_hand_landmarks[0]
+        if len(prev_pts) != len(current_pts):
+            return 0.0
+
+        displacements = [
+            math.hypot(c[0] - p[0], c[1] - p[1])
+            for c, p in zip(current_pts, prev_pts)
+        ]
+        return float(np.mean(displacements))
+
     def detect(self, frame: np.ndarray) -> Tuple[bool, int, str, List[List[float]], List[Any]]:
-        """Analyzes frame for raised hands with suspicious extended fingers (signaling options A/B/C/D)."""
+        """Analyzes frame for raised hands with stable extended fingers (signaling options A/B/C/D)."""
         if frame is None or frame.size == 0:
-            self.consecutive_gesture_frames = 0
+            self.recent_gestures.append(0)
+            self.prev_hand_landmarks = []
             return False, 0, "", [], []
 
         h, w = frame.shape[:2]
@@ -102,6 +124,7 @@ class HandSignallingDetector:
         gesture_detected = False
         gesture_label = ""
         hand_landmarks_list: List[Any] = []
+        is_hand_stable = True
 
         if not self._fallback_mode and self.hands_detector is not None:
             try:
@@ -117,15 +140,16 @@ class HandSignallingDetector:
                         hand_boxes.append([float(x1), float(y1), float(x2), float(y2)])
                         hand_landmarks_list.append(pts)
 
+                        # Check inter-frame landmark stability (< stability_threshold_px)
+                        displacement = self._calculate_landmark_displacement(pts)
+                        if self.prev_hand_landmarks and displacement > self.stability_threshold_px:
+                            is_hand_stable = False
+
                         wrist_y = hand_lms.landmark[0].y
-                        # Check if hand is raised in front of camera / above lower third of frame (wrist_y < 0.90)
+                        # Check if hand is raised in front of camera (wrist_y < 0.90)
                         if wrist_y < 0.90:
                             # Count extended fingers:
-                            # Index (tip 8 vs pip 6)
-                            # Middle (tip 12 vs pip 10)
-                            # Ring (tip 16 vs pip 14)
-                            # Pinky (tip 20 vs pip 18)
-                            # Thumb (tip 4 vs mcp 2)
+                            # Index (tip 8 vs pip 6), Middle (12 vs 10), Ring (16 vs 14), Pinky (20 vs 18), Thumb (4 vs 2)
                             fingers = 0
                             if hand_lms.landmark[8].y < hand_lms.landmark[6].y:
                                 fingers += 1
@@ -139,14 +163,13 @@ class HandSignallingDetector:
                                 fingers += 1
 
                             extended_fingers_count = max(extended_fingers_count, fingers)
-                            # Suspicious finger counts: 1, 2, 3, 4 fingers (used for MCQ A, B, C, D cheating)
-                            if 1 <= fingers <= 4:
+                            if 1 <= fingers <= 4 and is_hand_stable:
                                 gesture_detected = True
                                 gesture_label = f"FINGER SIGNALLING ({fingers} Extended Fingers)"
             except Exception as e:
                 logger.debug(f"MediaPipe Hands detection exception: {e}")
 
-        # Fallback skin contour / hand detection if MediaPipe is not installed
+        # Fallback skin contour / hand detection
         if self._fallback_mode or self.hands_detector is None:
             try:
                 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -174,12 +197,13 @@ class HandSignallingDetector:
             except Exception as e:
                 logger.debug(f"Heuristic hand fallback exception: {e}")
 
-        if gesture_detected:
-            self.consecutive_gesture_frames += 1
-        else:
-            self.consecutive_gesture_frames = max(0, self.consecutive_gesture_frames - 2)
+        # Update previous landmarks
+        self.prev_hand_landmarks = hand_landmarks_list
 
-        is_sustained = self.consecutive_gesture_frames >= self.gesture_threshold_frames
+        # Section 5.2: Append to length-5 buffer and require 3 of 5 frames
+        self.recent_gestures.append(1 if gesture_detected else 0)
+        is_sustained = sum(self.recent_gestures) >= 3 or (len(self.recent_gestures) < 3 and gesture_detected)
+
         return is_sustained, extended_fingers_count, gesture_label, hand_boxes, hand_landmarks_list
 
 

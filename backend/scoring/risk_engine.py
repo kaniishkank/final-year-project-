@@ -1,8 +1,12 @@
 """
-Dynamic Risk Scoring Engine Module
-Aggregates detection, tracking, pose/gaze, and hand/finger signalling signals to compute real-time suspiciousness index.
-Configured for Strict Zero-Tolerance High-Security Proctoring with direct triggers for cell phones,
-multiple persons, unauthorized paper/notes, candidate absence, prolonged gaze malpractice, and finger signalling.
+Dynamic Risk & Threat Scoring Engine Module
+Computes real-time threat scores and risk levels across standardized bands:
+- Phone detected -> CRITICAL, score >= 90
+- Notes detected -> CRITICAL, score >= 90
+- Student writing (looking down) -> NORMAL, score <= 10
+- Hand raised + signalling -> SUSPICIOUS, 60 <= score <= 70
+- Gaze diversion -> MONITOR, 30 <= score <= 40
+- No violations -> NORMAL, score = 0
 """
 
 from dataclasses import dataclass, field
@@ -17,9 +21,9 @@ class RiskAssessment:
     """Comprehensive risk evaluation for the current frame."""
     raw_score: float
     smoothed_score: float
-    risk_level: str # LOW, MEDIUM, HIGH
+    risk_level: str  # NORMAL, MONITOR, SUSPICIOUS, CRITICAL
     active_violations: List[str]
-    violation_factors: Dict[str, float] # Factor weight contributions
+    violation_factors: Dict[str, float]
     is_incident_triggered: bool
     primary_violation: Optional[str]
     student_id: int = 1
@@ -40,31 +44,31 @@ class RiskAssessment:
 
 
 class RiskEngine:
-    """Computes dynamic risk score based on multi-modal proctoring inputs with instant critical triggers."""
+    """Computes dynamic threat scores and classifies incidents into NORMAL, MONITOR, SUSPICIOUS, and CRITICAL."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.config = config or {}
         
-        # Strict Zero-Tolerance Risk Weights
+        # Calibrated Threat Weights
         weights_cfg = self.config.get("weights", {})
-        self.w_phone = float(weights_cfg.get("cell_phone", 85.0)) # Instant critical alert
-        self.w_multiple_persons = float(weights_cfg.get("multiple_persons", 80.0)) # Instant critical intruder alert
-        self.w_face_absent = float(weights_cfg.get("face_absent", 75.0)) # Immediate seat abandonment
-        self.w_hand_signalling = float(weights_cfg.get("hand_signalling", 75.0)) # Finger/hand gesture cheating
-        self.w_gaze = float(weights_cfg.get("gaze_deviation", 45.0)) # Gaze accumulation (+45.0)
-        self.w_head_pose = float(weights_cfg.get("head_pose_deviation", 45.0))
-        self.w_suspicious_object = float(weights_cfg.get("suspicious_object", 40.0))
-        self.w_prolonged_gaze = float(weights_cfg.get("prolonged_gaze_malpractice", 85.0))
+        self.w_phone = float(weights_cfg.get("cell_phone", 95.0))             # >= 90 CRITICAL
+        self.w_notes = float(weights_cfg.get("unauthorized_notes", 92.0))      # >= 90 CRITICAL
+        self.w_multiple_persons = float(weights_cfg.get("multiple_persons", 90.0))
+        self.w_face_absent = float(weights_cfg.get("face_absent", 85.0))
+        self.w_hand_signalling = float(weights_cfg.get("hand_signalling", 65.0)) # 60-70 SUSPICIOUS
+        self.w_gaze = float(weights_cfg.get("gaze_deviation", 35.0))           # 30-40 MONITOR
+        self.w_head_pose = float(weights_cfg.get("head_pose_deviation", 35.0))
 
-        # Fast Temporal Parameters (~0.8s responsive window)
+        # Temporal Parameters
         self.decay_rate = float(self.config.get("decay_rate", 0.88))
         self.accumulation_rate = float(self.config.get("accumulation_rate", 0.55))
 
         # Thresholds
         thresholds_cfg = self.config.get("thresholds", {})
-        self.low_max = float(thresholds_cfg.get("low_max", 30.0))
-        self.medium_max = float(thresholds_cfg.get("medium_max", 70.0))
-        self.high_threshold = float(thresholds_cfg.get("high_threshold", 70.0))
+        self.normal_max = float(thresholds_cfg.get("normal_max", 25.0))
+        self.monitor_max = float(thresholds_cfg.get("monitor_max", 50.0))
+        self.suspicious_max = float(thresholds_cfg.get("suspicious_max", 75.0))
+        self.critical_min = float(thresholds_cfg.get("critical_min", 75.0))
 
         # Multi-Student Independent Risk Histories
         self.student_histories: Dict[int, float] = {}
@@ -80,86 +84,82 @@ class RiskEngine:
         person_count: int,
         student_id: int = 1
     ) -> RiskAssessment:
-        """Evaluates proctoring signals with instant triggers for critical threats, hand gestures, and prolonged gaze."""
+        """Evaluates proctoring signals against the threat scoring rubric."""
         active_violations: List[str] = []
         factors: Dict[str, float] = {}
         is_critical_direct_trigger = False
 
-        # 1. Instant Trigger: Unauthorized mobile phones (confidence >= 0.50)
+        # 1. Phone Detection (score >= 90 -> CRITICAL)
         phone_detections = [
             d for d in detections 
-            if d.class_name in ("cell phone", "phone") and d.confidence >= 0.50
+            if d.class_name in ("cell phone", "phone") and d.confidence >= 0.35
         ]
         if phone_detections:
             active_violations.append("PHONE_DETECTED")
             factors["cell_phone"] = self.w_phone
             is_critical_direct_trigger = True
 
-        # 2. Strict Real Secondary Person Validation (require genuine secondary presence)
-        if person_count > 1 or pose_gaze.face_count > 1:
+        # 2. Unauthorized Notes / Book Detection (score >= 90 -> CRITICAL)
+        notes_detections = [
+            d for d in detections 
+            if d.class_name in ("book", "notes", "unauthorized paper/notes", "paper") and d.confidence >= 0.35
+        ]
+        if notes_detections:
+            active_violations.append("UNAUTHORIZED_NOTES")
+            factors["unauthorized_notes"] = self.w_notes
+            is_critical_direct_trigger = True
+
+        # 3. Secondary Person Detection (Intruder -> CRITICAL)
+        if person_count > 1 or getattr(pose_gaze, "face_count", 1) > 1:
             active_violations.append("MULTIPLE_PERSONS")
             factors["multiple_persons"] = self.w_multiple_persons
             is_critical_direct_trigger = True
 
-        # 3. Unauthorized Paper / Study Notes / Book Detection (confidence >= 0.40)
-        paper_detections = [
-            d for d in detections 
-            if d.class_name in ("book", "notes", "unauthorized paper/notes", "paper") and d.confidence >= 0.40
-        ]
-        if paper_detections:
-            active_violations.append("UNAUTHORIZED PAPER/NOTES")
-            factors["suspicious_object"] = self.w_suspicious_object + 20.0
-            if any(d.confidence >= 0.60 for d in paper_detections):
-                is_critical_direct_trigger = True
-
-        # 4. Candidate absence (missing face)
+        # 4. Candidate Absence
         if pose_gaze.is_absent or (person_count == 0 and not pose_gaze.face_detected):
             active_violations.append("FACE_ABSENT")
             factors["face_absent"] = self.w_face_absent
-            if pose_gaze.absence_frames >= 15:
+            if getattr(pose_gaze, "absence_frames", 0) >= 15:
                 is_critical_direct_trigger = True
 
-        # 5. Hand / Finger Signalling Malpractice (e.g. signaling 1-4 fingers to communicate answers)
+        # 5. Hand Raised + Signalling (60 <= score <= 70 -> SUSPICIOUS)
         if getattr(pose_gaze, "hand_signalling", False) or getattr(pose_gaze, "hand_gesture_label", ""):
             label = getattr(pose_gaze, "hand_gesture_label", "FINGER SIGNALLING") or "FINGER SIGNALLING"
             active_violations.append(f"FLAG: {label}")
             factors["hand_signalling"] = self.w_hand_signalling
-            is_critical_direct_trigger = True
 
-        # 6. Prolonged Gaze Malpractice (continuous sustained deviation > 2.0s / ~45-60 frames)
-        if pose_gaze.face_detected and (
+        # 6. Prolonged Gaze Malpractice (continuous sustained deviation > 2.0s / ~45 frames)
+        if pose_gaze.face_detected and not is_critical_direct_trigger and (
             pose_gaze.is_prolonged_lookaway or 
             getattr(pose_gaze, "gaze_violation_frames", 0) >= 45 or
             getattr(pose_gaze, "gaze_violation_seconds", 0.0) >= 2.0
         ):
-            direction = pose_gaze.gaze_direction
+            direction = pose_gaze.gaze_direction or "LOOKING AWAY"
             seconds = max(2.0, round(getattr(pose_gaze, "gaze_violation_seconds", 2.0), 1))
             malpractice_label = f"CRITICAL_MALPRACTICE: Sustained Gaze Deviation ({direction}) for {seconds}s"
             active_violations.append(malpractice_label)
-            factors["prolonged_gaze_malpractice"] = self.w_prolonged_gaze
+            factors["prolonged_gaze_malpractice"] = float(self.config.get("weights", {}).get("prolonged_gaze_malpractice", 85.0))
             is_critical_direct_trigger = True
 
-        # 7. Standard 4-Way Gaze & Head Pose Deviations (LEFT, RIGHT, DOWN, UP)
-        elif pose_gaze.face_detected and (pose_gaze.is_looking_away or ("CENTER" not in pose_gaze.gaze_direction.upper())):
-            gaze_dir = pose_gaze.gaze_direction.upper()
-            if "LOOKING LEFT" in gaze_dir or "LEFT" in gaze_dir:
-                active_violations.append("HEAD_TURN (LEFT)")
-                factors["head_pose_deviation"] = self.w_head_pose
-            elif "LOOKING RIGHT" in gaze_dir or "RIGHT" in gaze_dir:
-                active_violations.append("HEAD_TURN (RIGHT)")
-                factors["head_pose_deviation"] = self.w_head_pose
-            elif "LOOKING DOWN" in gaze_dir or "DOWN" in gaze_dir:
-                active_violations.append("GAZE_DOWN (DESK/LAP)")
-                factors["gaze_deviation"] = self.w_gaze + 5.0
-            elif "LOOKING UP" in gaze_dir or "UP" in gaze_dir:
-                active_violations.append("GAZE_AWAY (UP)")
-                factors["gaze_deviation"] = self.w_gaze
-            elif "HEAD TILTED" in gaze_dir or "TILT" in gaze_dir:
-                active_violations.append("HEAD_TILTED")
-                factors["head_pose_deviation"] = self.w_head_pose * 0.8
-            else:
-                active_violations.append("GAZE_DEVIATION")
-                factors["gaze_deviation"] = self.w_gaze
+        # 7. Pose & Gaze Classification:
+        # Check if looking down: Is student legitimately writing on desk/paper?
+        elif pose_gaze.face_detected and not is_critical_direct_trigger and not factors.get("hand_signalling"):
+            gaze_dir = (pose_gaze.gaze_direction or "CENTER (FOCUSED)").upper()
+            
+            if "LOOKING DOWN" in gaze_dir or pose_gaze.pitch > 12.0:
+                # Student writing legitimately: Score <= 10, Normal
+                factors["student_writing"] = 0.0  # Safe normal behavior
+            elif pose_gaze.is_looking_away or ("CENTER" not in gaze_dir):
+                # Lateral gaze diversion (looking left, looking right, looking up)
+                if "LEFT" in gaze_dir:
+                    active_violations.append("HEAD_TURN (LEFT)")
+                elif "RIGHT" in gaze_dir:
+                    active_violations.append("HEAD_TURN (RIGHT)")
+                elif "UP" in gaze_dir:
+                    active_violations.append("GAZE_AWAY (UP)")
+                else:
+                    active_violations.append("GAZE_DEVIATION")
+                factors["gaze_deviation"] = self.w_gaze  # 30-40 MONITOR range
 
         # Compute raw instantaneous score
         raw_score = min(100.0, float(sum(factors.values())))
@@ -167,17 +167,18 @@ class RiskEngine:
         # Retrieve student specific temporal history
         student_smoothed = self.student_histories.get(student_id, 0.0)
 
-        # Apply Instant Bypass for Critical Violations or Fast Smoothing
-        if is_critical_direct_trigger and raw_score >= 70.0:
+        # Apply Instant Trigger for High Severity or Smooth Normal Transition
+        if is_critical_direct_trigger:
             student_smoothed = max(student_smoothed, raw_score)
-            if factors.get("hand_signalling"):
-                student_smoothed = max(student_smoothed, 85.0)
+        elif factors.get("hand_signalling"):
+            student_smoothed = self.w_hand_signalling
+        elif factors.get("gaze_deviation"):
+            student_smoothed = self.w_gaze
+        elif not factors or factors.get("student_writing", -1) == 0.0:
+            student_smoothed = 0.0
         else:
             if raw_score > student_smoothed:
-                student_smoothed = (
-                    (1.0 - self.accumulation_rate) * student_smoothed + 
-                    self.accumulation_rate * raw_score
-                )
+                student_smoothed = (1.0 - self.accumulation_rate) * student_smoothed + self.accumulation_rate * raw_score
             else:
                 student_smoothed = student_smoothed * self.decay_rate
                 if student_smoothed < 1.0:
@@ -187,15 +188,17 @@ class RiskEngine:
         self.current_smoothed_score = student_smoothed
         smoothed_score = round(student_smoothed, 1)
 
-        # Classify Risk Level
-        if smoothed_score <= self.low_max:
-            risk_level = "LOW"
-        elif smoothed_score <= self.medium_max:
-            risk_level = "MEDIUM"
+        # Map to Threat Level: NORMAL (<=25), MONITOR (26-50), SUSPICIOUS (51-75), CRITICAL (>=76)
+        if smoothed_score <= self.normal_max:
+            risk_level = "NORMAL"
+        elif smoothed_score <= self.monitor_max:
+            risk_level = "MONITOR"
+        elif smoothed_score <= self.suspicious_max:
+            risk_level = "SUSPICIOUS"
         else:
-            risk_level = "HIGH"
+            risk_level = "CRITICAL"
 
-        # Determine Immediate Incident Trigger
+        # Incident Trigger evaluation
         now = time.time()
         last_incident = self.student_last_incidents.get(student_id, 0.0)
         is_incident_triggered = False
@@ -203,9 +206,7 @@ class RiskEngine:
 
         if active_violations:
             primary_violation = max(factors.keys(), key=lambda k: factors[k], default=active_violations[0])
-            
-            should_trigger = is_critical_direct_trigger or (smoothed_score >= self.high_threshold)
-            
+            should_trigger = is_critical_direct_trigger or (smoothed_score >= self.critical_min)
             if should_trigger and (now - last_incident) >= self.incident_cooldown_seconds:
                 is_incident_triggered = True
                 self.student_last_incidents[student_id] = now

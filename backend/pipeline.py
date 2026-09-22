@@ -1,10 +1,11 @@
 """
 EviGuard Main Processing Pipeline
-Integrates Detection, Tracking, Pose/Gaze Estimation, Risk Scoring, XAI, Evidence Recording, and DB logging.
-Optimized for zero-lag instant direct triggers, multi-student fair time-slicing, and rapid snapshot archival.
+Integrates Detection, CustomTracker, Pose/Gaze Estimation, Risk Scoring, XAI, Evidence Recording, and DB logging.
+Optimized with parallel multi-threading for YOLO26 & MediaPipe, temporal voting buffers, and zero-latency triggers.
 """
 
 from collections import deque
+import concurrent.futures
 from dataclasses import dataclass
 from datetime import datetime
 import math
@@ -23,7 +24,7 @@ from .detection.factory import DetectorFactory
 from .explainability.reason_generator import ReasonGenerator, IncidentExplanation
 from .pose.pose_gaze import PoseGazeEstimator, PoseGazeResult
 from .scoring.risk_engine import RiskEngine, RiskAssessment
-from .tracking.tracker import PersonTracker
+from .tracking.tracker import CustomTracker, PersonTracker, TrackedObject
 
 
 @dataclass
@@ -131,13 +132,16 @@ class EviGuardPipeline:
         model_type = det_cfg.get("model_type", "yolo26")
         self.detector = DetectorFactory.create_detector(model_type, det_cfg)
         
-        self.tracker = PersonTracker(self.config.get("tracking", {}))
+        self.tracker = CustomTracker(self.config.get("tracking", {}))
         self.pose_gaze = PoseGazeEstimator(self.config.get("pose_gaze", {}))
         self.risk_engine = RiskEngine(self.config.get("risk_engine", {}))
         self.reason_gen = ReasonGenerator(self.config.get("explainability", {}))
         
         db_url = self.config.get("database", {}).get("db_url", "sqlite:///data/eviguard.db")
         self.db = DatabaseManager.get_instance(db_url)
+
+        # Parallel ThreadPoolExecutor for overlapping YOLO and MediaPipe execution
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
         # Evidence Recorder Settings
         rec_cfg = self.config.get("evidence_recorder", {})
@@ -160,7 +164,7 @@ class EviGuardPipeline:
         self.active_student_ids: List[int] = [1]
         self.student_round_robin_idx = 0
         
-        # Temporal Inference Stride for High FPS
+        # Temporal Inference Stride for High FPS (Every 3rd frame or configurable)
         self.inference_stride = self.config.get("system", {}).get("inference_stride", 3)
         self.target_w = self.config.get("video", {}).get("width", 640)
         self.target_h = self.config.get("video", {}).get("height", 480)
@@ -184,7 +188,7 @@ class EviGuardPipeline:
         session_id: str = "default_session",
         candidate_name: str = "Candidate"
     ) -> PipelineOutput:
-        """Executes full analysis pipeline with zero-lag triggers and multi-student fair time-slicing."""
+        """Executes full analysis pipeline with parallel threads, custom tracker, and temporal voting buffers."""
         self.frame_index += 1
         now = time.time()
         dt = now - self.last_time
@@ -202,19 +206,25 @@ class EviGuardPipeline:
         # 2. Store frame in circular rolling buffer
         self.frame_buffer.append((frame.copy(), self.frame_index, now))
 
-        # 3. Object Detection & Pose/Gaze with Multi-Student Time-Slicing
+        # 3. Object Detection & Pose/Gaze with Parallel Multi-Threading
         is_inference_frame = (self.frame_index % self.inference_stride == 0) or (self.last_pose_gaze_result is None)
 
         if is_inference_frame:
-            detections = self.detector.detect(frame)
+            # Run YOLO26 detection and MediaPipe Pose/Gaze in parallel threads
+            future_det = self.executor.submit(self.detector.detect, frame)
+            future_pose = self.executor.submit(self.pose_gaze.estimate, frame)
+
+            detections = future_det.result()
+            pose_gaze_result = future_pose.result()
+
             tracked_detections = self.tracker.update(detections)
+
             # Multi-student tracking & Count-Based Verification
             person_dets = [d for d in tracked_detections if d.class_name == "person"]
             if person_dets:
                 person_dets.sort(key=lambda d: d.area, reverse=True)
                 primary_person = person_dets[0]
                 
-                # Check for genuine secondary persons (distance > 120px from primary candidate)
                 valid_secondaries = []
                 for p in person_dets[1:]:
                     dist = math.sqrt(
@@ -230,30 +240,34 @@ class EviGuardPipeline:
                 person_count = 0
                 self.active_student_ids = [1]
 
-            # Fair round-robin selection for cropped FaceMesh calculation
-            if self.student_round_robin_idx >= len(self.active_student_ids):
-                self.student_round_robin_idx = 0
-            current_target_id = self.active_student_ids[self.student_round_robin_idx]
-            self.student_round_robin_idx = (self.student_round_robin_idx + 1) % len(self.active_student_ids)
+            # 5.1 & 5.2: Update temporal voting buffers on each tracked student
+            has_phone = any(d.class_name == "cell phone" for d in tracked_detections)
+            has_notes = any(d.class_name in ("book", "unauthorized paper/notes", "notes") for d in tracked_detections)
+            has_gesture = getattr(pose_gaze_result, "hand_signalling", False)
 
-            # Find bounding box for the current target student
-            target_bbox = None
-            for d in person_dets:
-                if d.track_id == current_target_id:
-                    target_bbox = d.box
-                    break
-            if target_bbox is None and person_dets:
-                target_bbox = person_dets[0].box
-
-            # Run FaceMesh on cropped candidate box for speed
-            pose_gaze_result = self.pose_gaze.estimate(frame, bbox=target_bbox)
+            for t_id in self.active_student_ids:
+                track = self.tracker.get_track(t_id)
+                if track:
+                    track.record_evidence_frame(has_phone=has_phone, has_notes=has_notes, has_gesture=has_gesture)
+                    if track.has_phone_temporal_escalation and not has_phone:
+                        # Inject synthetic phone detection to escalate to CRITICAL
+                        tracked_detections.append(
+                            DetectionResult(
+                                box=list(track.box),
+                                confidence=0.85,
+                                class_id=67,
+                                class_name="cell phone",
+                                track_id=t_id
+                            )
+                        )
 
             # Cache results for intervening frames
             self.last_tracked_detections = tracked_detections
             self.last_pose_gaze_result = pose_gaze_result
             self.last_person_count = person_count
         else:
-            tracked_detections = self.last_tracked_detections
+            # Intermediate non-inference frames: propagate tracks forward smoothly
+            tracked_detections = self.tracker.propagate_tracks() or self.last_tracked_detections
             pose_gaze_result = self.last_pose_gaze_result or self.pose_gaze.estimate(frame)
             person_count = self.last_person_count
 
@@ -282,7 +296,7 @@ class EviGuardPipeline:
             except Exception:
                 pass
 
-        # 6. Incident Handling & Evidence Recording (Zero-Lag Immediate Snapshot + Async Clip)
+        # 6. Incident Handling & Evidence Recording
         logged_incident_dict = None
         if risk_result.is_incident_triggered:
             explanation = self.reason_gen.generate_explanation(
@@ -293,7 +307,6 @@ class EviGuardPipeline:
                 timestamp_str=datetime.now().strftime("%H:%M:%S")
             )
 
-            # Write Evidence Snapshot IMMEDIATELY to disk on first alert frame
             snapshot_filename = f"{session_id}_f{self.frame_index}_{int(now)}.jpg"
             snapshot_path = os.path.join(self.evidence_dir, snapshot_filename)
             try:
@@ -301,7 +314,6 @@ class EviGuardPipeline:
             except Exception:
                 snapshot_path = None
 
-            # Asynchronously encode the pre/post-roll MP4 clip
             clip_filename = f"{session_id}_f{self.frame_index}_{int(now)}.mp4"
             clip_path = os.path.join(self.evidence_dir, clip_filename)
             self._save_evidence_clip_async(clip_path)
@@ -394,10 +406,9 @@ class EviGuardPipeline:
         risk: RiskAssessment,
         person_count: int
     ) -> np.ndarray:
-        """Draws sleek HUD overlays, bounding boxes, gaze vectors, and status cards."""
+        """Draws HUD overlays, bounding boxes, gaze vectors, and status cards."""
         h, w = frame.shape[:2]
 
-        # Identify person detections and primary student (largest box)
         person_dets = [d for d in detections if d.class_name == "person"]
         primary_person = max(person_dets, key=lambda d: d.area) if person_dets else None
 
@@ -410,12 +421,13 @@ class EviGuardPipeline:
                 color = (0, 0, 255)
                 label = f"ALERT: Phone ({det.confidence*100:.0f}%)"
             elif "book" in cls_name or "paper" in cls_name or "notes" in cls_name:
-                color = (0, 165, 255) # High-visibility Amber/Yellow
-                label = f"UNAUTHORIZED PAPER/NOTES ({det.confidence*100:.0f}%)"
+                color = (0, 165, 255)
+                label = f"UNAUTHORIZED NOTES ({det.confidence*100:.0f}%)"
             elif "person" in cls_name:
+                t_id_str = f" [ID:{det.track_id}]" if det.track_id is not None else ""
                 if det is primary_person or len(person_dets) == 1:
-                    color = (255, 200, 0) # Cyan / Neutral for primary candidate
-                    label = f"Student (Active) ({det.confidence*100:.0f}%)"
+                    color = (255, 200, 0)
+                    label = f"Student{t_id_str} ({det.confidence*100:.0f}%)"
                 else:
                     dist = 0.0
                     if primary_person:
@@ -424,11 +436,11 @@ class EviGuardPipeline:
                             ((det.box[1] + det.box[3]) / 2.0 - (primary_person.box[1] + primary_person.box[3]) / 2.0) ** 2
                         )
                     if len(person_dets) > 1 and dist > 120.0:
-                        color = (0, 0, 255) # Red for unauthorized second person
-                        label = f"ALERT: Secondary Person (Intruder) ({det.confidence*100:.0f}%)"
+                        color = (0, 0, 255)
+                        label = f"ALERT: Secondary Person{t_id_str} ({det.confidence*100:.0f}%)"
                     else:
                         color = (255, 200, 0)
-                        label = f"Student (Active) ({det.confidence*100:.0f}%)"
+                        label = f"Student{t_id_str} ({det.confidence*100:.0f}%)"
             else:
                 color = (0, 255, 0)
                 label = f"{det.class_name} ({det.confidence*100:.0f}%)"
@@ -445,10 +457,10 @@ class EviGuardPipeline:
                 is_signalling = getattr(pose_gaze, "hand_signalling", False)
                 fingers = getattr(pose_gaze, "extended_fingers", 0)
                 if is_signalling:
-                    h_color = (0, 0, 255) # Red
-                    h_label = f"FLAG: SUSPICIOUS HAND GESTURE / FINGER SIGNALLING ({fingers} Fingers)"
+                    h_color = (0, 0, 255)
+                    h_label = f"SUSPICIOUS: FINGER SIGNALLING ({fingers} Fingers)"
                 else:
-                    h_color = (0, 215, 255) # Yellow/Amber
+                    h_color = (0, 215, 255)
                     h_label = f"HAND DETECTED ({fingers} Fingers)"
 
                 cv2.rectangle(frame, (hx1, hy1), (hx2, hy2), h_color, 2)
@@ -474,32 +486,32 @@ class EviGuardPipeline:
         cv2.rectangle(overlay, (0, 0), (w, 55), (20, 20, 25), -1)
         cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
 
-        if risk.risk_level == "HIGH":
+        if risk.risk_level == "CRITICAL":
             risk_color = (0, 0, 255)
-        elif risk.risk_level == "MEDIUM":
+        elif risk.risk_level == "SUSPICIOUS":
             risk_color = (0, 165, 255)
+        elif risk.risk_level == "MONITOR":
+            risk_color = (0, 215, 255)
         else:
             risk_color = (0, 255, 100)
 
         cv2.putText(frame, "EVIGUARD PROCTOR", (12, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
-        
-        risk_text = f"RISK: {risk.smoothed_score:.0f}/100 [{risk.risk_level}]"
+        risk_text = f"THREAT: {risk.smoothed_score:.0f}/100 [{risk.risk_level}]"
         cv2.putText(frame, risk_text, (12, 44), cv2.FONT_HERSHEY_SIMPLEX, 0.5, risk_color, 2, cv2.LINE_AA)
 
         pose_text = f"Yaw:{pose_gaze.yaw:+.1f} Pitch:{pose_gaze.pitch:+.1f}" if pose_gaze.face_detected else "NO FACE"
         cv2.putText(frame, pose_text, (w - 240, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1, cv2.LINE_AA)
 
         gaze_str = f"Gaze: {pose_gaze.gaze_direction}" if pose_gaze.face_detected else "CANDIDATE ABSENT"
-        gaze_col = (0, 0, 255) if (pose_gaze.is_looking_away or pose_gaze.gaze_direction != "CENTER (FOCUSED)" or not pose_gaze.face_detected) else (0, 255, 120)
+        gaze_col = (0, 0, 255) if (pose_gaze.is_looking_away or not pose_gaze.face_detected) else (0, 255, 120)
         cv2.putText(frame, gaze_str, (w - 280, 44), cv2.FONT_HERSHEY_SIMPLEX, 0.45, gaze_col, 2 if gaze_col == (0, 0, 255) else 1, cv2.LINE_AA)
 
-        # 4. Critical Warning Strip if Active Violations
+        # 5. Critical Warning Strip if Active Violations
         if risk.active_violations:
             banner_overlay = frame.copy()
             cv2.rectangle(banner_overlay, (0, h - 35), (w, h), (0, 0, 180), -1)
             cv2.addWeighted(banner_overlay, 0.8, frame, 0.2, 0, frame)
-            
-            warning_text = f"VIOLATION DETECTED: {' | '.join(risk.active_violations)}"
+            warning_text = f"VIOLATION: {' | '.join(risk.active_violations)}"
             cv2.putText(frame, warning_text, (12, h - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
 
         return frame

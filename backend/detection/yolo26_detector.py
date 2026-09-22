@@ -1,7 +1,8 @@
 """
 YOLO26 Detector Implementation
 Wraps Ultralytics YOLO26 (NMS-free end-to-end inference) for real-time proctoring object detection.
-Filters target classes (person, cell phone, book/paper, laptop) with calibrated geometric validation.
+Filters target classes (person, cell phone, book/paper, laptop) with calibrated geometric validation,
+student ROI cropping for small-object phone detection at 320x320, and NMS-free native inference.
 """
 
 import logging
@@ -9,22 +10,30 @@ import os
 from typing import List, Dict, Any, Optional
 import cv2
 import numpy as np
+
+try:
+    import torch
+    torch.set_num_threads(4)
+except Exception:
+    pass
+
 from .base import BaseDetector, DetectionResult
 
 logger = logging.getLogger("EviGuard.Detector")
 
 
 class YOLO26Detector(BaseDetector):
-    """Real-time object detector powered by Ultralytics YOLO26."""
+    """Real-time object detector powered by Ultralytics YOLO26 with native NMS-free inference and ROI cropping."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__(config)
         self.model_path = self.config.get("model_path", "yolo26n.pt")
         self.iou_threshold = float(self.config.get("iou_threshold", 0.45))
-        self.imgsz = int(self.config.get("imgsz", 320))
+        self.imgsz = int(self.config.get("imgsz", 224))
+        self.nms_free = self.config.get("nms_free", True)
         
         # Specific Confidence Thresholds per object class
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.38))
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.35))
         self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.45))
         self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.35))
         self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.30))
@@ -34,7 +43,7 @@ class YOLO26Detector(BaseDetector):
         self.phone_min_w = float(self.config.get("phone_min_w", 20.0))
         self.phone_min_h = float(self.config.get("phone_min_h", 20.0))
         self.phone_min_aspect_ratio = float(self.config.get("phone_min_aspect_ratio", 1.0))
-        self.phone_max_aspect_ratio = float(self.config.get("phone_max_aspect_ratio", 3.6))
+        self.phone_max_aspect_ratio = float(self.config.get("phone_max_aspect_ratio", 3.5))
 
         # Paper detection enabling (disabled by default to avoid false alerts on white shirts/walls)
         self.enable_paper_heuristic = self.config.get("enable_paper_heuristic", False)
@@ -86,22 +95,17 @@ class YOLO26Detector(BaseDetector):
 
         try:
             h, w = frame.shape[:2]
-            
-            # Analyze lower half of screen (desk workspace area only)
             desk_y_start = int(h * 0.45)
             desk_roi = frame[desk_y_start:h, 0:w]
             
-            # Convert to HSV to isolate bright, low-saturation white sheet regions
             hsv = cv2.cvtColor(desk_roi, cv2.COLOR_BGR2HSV)
             lower_white = np.array([0, 0, 195], dtype=np.uint8)
             upper_white = np.array([180, 50, 255], dtype=np.uint8)
             mask = cv2.inRange(hsv, lower_white, upper_white)
 
-            # Mask out any detected person torso region
             if person_boxes:
                 for pbox in person_boxes:
                     px1, py1, px2, py2 = [int(v) for v in pbox]
-                    # Map to desk ROI coordinates
                     ry1 = max(0, py1 - desk_y_start)
                     ry2 = min(h - desk_y_start, py2 - desk_y_start)
                     rx1 = max(0, px1)
@@ -109,7 +113,6 @@ class YOLO26Detector(BaseDetector):
                     if ry2 > ry1 and rx2 > rx1:
                         mask[ry1:ry2, rx1:rx2] = 0
 
-            # Morphological closing
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
             closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
@@ -138,8 +141,8 @@ class YOLO26Detector(BaseDetector):
 
         return paper_dets
 
-    def detect(self, frame: np.ndarray) -> List[DetectionResult]:
-        """Detects target objects (persons, cell phones, books/paper, laptops) with calibrated validation."""
+    def detect(self, frame: np.ndarray, crop_boxes: Optional[List[List[float]]] = None) -> List[DetectionResult]:
+        """Detects target objects with native NMS-free mode and optional small-object crop detection."""
         if frame is None or frame.size == 0:
             return []
 
@@ -147,6 +150,7 @@ class YOLO26Detector(BaseDetector):
             return self._fallback_detect(frame)
 
         try:
+            # 5.3 NMS-free native inference
             results = self.model.predict(
                 source=frame,
                 imgsz=self.imgsz,
@@ -205,6 +209,41 @@ class YOLO26Detector(BaseDetector):
                             class_name=cls_name
                         )
                     )
+
+            # Section 5.1: Small-object phone detection on student crops at 320x320
+            target_crops = crop_boxes or person_boxes
+            if target_crops and not any(d.class_name == "cell phone" for d in detections):
+                h_f, w_f = frame.shape[:2]
+                for pbox in target_crops[:2]: # Check primary candidate crops
+                    px1 = max(0, int(pbox[0]))
+                    py1 = max(0, int(pbox[1]))
+                    px2 = min(w_f, int(pbox[2]))
+                    py2 = min(h_f, int(pbox[3]))
+                    if (px2 - px1) > 80 and (py2 - py1) > 80:
+                        crop = frame[py1:py2, px1:px2]
+                        try:
+                            crop_res = self.model.predict(source=crop, imgsz=320, conf=0.30, verbose=False)
+                            for cr in crop_res:
+                                if cr.boxes is None:
+                                    continue
+                                for ci in range(len(cr.boxes)):
+                                    c_name = cr.names.get(int(cr.boxes.cls[ci].cpu().numpy()), "").lower()
+                                    if c_name in ("cell phone", "phone"):
+                                        c_box = cr.boxes.xyxy[ci].cpu().numpy().tolist()
+                                        c_conf = float(cr.boxes.conf[ci].cpu().numpy())
+                                        # Map back to full frame coordinates
+                                        full_box = [c_box[0] + px1, c_box[1] + py1, c_box[2] + px1, c_box[3] + py1]
+                                        if self._is_valid_phone_geometry(full_box):
+                                            detections.append(
+                                                DetectionResult(
+                                                    box=full_box,
+                                                    confidence=c_conf,
+                                                    class_id=67,
+                                                    class_name="cell phone"
+                                                )
+                                            )
+                        except Exception:
+                            pass
 
             # Integrate Paper Sheet Heuristic Detections if explicitly enabled
             if self.enable_paper_heuristic:
@@ -270,7 +309,7 @@ class YOLO26Detector(BaseDetector):
         return detections
 
 
-# Aliases for backward compatibility and alternate namings
+# Aliases for backward compatibility
 YOLOv26Detector = YOLO26Detector
 YOLOv8Detector = YOLO26Detector
 
@@ -286,7 +325,7 @@ class MockDetector(BaseDetector):
         """Injects explicit detections for testing."""
         self.injected_detections = detections
 
-    def detect(self, frame: np.ndarray) -> List[DetectionResult]:
+    def detect(self, frame: np.ndarray, crop_boxes: Optional[List[List[float]]] = None) -> List[DetectionResult]:
         if self.injected_detections:
             return self.injected_detections
 
