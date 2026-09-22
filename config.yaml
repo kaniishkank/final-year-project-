@@ -21,7 +21,7 @@ detection:
   phone_confidence_threshold: 0.20 # Calibrated phone detection threshold
   person_confidence_threshold: 0.35 # Ensures candidate and secondary entities are caught
   book_confidence_threshold: 0.22 # Calibrated COCO class 73 (book) threshold for books/notebooks
-  enable_paper_heuristic: true # Enables intelligent paper sheet and note detection
+  enable_paper_heuristic: false # Disabled: pure deep learning detection only to prevent false alerts
   phone_min_area: 80.0 # Responsive area check for distant/small objects
   phone_min_w: 8.0
   phone_min_h: 8.0

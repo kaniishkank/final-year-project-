@@ -45,8 +45,8 @@ class YOLO26Detector(BaseDetector):
         self.phone_min_aspect_ratio = float(self.config.get("phone_min_aspect_ratio", 1.0))
         self.phone_max_aspect_ratio = float(self.config.get("phone_max_aspect_ratio", 4.5))
 
-        # Paper detection enabled by default for exam notes/paper sheets
-        self.enable_paper_heuristic = self.config.get("enable_paper_heuristic", True)
+        # Paper detection disabled by default; pure deep learning detection only
+        self.enable_paper_heuristic = self.config.get("enable_paper_heuristic", False)
 
         self.model = None
         self._fallback_mode = False
