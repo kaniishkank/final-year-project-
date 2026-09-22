@@ -17,10 +17,10 @@ detection:
   model_type: "yolo26"
   model_path: "yolo26n.pt"
   imgsz: 416 # High-resolution tensor size for far-range (1.5-2m) object detection
-  confidence_threshold: 0.18 # Sensitive detector baseline for distant items
-  phone_confidence_threshold: 0.18 # Calibrated phone detection threshold
+  confidence_threshold: 0.20 # General detector baseline
+  phone_confidence_threshold: 0.20 # Calibrated phone detection threshold
   person_confidence_threshold: 0.35 # Ensures candidate and secondary entities are caught
-  book_confidence_threshold: 0.18 # Target COCO class 73 (book/paper) threshold
+  book_confidence_threshold: 0.35 # Calibrated COCO class 73 (book) threshold to avoid empty background false positives
   enable_paper_heuristic: true # Enables intelligent paper sheet and note detection
   phone_min_area: 80.0 # Responsive area check for distant/small objects
   phone_min_w: 8.0

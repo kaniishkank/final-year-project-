@@ -32,11 +32,11 @@ class YOLO26Detector(BaseDetector):
         self.imgsz = int(self.config.get("imgsz", 416))
         self.nms_free = self.config.get("nms_free", True)
         
-        # Specific Confidence Thresholds per object class (calibrated for far-range sensitivity)
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.18))
+        # Specific Confidence Thresholds per object class (calibrated for sensitivity without false positives)
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.20))
         self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.35))
-        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.18))
-        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.18))
+        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.35))
+        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.20))
 
         # Geometric Validation Parameters for Cell Phones (calibrated for far-range detection)
         self.phone_min_area = float(self.config.get("phone_min_area", 80.0))
@@ -88,7 +88,7 @@ class YOLO26Detector(BaseDetector):
         return True
 
     def _detect_white_paper_sheets(self, frame: np.ndarray, person_boxes: Optional[List[List[float]]] = None) -> List[DetectionResult]:
-        """Detects white/light sheets of paper, notebooks, or cheat sheets in workspace or held in hand."""
+        """Detects white/light sheets of paper, notebooks, or cheat sheets with border contrast & texture validation to avoid empty walls."""
         paper_dets: List[DetectionResult] = []
         if not self.enable_paper_heuristic or frame is None or frame.size == 0:
             return paper_dets
@@ -104,8 +104,8 @@ class YOLO26Detector(BaseDetector):
             if person_boxes:
                 for pbox in person_boxes:
                     px1, py1, px2, py2 = [int(v) for v in pbox]
-                    # Exclude upper 40% of person box (face/hair/neck)
-                    face_y2 = min(h, py1 + int((py2 - py1) * 0.40))
+                    # Exclude upper 45% of person box (face/hair/neck)
+                    face_y2 = min(h, py1 + int((py2 - py1) * 0.45))
                     bright_mask[max(0, py1):face_y2, max(0, px1):min(w, px2)] = 0
 
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
@@ -114,23 +114,56 @@ class YOLO26Detector(BaseDetector):
             contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                if area < 1000.0 or area > (h * w * 0.50):
+                if area < 1200.0 or area > (h * w * 0.40):
                     continue
 
                 x, y, bw, bh = cv2.boundingRect(cnt)
+                if bw < 30 or bh < 30:
+                    continue
+
                 aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
-                if 1.0 <= aspect_ratio <= 3.6:
-                    rect_area = bw * bh
-                    fill_ratio = area / (rect_area + 1e-6)
-                    if fill_ratio > 0.55:
-                        paper_dets.append(
-                            DetectionResult(
-                                box=[float(x), float(y), float(x + bw), float(y + bh)],
-                                confidence=0.85,
-                                class_id=73,
-                                class_name="unauthorized paper/notes"
-                            )
-                        )
+                if not (1.05 <= aspect_ratio <= 3.4):
+                    continue
+
+                rect_area = bw * bh
+                fill_ratio = area / (rect_area + 1e-6)
+                if fill_ratio < 0.60:
+                    continue
+
+                # 1. Texture Check: A sheet of paper with handwriting/print has Laplacian variance.
+                roi_gray = gray[y:y+bh, x:x+bw]
+                laplacian_var = float(cv2.Laplacian(roi_gray, cv2.CV_64F).var())
+
+                # 2. Border Contrast Check: A real paper sheet has contrast against its surrounding surface (desk, clothes, dark bg).
+                # A blank empty wall is uniform across its surroundings with zero edge contrast.
+                my1 = max(0, y - 8)
+                my2 = min(h, y + bh + 8)
+                mx1 = max(0, x - 8)
+                mx2 = min(w, x + bw + 8)
+                surrounding_box = gray[my1:my2, mx1:mx2]
+                mask_inner = np.zeros((my2 - my1, mx2 - mx1), dtype=bool)
+                mask_inner[y - my1 : y + bh - my1, x - mx1 : x + bw - mx1] = True
+                surrounding_outer = surrounding_box[~mask_inner]
+
+                border_contrast = 0.0
+                if surrounding_outer.size > 0:
+                    mean_inside = float(np.mean(roi_gray))
+                    mean_outside = float(np.mean(surrounding_outer))
+                    border_contrast = abs(mean_inside - mean_outside)
+
+                # Must have either high border contrast (> 25px) or visible texture/print (laplacian_var > 40)
+                # Plain empty wall has border_contrast < 15 and laplacian_var < 20
+                if border_contrast < 25.0 and laplacian_var < 40.0:
+                    continue
+
+                paper_dets.append(
+                    DetectionResult(
+                        box=[float(x), float(y), float(x + bw), float(y + bh)],
+                        confidence=0.85,
+                        class_id=73,
+                        class_name="unauthorized paper/notes"
+                    )
+                )
         except Exception as e:
             logger.debug(f"Paper sheet detection exception: {e}")
 
