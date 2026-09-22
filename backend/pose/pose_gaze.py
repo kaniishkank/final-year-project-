@@ -162,29 +162,43 @@ class HandSignallingDetector:
                         hand_boxes.append([float(x1), float(y1), float(x2), float(y2)])
                         hand_landmarks_list.append(pts)
 
-                        wrist_y = lms[0].y
-                        if wrist_y < 0.92:
-                            fingers = 0
-                            # Index (8 vs 6)
-                            if lms[8].y < lms[6].y:
-                                fingers += 1
-                            # Middle (12 vs 10)
-                            if lms[12].y < lms[10].y:
-                                fingers += 1
-                            # Ring (16 vs 14)
-                            if lms[16].y < lms[14].y:
-                                fingers += 1
-                            # Pinky (20 vs 18)
-                            if lms[20].y < lms[18].y:
-                                fingers += 1
-                            # Thumb (4 vs 2)
-                            if abs(lms[4].x - lms[2].x) > 0.035 or (lms[4].y < lms[3].y and lms[4].y < lms[2].y):
+                        wrist = pts[0]
+                        fingers = 0
+
+                        # 4 Main Fingers: Index (5-8), Middle (9-12), Ring (13-16), Pinky (17-20)
+                        finger_joints = [
+                            (5, 6, 7, 8),    # Index
+                            (9, 10, 11, 12), # Middle
+                            (13, 14, 15, 16),# Ring
+                            (17, 18, 19, 20) # Pinky
+                        ]
+                        for mcp_idx, pip_idx, dip_idx, tip_idx in finger_joints:
+                            mcp = pts[mcp_idx]
+                            pip = pts[pip_idx]
+                            tip = pts[tip_idx]
+                            d_w_tip = math.hypot(tip[0] - wrist[0], tip[1] - wrist[1])
+                            d_w_pip = math.hypot(pip[0] - wrist[0], pip[1] - wrist[1])
+                            d_m_tip = math.hypot(tip[0] - mcp[0], tip[1] - mcp[1])
+                            d_m_pip = math.hypot(pip[0] - mcp[0], pip[1] - mcp[1])
+                            if (d_w_tip > d_w_pip * 1.05) and (d_m_tip > d_m_pip * 1.08):
                                 fingers += 1
 
-                            extended_fingers_count = max(extended_fingers_count, fingers)
-                            if 1 <= fingers <= 4:
-                                gesture_detected = True
+                        # Thumb (1-4)
+                        thumb_tip = pts[4]
+                        thumb_ip = pts[3]
+                        pinky_mcp = pts[17]
+                        d_t_p = math.hypot(thumb_tip[0] - pinky_mcp[0], thumb_tip[1] - pinky_mcp[1])
+                        d_ip_p = math.hypot(thumb_ip[0] - pinky_mcp[0], thumb_ip[1] - pinky_mcp[1])
+                        if d_t_p > d_ip_p * 1.06:
+                            fingers += 1
+
+                        extended_fingers_count = max(extended_fingers_count, fingers)
+                        if fingers >= 1:
+                            gesture_detected = True
+                            if fingers <= 4:
                                 gesture_label = f"FINGER SIGNALLING ({fingers} Extended Fingers)"
+                            else:
+                                gesture_label = f"HAND RAISED ({fingers} Fingers)"
             except Exception as e:
                 logger.debug(f"MediaPipe Tasks HandLandmarker exception: {e}")
 
@@ -202,24 +216,40 @@ class HandSignallingDetector:
                         hand_boxes.append([float(x1), float(y1), float(x2), float(y2)])
                         hand_landmarks_list.append(pts)
 
-                        wrist_y = hand_lms.landmark[0].y
-                        if wrist_y < 0.92:
-                            fingers = 0
-                            if hand_lms.landmark[8].y < hand_lms.landmark[6].y:
-                                fingers += 1
-                            if hand_lms.landmark[12].y < hand_lms.landmark[10].y:
-                                fingers += 1
-                            if hand_lms.landmark[16].y < hand_lms.landmark[14].y:
-                                fingers += 1
-                            if hand_lms.landmark[20].y < hand_lms.landmark[18].y:
-                                fingers += 1
-                            if abs(hand_lms.landmark[4].x - hand_lms.landmark[2].x) > 0.035:
+                        wrist = pts[0]
+                        fingers = 0
+                        finger_joints = [
+                            (5, 6, 7, 8),    # Index
+                            (9, 10, 11, 12), # Middle
+                            (13, 14, 15, 16),# Ring
+                            (17, 18, 19, 20) # Pinky
+                        ]
+                        for mcp_idx, pip_idx, dip_idx, tip_idx in finger_joints:
+                            mcp = pts[mcp_idx]
+                            pip = pts[pip_idx]
+                            tip = pts[tip_idx]
+                            d_w_tip = math.hypot(tip[0] - wrist[0], tip[1] - wrist[1])
+                            d_w_pip = math.hypot(pip[0] - wrist[0], pip[1] - wrist[1])
+                            d_m_tip = math.hypot(tip[0] - mcp[0], tip[1] - mcp[1])
+                            d_m_pip = math.hypot(pip[0] - mcp[0], pip[1] - mcp[1])
+                            if (d_w_tip > d_w_pip * 1.05) and (d_m_tip > d_m_pip * 1.08):
                                 fingers += 1
 
-                            extended_fingers_count = max(extended_fingers_count, fingers)
-                            if 1 <= fingers <= 4:
-                                gesture_detected = True
+                        thumb_tip = pts[4]
+                        thumb_ip = pts[3]
+                        pinky_mcp = pts[17]
+                        d_t_p = math.hypot(thumb_tip[0] - pinky_mcp[0], thumb_tip[1] - pinky_mcp[1])
+                        d_ip_p = math.hypot(thumb_ip[0] - pinky_mcp[0], thumb_ip[1] - pinky_mcp[1])
+                        if d_t_p > d_ip_p * 1.06:
+                            fingers += 1
+
+                        extended_fingers_count = max(extended_fingers_count, fingers)
+                        if fingers >= 1:
+                            gesture_detected = True
+                            if fingers <= 4:
                                 gesture_label = f"FINGER SIGNALLING ({fingers} Extended Fingers)"
+                            else:
+                                gesture_label = f"HAND RAISED ({fingers} Fingers)"
             except Exception as e:
                 logger.debug(f"MediaPipe legacy Hands exception: {e}")
 

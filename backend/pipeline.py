@@ -417,12 +417,12 @@ class EviGuardPipeline:
             x1, y1, x2, y2 = [int(v) for v in det.box]
             cls_name = det.class_name.lower()
 
-            if "phone" in cls_name:
+            if "phone" in cls_name or "cell" in cls_name:
                 color = (0, 0, 255)
                 label = f"ALERT: Phone ({det.confidence*100:.0f}%)"
             elif "book" in cls_name or "paper" in cls_name or "notes" in cls_name:
                 color = (0, 165, 255)
-                label = f"UNAUTHORIZED NOTES ({det.confidence*100:.0f}%)"
+                label = f"ALERT: Book / Notes ({det.confidence*100:.0f}%)"
             elif "person" in cls_name:
                 t_id_str = f" [ID:{det.track_id}]" if det.track_id is not None else ""
                 if det is primary_person or len(person_dets) == 1:
@@ -443,7 +443,7 @@ class EviGuardPipeline:
                         label = f"Student{t_id_str} ({det.confidence*100:.0f}%)"
             else:
                 color = (0, 255, 0)
-                label = f"{det.class_name} ({det.confidence*100:.0f}%)"
+                label = f"{det.class_name.upper()} ({det.confidence*100:.0f}%)"
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
@@ -456,12 +456,15 @@ class EviGuardPipeline:
                 hx1, hy1, hx2, hy2 = [int(v) for v in h_box]
                 is_signalling = getattr(pose_gaze, "hand_signalling", False)
                 fingers = getattr(pose_gaze, "extended_fingers", 0)
-                if is_signalling:
+                if is_signalling or fingers >= 1:
                     h_color = (0, 0, 255)
-                    h_label = f"SUSPICIOUS: FINGER SIGNALLING ({fingers} Fingers)"
+                    if fingers <= 4:
+                        h_label = f"SUSPICIOUS: FINGER SIGNALLING ({fingers} Fingers)"
+                    else:
+                        h_label = f"HAND RAISED ({fingers} Fingers)"
                 else:
                     h_color = (0, 215, 255)
-                    h_label = f"HAND DETECTED ({fingers} Fingers)"
+                    h_label = "HAND DETECTED (Resting)"
 
                 cv2.rectangle(frame, (hx1, hy1), (hx2, hy2), h_color, 2)
                 (hw, hh), _ = cv2.getTextSize(h_label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)

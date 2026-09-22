@@ -33,17 +33,17 @@ class YOLO26Detector(BaseDetector):
         self.nms_free = self.config.get("nms_free", True)
         
         # Specific Confidence Thresholds per object class
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.30))
-        self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.40))
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.25))
+        self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.38))
         self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.30))
-        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.25))
+        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.22))
 
         # Geometric Validation Parameters for Cell Phones
-        self.phone_min_area = float(self.config.get("phone_min_area", 400.0))
-        self.phone_min_w = float(self.config.get("phone_min_w", 15.0))
-        self.phone_min_h = float(self.config.get("phone_min_h", 15.0))
+        self.phone_min_area = float(self.config.get("phone_min_area", 300.0))
+        self.phone_min_w = float(self.config.get("phone_min_w", 12.0))
+        self.phone_min_h = float(self.config.get("phone_min_h", 12.0))
         self.phone_min_aspect_ratio = float(self.config.get("phone_min_aspect_ratio", 1.0))
-        self.phone_max_aspect_ratio = float(self.config.get("phone_max_aspect_ratio", 4.0))
+        self.phone_max_aspect_ratio = float(self.config.get("phone_max_aspect_ratio", 4.2))
 
         # Paper detection enabling
         self.enable_paper_heuristic = self.config.get("enable_paper_heuristic", False)
@@ -167,25 +167,32 @@ class YOLO26Detector(BaseDetector):
                 if boxes is None:
                     continue
 
-                for i in range(len(boxes)):
-                    box = boxes.xyxy[i].cpu().numpy().tolist()  # [x1, y1, x2, y2]
-                    conf = float(boxes.conf[i].cpu().numpy())
-                    cls_id = int(boxes.cls[i].cpu().numpy())
-                    cls_name = r.names.get(cls_id, str(cls_id)).lower()
+                    bw = abs(box[2] - box[0])
+                    bh = abs(box[3] - box[1])
+                    box_area = bw * bh
+                    aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
 
-                    # 1. Validation for Cell Phone (Class 67)
-                    if cls_name in ("cell phone", "phone") or cls_id == 67:
+                    # 1. Validation for Cell Phone (Class 67) or Remote/Handheld Device (Class 65)
+                    if cls_name in ("cell phone", "phone", "remote") or cls_id in (67, 65):
                         if conf < self.phone_conf_threshold:
                             continue
                         if not self._is_valid_phone_geometry(box):
                             continue
                         cls_name = "cell phone"
+                        cls_id = 67
 
                     # 2. Validation for Book / Paper / Notes (COCO Class 73)
                     elif cls_name in ("book", "notebook", "paper") or cls_id == 73:
-                        if conf < self.book_conf_threshold:
-                            continue
-                        cls_name = "unauthorized paper/notes"
+                        # If the detected 'book' is phone-sized (aspect ratio 1.2-3.8, area < 35000 px^2),
+                        # it is almost certainly the flat back case of a smartphone
+                        if 1.15 <= aspect_ratio <= 3.8 and box_area <= 35000.0 and self._is_valid_phone_geometry(box):
+                            cls_name = "cell phone"
+                            cls_id = 67
+                        else:
+                            if conf < self.book_conf_threshold:
+                                continue
+                            cls_name = "book"
+                            cls_id = 73
 
                     # 3. Validation for Person (Class 0)
                     elif cls_name == "person" or cls_id == 0:
