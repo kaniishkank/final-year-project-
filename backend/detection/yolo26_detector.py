@@ -32,10 +32,10 @@ class YOLO26Detector(BaseDetector):
         self.imgsz = int(self.config.get("imgsz", 416))
         self.nms_free = self.config.get("nms_free", True)
         
-        # Specific Confidence Thresholds per object class (calibrated for sensitivity without false positives)
+        # Specific Confidence Thresholds per object class (calibrated for sensitivity and accuracy)
         self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.20))
         self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.35))
-        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.35))
+        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.22))
         self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.20))
 
         # Geometric Validation Parameters for Cell Phones (calibrated for far-range detection)
@@ -97,8 +97,8 @@ class YOLO26Detector(BaseDetector):
             h, w = frame.shape[:2]
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            # Bright white/light region segmentation
-            bright_mask = cv2.inRange(gray, 180, 255)
+            # Bright white/light region segmentation (calibrated for indoor lighting: 145-255)
+            bright_mask = cv2.inRange(gray, 145, 255)
 
             # Exclude upper head/face region if person boxes provided
             if person_boxes:
@@ -108,26 +108,26 @@ class YOLO26Detector(BaseDetector):
                     face_y2 = min(h, py1 + int((py2 - py1) * 0.45))
                     bright_mask[max(0, py1):face_y2, max(0, px1):min(w, px2)] = 0
 
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
             closed = cv2.morphologyEx(bright_mask, cv2.MORPH_CLOSE, kernel)
 
             contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                if area < 1200.0 or area > (h * w * 0.40):
+                if area < 500.0 or area > (h * w * 0.45):
                     continue
 
                 x, y, bw, bh = cv2.boundingRect(cnt)
-                if bw < 30 or bh < 30:
+                if bw < 20 or bh < 20:
                     continue
 
                 aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
-                if not (1.05 <= aspect_ratio <= 3.4):
+                if not (1.0 <= aspect_ratio <= 4.0):
                     continue
 
                 rect_area = bw * bh
                 fill_ratio = area / (rect_area + 1e-6)
-                if fill_ratio < 0.60:
+                if fill_ratio < 0.50:
                     continue
 
                 # 1. Texture Check: A sheet of paper with handwriting/print has Laplacian variance.
@@ -151,9 +151,9 @@ class YOLO26Detector(BaseDetector):
                     mean_outside = float(np.mean(surrounding_outer))
                     border_contrast = abs(mean_inside - mean_outside)
 
-                # Must have either high border contrast (> 25px) or visible texture/print (laplacian_var > 40)
-                # Plain empty wall has border_contrast < 15 and laplacian_var < 20
-                if border_contrast < 25.0 and laplacian_var < 40.0:
+                # Must have either high border contrast (> 14px) or visible texture/print (laplacian_var > 18)
+                # Plain empty wall has border_contrast < 10 and laplacian_var < 12
+                if border_contrast < 14.0 and laplacian_var < 18.0:
                     continue
 
                 paper_dets.append(
@@ -178,6 +178,8 @@ class YOLO26Detector(BaseDetector):
             return self._fallback_detect(frame)
 
         try:
+            h, w = frame.shape[:2]
+
             # Single-pass high-speed YOLO26 inference
             results = self.model.predict(
                 source=frame,
@@ -217,21 +219,44 @@ class YOLO26Detector(BaseDetector):
 
                     # 2. Validation for Book / Paper / Notes (COCO Class 73)
                     elif cls_name in ("book", "notebook", "paper") or cls_id == 73:
-                        # If the detected 'book' is phone-sized (aspect ratio 1.2-3.8, area < 25000 px^2),
-                        # and has dark glass/remote features, allow it as cell phone; otherwise keep as book
                         if conf < self.book_conf_threshold:
                             continue
                         cls_name = "book"
                         cls_id = 73
 
-                    # 3. Validation for Person (Class 0)
+                    # 3. Disambiguation for Large Book / Textbook mistakenly detected as Laptop (Class 63)
+                    elif cls_name in ("laptop",) or cls_id == 63:
+                        if conf < self.default_conf_threshold:
+                            continue
+                        # If a large book, textbook, or open binder is detected as laptop:
+                        rx1, ry1, rx2, ry2 = [int(v) for v in box]
+                        rx1, ry1 = max(0, rx1), max(0, ry1)
+                        rx2, ry2 = min(w, rx2), min(h, ry2)
+                        is_book = False
+                        if rx2 > rx1 and ry2 > ry1:
+                            roi_bgr = frame[ry1:ry2, rx1:rx2]
+                            roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
+                            mean_b = float(np.mean(roi_gray))
+                            # Hardcover books / open books / binders:
+                            # Height > width (held in portrait), aspect ratio < 1.45, or light/white page content (mean > 115)
+                            if (ry2 - ry1) > (rx2 - rx1) or aspect_ratio < 1.45 or mean_b > 115.0:
+                                is_book = True
+
+                        if is_book:
+                            cls_name = "book"
+                            cls_id = 73
+                        else:
+                            cls_name = "laptop"
+                            cls_id = 63
+
+                    # 4. Validation for Person (Class 0)
                     elif cls_name == "person" or cls_id == 0:
                         if conf < self.person_conf_threshold:
                             continue
                         cls_name = "person"
                         person_boxes.append(box)
 
-                    # 4. Other Target Objects (e.g. laptop)
+                    # 5. Other Target Objects
                     else:
                         if self.target_classes and cls_name not in self.target_classes:
                             continue
