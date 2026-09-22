@@ -131,7 +131,37 @@ class HandSignallingDetector:
         ]
         return float(np.mean(displacements))
 
-    def detect(self, frame: np.ndarray) -> Tuple[bool, int, str, List[List[float]], List[Any]]:
+    def _is_face_overlap(self, box: List[float], face_boxes: Optional[List[List[float]]]) -> bool:
+        """Determines if a candidate hand box significantly overlaps with any detected face bounding box."""
+        if not face_boxes:
+            return False
+        bx1, by1, bx2, by2 = box
+        b_w = max(0.0, bx2 - bx1)
+        b_h = max(0.0, by2 - by1)
+        b_area = b_w * b_h
+        if b_area <= 0:
+            return False
+        b_cx = (bx1 + bx2) / 2.0
+        b_cy = (by1 + by2) / 2.0
+
+        for fbox in face_boxes:
+            fx1, fy1, fx2, fy2 = fbox
+            ix1 = max(bx1, fx1)
+            iy1 = max(by1, fy1)
+            ix2 = min(bx2, fx2)
+            iy2 = min(by2, fy2)
+            iw = max(0.0, ix2 - ix1)
+            ih = max(0.0, iy2 - iy1)
+            inter_area = iw * ih
+            overlap_ratio = inter_area / b_area
+            center_in_face = (fx1 <= b_cx <= fx2) and (fy1 <= b_cy <= fy2)
+
+            # If more than 35% of candidate hand box is inside face, or centroid is in face with >25% overlap
+            if overlap_ratio > 0.35 or (center_in_face and overlap_ratio > 0.25):
+                return True
+        return False
+
+    def detect(self, frame: np.ndarray, face_boxes: Optional[List[List[float]]] = None) -> Tuple[bool, int, str, List[List[float]], List[Any]]:
         """Analyzes frame for raised hands with extended fingers (signaling options A/B/C/D)."""
         if frame is None or frame.size == 0:
             self.recent_gestures.append(0)
@@ -159,7 +189,13 @@ class HandSignallingDetector:
                         xs = [p[0] for p in pts]
                         ys = [p[1] for p in pts]
                         x1, y1, x2, y2 = max(0, min(xs) - 10), max(0, min(ys) - 10), min(w, max(xs) + 10), min(h, max(ys) + 10)
-                        hand_boxes.append([float(x1), float(y1), float(x2), float(y2)])
+                        cand_box = [float(x1), float(y1), float(x2), float(y2)]
+
+                        # Spatial suppression: ignore candidate hand box if it overlaps student's face/chin
+                        if self._is_face_overlap(cand_box, face_boxes):
+                            continue
+
+                        hand_boxes.append(cand_box)
                         hand_landmarks_list.append(pts)
 
                         wrist = pts[0]
@@ -186,10 +222,13 @@ class HandSignallingDetector:
                         # Thumb (1-4)
                         thumb_tip = pts[4]
                         thumb_ip = pts[3]
+                        thumb_mcp = pts[2]
                         pinky_mcp = pts[17]
                         d_t_p = math.hypot(thumb_tip[0] - pinky_mcp[0], thumb_tip[1] - pinky_mcp[1])
                         d_ip_p = math.hypot(thumb_ip[0] - pinky_mcp[0], thumb_ip[1] - pinky_mcp[1])
-                        if d_t_p > d_ip_p * 1.06:
+                        d_t_w = math.hypot(thumb_tip[0] - wrist[0], thumb_tip[1] - wrist[1])
+                        d_m_w = math.hypot(thumb_mcp[0] - wrist[0], thumb_mcp[1] - wrist[1])
+                        if (d_t_p > d_ip_p * 1.08) and (d_t_w > d_m_w * 1.10):
                             fingers += 1
 
                         extended_fingers_count = max(extended_fingers_count, fingers)
@@ -213,7 +252,13 @@ class HandSignallingDetector:
                         xs = [p[0] for p in pts]
                         ys = [p[1] for p in pts]
                         x1, y1, x2, y2 = max(0, min(xs) - 10), max(0, min(ys) - 10), min(w, max(xs) + 10), min(h, max(ys) + 10)
-                        hand_boxes.append([float(x1), float(y1), float(x2), float(y2)])
+                        cand_box = [float(x1), float(y1), float(x2), float(y2)]
+
+                        # Spatial suppression: ignore candidate hand box if it overlaps student's face/chin
+                        if self._is_face_overlap(cand_box, face_boxes):
+                            continue
+
+                        hand_boxes.append(cand_box)
                         hand_landmarks_list.append(pts)
 
                         wrist = pts[0]
@@ -237,10 +282,13 @@ class HandSignallingDetector:
 
                         thumb_tip = pts[4]
                         thumb_ip = pts[3]
+                        thumb_mcp = pts[2]
                         pinky_mcp = pts[17]
                         d_t_p = math.hypot(thumb_tip[0] - pinky_mcp[0], thumb_tip[1] - pinky_mcp[1])
                         d_ip_p = math.hypot(thumb_ip[0] - pinky_mcp[0], thumb_ip[1] - pinky_mcp[1])
-                        if d_t_p > d_ip_p * 1.06:
+                        d_t_w = math.hypot(thumb_tip[0] - wrist[0], thumb_tip[1] - wrist[1])
+                        d_m_w = math.hypot(thumb_mcp[0] - wrist[0], thumb_mcp[1] - wrist[1])
+                        if (d_t_p > d_ip_p * 1.08) and (d_t_w > d_m_w * 1.10):
                             fingers += 1
 
                         extended_fingers_count = max(extended_fingers_count, fingers)
@@ -253,14 +301,23 @@ class HandSignallingDetector:
             except Exception as e:
                 logger.debug(f"MediaPipe legacy Hands exception: {e}")
 
-        # 3. Fallback skin contour / hand heuristic
-        else:
+        # 3. Fallback skin contour / hand heuristic (only if no modern/legacy MediaPipe detector is loaded)
+        elif self._fallback_mode:
             try:
                 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
                 lower_skin = np.array([0, 25, 60], dtype=np.uint8)
                 upper_skin = np.array([25, 200, 255], dtype=np.uint8)
                 mask = cv2.inRange(hsv, lower_skin, upper_skin)
-                mask[0:int(h * 0.35), int(w * 0.3):int(w * 0.7)] = 0
+                
+                # Actively mask out face areas to completely prevent face skin from forming hand contours
+                if face_boxes:
+                    for fb in face_boxes:
+                        fx1, fy1, fx2, fy2 = [int(v) for v in fb]
+                        mw = int((fx2 - fx1) * 0.20)
+                        mh = int((fy2 - fy1) * 0.20)
+                        mask[max(0, fy1 - mh):min(h, fy2 + mh), max(0, fx1 - mw):min(w, fx2 + mw)] = 0
+                else:
+                    mask[0:int(h * 0.40), int(w * 0.25):int(w * 0.75)] = 0
                 
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 for cnt in contours:
@@ -268,7 +325,11 @@ class HandSignallingDetector:
                     if 2500 < area < (w * h * 0.25):
                         bx, by, bw, bh = cv2.boundingRect(cnt)
                         if bh > bw * 1.05:
-                            hand_boxes.append([float(bx), float(by), float(bx + bw), float(by + bh)])
+                            cand_box = [float(bx), float(by), float(bx + bw), float(by + bh)]
+                            if self._is_face_overlap(cand_box, face_boxes):
+                                continue
+
+                            hand_boxes.append(cand_box)
                             hull = cv2.convexHull(cnt, returnPoints=False)
                             if len(hull) > 3 and len(cnt) > 3:
                                 defects = cv2.convexityDefects(cnt, hull)
@@ -374,25 +435,17 @@ class PoseGazeEstimator:
 
     def estimate(self, frame: np.ndarray, bbox: Optional[List[float]] = None) -> PoseGazeResult:
         """Processes frame to compute 3D head pose, 4-way gaze direction, and hand gesture signalling."""
-        # 1. Detect Hand / Finger Signalling
-        is_hand_signalling, ext_fingers, gest_label, hand_boxes, hand_lms = self.hand_detector.detect(frame)
-
         if frame is None or frame.size == 0:
             self.consecutive_absence_frames += 1
             self.consecutive_lookaway_frames = 0
-            res = self._create_absent_result()
-            res.hand_signalling = is_hand_signalling
-            res.extended_fingers = ext_fingers
-            res.hand_gesture_label = gest_label
-            res.hand_boxes = hand_boxes
-            res.hand_landmarks = hand_lms
-            return res
+            return self._create_absent_result()
 
-        # 2. Modern MediaPipe Tasks FaceLandmarker
+        h_full, w_full = frame.shape[:2]
+
+        # 1. Modern MediaPipe Tasks FaceLandmarker
         if self.task_detector is not None:
             try:
                 import mediapipe as mp
-                h_full, w_full = frame.shape[:2]
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
                 result = self.task_detector.detect(mp_image)
@@ -400,8 +453,9 @@ class PoseGazeEstimator:
                 if not result.face_landmarks:
                     self.consecutive_absence_frames += 1
                     self.consecutive_lookaway_frames = 0
+                    is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self.hand_detector.detect(frame, face_boxes=[])
                     res = self._create_absent_result()
-                    res.hand_signalling = is_hand_signalling
+                    res.hand_signalling = is_hand_sig
                     res.extended_fingers = ext_fingers
                     res.hand_gesture_label = gest_label
                     res.hand_boxes = hand_boxes
@@ -411,6 +465,17 @@ class PoseGazeEstimator:
                 self.consecutive_absence_frames = 0
                 face_count = len(result.face_landmarks)
                 primary_face = result.face_landmarks[0]
+
+                # Extract all detected face bounding boxes for spatial hand suppression
+                all_face_boxes = []
+                for flms in result.face_landmarks:
+                    xs = [lm.x * w_full for lm in flms]
+                    ys = [lm.y * h_full for lm in flms]
+                    all_face_boxes.append([float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys))])
+                primary_face_box = all_face_boxes[0] if all_face_boxes else None
+
+                # Detect Hand Signalling with active face box suppression to eliminate face false positives
+                is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self.hand_detector.detect(frame, face_boxes=all_face_boxes)
 
                 # Extract 2D points for PnP
                 image_points_2d = []
@@ -438,7 +503,7 @@ class PoseGazeEstimator:
 
                 if not success:
                     res = self._fallback_estimate(frame)
-                    res.hand_signalling = is_hand_signalling
+                    res.hand_signalling = is_hand_sig
                     res.extended_fingers = ext_fingers
                     res.hand_gesture_label = gest_label
                     res.hand_boxes = hand_boxes
@@ -465,10 +530,6 @@ class PoseGazeEstimator:
                 gaze_seconds = self.consecutive_lookaway_frames / max(1.0, self.fps)
                 is_prolonged = self.consecutive_lookaway_frames >= self.prolonged_gaze_threshold_frames
 
-                all_x = [lm.x * w_full for lm in primary_face]
-                all_y = [lm.y * h_full for lm in primary_face]
-                face_box = [float(min(all_x)), float(min(all_y)), float(max(all_x)), float(max(all_y))]
-
                 return PoseGazeResult(
                     face_detected=True,
                     face_count=face_count,
@@ -482,30 +543,30 @@ class PoseGazeEstimator:
                     gaze_violation_frames=self.consecutive_lookaway_frames,
                     gaze_violation_seconds=gaze_seconds,
                     is_prolonged_lookaway=is_prolonged,
-                    hand_signalling=is_hand_signalling,
+                    hand_signalling=is_hand_sig,
                     extended_fingers=ext_fingers,
                     hand_gesture_label=gest_label,
                     hand_boxes=hand_boxes,
                     hand_landmarks=hand_lms,
-                    face_box=face_box,
+                    face_box=primary_face_box,
                     landmarks_2d=[(pt[0], pt[1]) for pt in image_points_2d],
                     nose_projection_2d=p_nose_2d
                 )
             except Exception as e:
                 logger.debug(f"MediaPipe Tasks FaceLandmarker execution error: {e}")
 
-        # 3. Legacy MediaPipe FaceMesh
+        # 2. Legacy MediaPipe FaceMesh
         if self.legacy_face_mesh is not None:
             try:
-                h_full, w_full = frame.shape[:2]
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 results = self.legacy_face_mesh.process(rgb_frame)
 
                 if not results.multi_face_landmarks:
                     self.consecutive_absence_frames += 1
                     self.consecutive_lookaway_frames = 0
+                    is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self.hand_detector.detect(frame, face_boxes=[])
                     res = self._create_absent_result()
-                    res.hand_signalling = is_hand_signalling
+                    res.hand_signalling = is_hand_sig
                     res.extended_fingers = ext_fingers
                     res.hand_gesture_label = gest_label
                     res.hand_boxes = hand_boxes
@@ -515,6 +576,15 @@ class PoseGazeEstimator:
                 self.consecutive_absence_frames = 0
                 face_count = len(results.multi_face_landmarks)
                 primary_face = results.multi_face_landmarks[0]
+
+                all_face_boxes = []
+                for flms in results.multi_face_landmarks:
+                    xs = [lm.x * w_full for lm in flms.landmark]
+                    ys = [lm.y * h_full for lm in flms.landmark]
+                    all_face_boxes.append([float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys))])
+                primary_face_box = all_face_boxes[0] if all_face_boxes else None
+
+                is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self.hand_detector.detect(frame, face_boxes=all_face_boxes)
 
                 image_points_2d = []
                 for idx in self.LANDMARK_INDICES:
@@ -560,10 +630,6 @@ class PoseGazeEstimator:
                     gaze_seconds = self.consecutive_lookaway_frames / max(1.0, self.fps)
                     is_prolonged = self.consecutive_lookaway_frames >= self.prolonged_gaze_threshold_frames
 
-                    all_x = [lm.x * w_full for lm in primary_face.landmark]
-                    all_y = [lm.y * h_full for lm in primary_face.landmark]
-                    face_box = [float(min(all_x)), float(min(all_y)), float(max(all_x)), float(max(all_y))]
-
                     return PoseGazeResult(
                         face_detected=True,
                         face_count=face_count,
@@ -577,21 +643,23 @@ class PoseGazeEstimator:
                         gaze_violation_frames=self.consecutive_lookaway_frames,
                         gaze_violation_seconds=gaze_seconds,
                         is_prolonged_lookaway=is_prolonged,
-                        hand_signalling=is_hand_signalling,
+                        hand_signalling=is_hand_sig,
                         extended_fingers=ext_fingers,
                         hand_gesture_label=gest_label,
                         hand_boxes=hand_boxes,
                         hand_landmarks=hand_lms,
-                        face_box=face_box,
+                        face_box=primary_face_box,
                         landmarks_2d=[(pt[0], pt[1]) for pt in image_points_2d],
                         nose_projection_2d=p_nose_2d
                     )
             except Exception as e:
                 logger.debug(f"MediaPipe legacy FaceMesh execution error: {e}")
 
-        # 4. Mathematical / Haar Cascade Fallback
+        # 3. Mathematical / Haar Cascade Fallback
         res = self._fallback_estimate(frame)
-        res.hand_signalling = is_hand_signalling
+        fb_list = [res.face_box] if res.face_box else []
+        is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self.hand_detector.detect(frame, face_boxes=fb_list)
+        res.hand_signalling = is_hand_sig
         res.extended_fingers = ext_fingers
         res.hand_gesture_label = gest_label
         res.hand_boxes = hand_boxes

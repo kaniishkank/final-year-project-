@@ -29,21 +29,21 @@ class YOLO26Detector(BaseDetector):
         super().__init__(config)
         self.model_path = self.config.get("model_path", "yolo26n.pt")
         self.iou_threshold = float(self.config.get("iou_threshold", 0.45))
-        self.imgsz = int(self.config.get("imgsz", 320))
+        self.imgsz = int(self.config.get("imgsz", 416))
         self.nms_free = self.config.get("nms_free", True)
         
-        # Specific Confidence Thresholds per object class
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.22))
+        # Specific Confidence Thresholds per object class (calibrated for far-range sensitivity)
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.18))
         self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.35))
-        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.22))
-        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.20))
+        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.18))
+        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.18))
 
-        # Geometric Validation Parameters for Cell Phones
-        self.phone_min_area = float(self.config.get("phone_min_area", 300.0))
-        self.phone_min_w = float(self.config.get("phone_min_w", 12.0))
-        self.phone_min_h = float(self.config.get("phone_min_h", 12.0))
+        # Geometric Validation Parameters for Cell Phones (calibrated for far-range detection)
+        self.phone_min_area = float(self.config.get("phone_min_area", 80.0))
+        self.phone_min_w = float(self.config.get("phone_min_w", 8.0))
+        self.phone_min_h = float(self.config.get("phone_min_h", 8.0))
         self.phone_min_aspect_ratio = float(self.config.get("phone_min_aspect_ratio", 1.0))
-        self.phone_max_aspect_ratio = float(self.config.get("phone_max_aspect_ratio", 4.2))
+        self.phone_max_aspect_ratio = float(self.config.get("phone_max_aspect_ratio", 4.5))
 
         # Paper detection enabled by default for exam notes/paper sheets
         self.enable_paper_heuristic = self.config.get("enable_paper_heuristic", True)
@@ -98,7 +98,7 @@ class YOLO26Detector(BaseDetector):
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
             # Bright white/light region segmentation
-            bright_mask = cv2.inRange(gray, 185, 255)
+            bright_mask = cv2.inRange(gray, 180, 255)
 
             # Exclude upper head/face region if person boxes provided
             if person_boxes:
@@ -108,21 +108,21 @@ class YOLO26Detector(BaseDetector):
                     face_y2 = min(h, py1 + int((py2 - py1) * 0.40))
                     bright_mask[max(0, py1):face_y2, max(0, px1):min(w, px2)] = 0
 
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
             closed = cv2.morphologyEx(bright_mask, cv2.MORPH_CLOSE, kernel)
 
             contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                if area < 3500.0 or area > (h * w * 0.45):
+                if area < 1000.0 or area > (h * w * 0.50):
                     continue
 
                 x, y, bw, bh = cv2.boundingRect(cnt)
                 aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
-                if 1.05 <= aspect_ratio <= 3.2:
+                if 1.0 <= aspect_ratio <= 3.6:
                     rect_area = bw * bh
                     fill_ratio = area / (rect_area + 1e-6)
-                    if fill_ratio > 0.60:
+                    if fill_ratio > 0.55:
                         paper_dets.append(
                             DetectionResult(
                                 box=[float(x), float(y), float(x + bw), float(y + bh)],
