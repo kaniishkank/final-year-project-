@@ -7,7 +7,7 @@ EviGuard is a multi-modal computer vision and Explainable AI (XAI) automated exa
 ## 🌟 Key Features
 
 1. **Multi-Object Detection (`backend/detection/`)**:
-   - Integrated with **YOLOv8** to identify unauthorized electronic devices (cell phones, secondary laptops) and unauthorized study materials (books/notes).
+   - Integrated with **YOLO26** (NMS-free end-to-end inference) to identify unauthorized electronic devices (cell phones, secondary laptops) and unauthorized study materials (books/notes).
    - Extensible factory pattern with fallback simulation for automated testing.
 
 2. **Temporal Entity Tracking (`backend/tracking/`)**:
@@ -43,7 +43,7 @@ eviguard/
 ├── backend/
 │   ├── detection/
 │   │   ├── base.py              # Base detector interface & DetectionResult dataclass
-│   │   ├── yolov8_detector.py   # Ultralytics YOLOv8 detector with fallback
+│   │   ├── yolo26_detector.py   # Ultralytics YOLO26 detector with fallback
 │   │   └── factory.py           # DetectorFactory
 │   ├── tracking/
 │   │   └── tracker.py           # Multi-entity & PersonTracker

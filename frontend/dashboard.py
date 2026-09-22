@@ -1019,7 +1019,7 @@ elif menu_option == "⚙️ Settings & Sensitivity":
     with st.form("settings_form"):
         st.subheader("1. Object Detection & Tracking Parameters")
         c1, c2 = st.columns(2)
-        conf_thresh = c1.slider("YOLOv8 Confidence Threshold", 0.10, 0.90, 0.32, 0.02)
+        conf_thresh = c1.slider("YOLO26 Confidence Threshold", 0.10, 0.90, 0.32, 0.02)
         person_conf = c2.slider("Person Detection Confidence Cutoff", 0.20, 0.90, 0.50, 0.05)
 
         st.subheader("2. Head Pose & Gaze Limits (Degrees)")

@@ -450,9 +450,32 @@ class PoseGazeEstimator:
             face_center_x = x + fw / 2.0
             face_center_y = y + fh / 2.0
 
-            yaw = float((face_center_x - w / 2.0) / (w / 2.0) * 35.0)
-            pitch = float((face_center_y - h / 2.0) / (h / 2.0) * 30.0)
+            # Compute relative yaw and pitch from facial features within the cropped face box
+            yaw = 0.0
+            pitch = 0.0
             roll = 0.0
+
+            try:
+                eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+                face_roi_gray = gray[y:y + int(fh * 0.65), x:x + fw]
+                eyes = eye_cascade.detectMultiScale(face_roi_gray, 1.15, 3)
+                if len(eyes) >= 2:
+                    # Sort eyes by X position
+                    eyes_sorted = sorted(eyes, key=lambda e: e[0])
+                    e1_center_x = eyes_sorted[0][0] + eyes_sorted[0][2] / 2.0
+                    e2_center_x = eyes_sorted[-1][0] + eyes_sorted[-1][2] / 2.0
+                    eye_mid_x = (e1_center_x + e2_center_x) / 2.0
+                    # Shift from face center (normalized)
+                    yaw = float(((eye_mid_x - fw / 2.0) / (fw / 2.0 + 1e-6)) * 40.0)
+
+                    e1_center_y = eyes_sorted[0][1] + eyes_sorted[0][3] / 2.0
+                    e2_center_y = eyes_sorted[-1][1] + eyes_sorted[-1][3] / 2.0
+                    eye_mid_y = (e1_center_y + e2_center_y) / 2.0
+                    # Normal eye level is around 35% of face height
+                    pitch = float(((eye_mid_y - fh * 0.35) / (fh * 0.35 + 1e-6)) * 30.0)
+            except Exception:
+                yaw = 0.0
+                pitch = 0.0
 
             gaze_direction, is_looking_away = self._classify_gaze(yaw, pitch, roll)
 

@@ -128,7 +128,7 @@ class EviGuardPipeline:
 
         # Initialize Modules
         det_cfg = self.config.get("detection", {})
-        model_type = det_cfg.get("model_type", "yolov8")
+        model_type = det_cfg.get("model_type", "yolo26")
         self.detector = DetectorFactory.create_detector(model_type, det_cfg)
         
         self.tracker = PersonTracker(self.config.get("tracking", {}))

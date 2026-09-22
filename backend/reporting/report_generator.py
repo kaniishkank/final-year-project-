@@ -401,7 +401,7 @@ class ReportGenerator:
             ]))
             story.append(xai_box)
         else:
-            story.append(Paragraph("Continuous multi-modal telemetry (YOLOv8 vision, solvePnP 3D pose, and MediaPipe face & hand tracking) verified full visual integrity with zero threshold exceedances.", xai_narrative_style))
+            story.append(Paragraph("Continuous multi-modal telemetry (YOLO26 vision, solvePnP 3D pose, and MediaPipe face & hand tracking) verified full visual integrity with zero threshold exceedances.", xai_narrative_style))
 
         story.append(Spacer(1, 14))
 

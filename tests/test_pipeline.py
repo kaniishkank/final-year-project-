@@ -11,7 +11,7 @@ import pytest
 from backend.db.models import DatabaseManager, get_engine_and_session_factory
 from backend.detection.base import DetectionResult
 from backend.detection.factory import DetectorFactory
-from backend.detection.yolov8_detector import MockDetector
+from backend.detection.yolo26_detector import MockDetector
 from backend.explainability.reason_generator import ReasonGenerator
 from backend.pipeline import EviGuardPipeline
 from backend.pose.pose_gaze import PoseGazeEstimator, PoseGazeResult

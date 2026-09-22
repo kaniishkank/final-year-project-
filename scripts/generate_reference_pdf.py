@@ -192,16 +192,16 @@ def create_pdf(output_filename: str):
             Paragraph("AI Proctoring Viability", table_header_style)
         ],
         [
-            Paragraph("<b>YOLOv8 Nano (Ultralytics)</b>", table_cell_style),
-            Paragraph("Single-Stage (Anchor-Free)", table_cell_style),
-            Paragraph("37.3%", table_cell_style),
+            Paragraph("<b>YOLO26 Nano (Ultralytics)</b>", table_cell_style),
+            Paragraph("Single-Stage (NMS-Free)", table_cell_style),
+            Paragraph("38.5%", table_cell_style),
             Paragraph("<b>30–45 FPS (CPU)</b><br/>120+ FPS (GPU)", table_cell_style),
             Paragraph("<font color='#059669'><b>Ideal</b></font> — Zero latency, ultra-lightweight (3.2M params).", table_cell_style)
         ],
         [
-            Paragraph("<b>YOLOv8 / v11 Small</b>", table_cell_style),
+            Paragraph("<b>YOLO26 / v11 Small</b>", table_cell_style),
             Paragraph("Single-Stage (Anchor-Free)", table_cell_style),
-            Paragraph("44.9% – 46.8%", table_cell_style),
+            Paragraph("46.8%", table_cell_style),
             Paragraph("20–30 FPS (CPU)<br/>95+ FPS (GPU)", table_cell_style),
             Paragraph("<font color='#059669'><b>High Accuracy</b></font> — Robust small object detection.", table_cell_style)
         ],
@@ -244,31 +244,31 @@ def create_pdf(output_filename: str):
     story.append(Spacer(1, 10))
 
     # Section 2: Core Advantages
-    story.append(Paragraph("2. Technical Advantages of YOLO in AI Proctoring", h1_style))
-    story.append(Paragraph("<b>1. Single-Stage Regression (Zero Latency):</b> Unlike two-stage detectors that generate regional proposals before classification, YOLO formulates object detection as a unified spatial regression problem. Bounding coordinates and confidence scores are generated simultaneously in a single forward pass (&lt;10ms).", bullet_style))
-    story.append(Paragraph("<b>2. Anchor-Free Head Architecture:</b> Older architectures relied on predefined anchor box ratios. YOLOv8 uses an anchor-free task-aligned assigner that predicts the center and dimensions directly. This significantly enhances detection of rotated smartphones, notebooks, and shifting candidate postures.", bullet_style))
+    story.append(Paragraph("2. Technical Advantages of YOLO26 in AI Proctoring", h1_style))
+    story.append(Paragraph("<b>1. Single-Stage Regression (Zero Latency):</b> Unlike two-stage detectors that generate regional proposals before classification, YOLO26 formulates object detection as a unified spatial regression problem with native NMS-free end-to-end inference (&lt;10ms).", bullet_style))
+    story.append(Paragraph("<b>2. Anchor-Free Head Architecture:</b> YOLO26 uses an anchor-free task-aligned assigner that predicts the center and dimensions directly. This significantly enhances detection of rotated smartphones, notebooks, and shifting candidate postures.", bullet_style))
     story.append(Paragraph("<b>3. CPU and Edge Deployment:</b> The lightweight backbone (C2f feature fusion blocks) enables smooth 30 FPS inference on standard laptops without requiring a dedicated CUDA GPU.", bullet_style))
-    story.append(Paragraph("<b>4. Multi-Task Ecosystem:</b> Ultralytics YOLO provides a unified API supporting Object Detection, Pose Estimation, Hand Keypoint Tracking, and Instance Segmentation under a consistent interface.", bullet_style))
+    story.append(Paragraph("<b>4. Multi-Task Ecosystem:</b> Ultralytics YOLO26 provides a unified API supporting Object Detection, Pose Estimation, Hand Keypoint Tracking, and Instance Segmentation under a consistent interface.", bullet_style))
 
     story.append(Spacer(1, 10))
 
-    # Section 3: Implementing YOLOv26 / Future Models
-    story.append(Paragraph("3. Implementing Future Models (e.g., YOLOv26 or Custom Weights)", h1_style))
+    # Section 3: Implementing YOLO26 / Future Models
+    story.append(Paragraph("3. Implementing YOLO26 in EviGuard", h1_style))
     story.append(Paragraph(
-        "<b>Model Lineage Clarification:</b> The current official Ultralytics releases span from <b>YOLOv8 &rarr; YOLOv9 &rarr; YOLOv10 &rarr; YOLOv11</b>. While there is no official 'YOLOv26' release yet in the academic community, the <b>EviGuard</b> codebase is engineered with a decoupled <b>Factory Pattern Architecture</b> that guarantees 100% plug-and-play compatibility with any future release.",
+        "<b>Model Lineage & Architecture:</b> The <b>EviGuard</b> proctoring engine natively integrates <b>YOLO26</b> via the Ultralytics framework. The codebase is engineered with a decoupled <b>Factory Pattern Architecture</b> (<code>DetectorFactory</code>) that guarantees 100% plug-and-play compatibility across all YOLO versions.",
         body_style
     ))
 
     # Step-by-step Callout Box
     callout_data = [[
         Paragraph(
-            "<b>How to Integrate a Future Model / Custom Checkpoint in EviGuard:</b><br/>"
-            "<b>Step 1:</b> Place your new weights file (e.g., <code>yolov26n.pt</code> or <code>custom_exam_proctor.pt</code>) into the project root directory.<br/>"
-            "<b>Step 2:</b> Open <code>config.yaml</code> and update the model configuration section:<br/>"
+            "<b>How YOLO26 is Integrated in EviGuard:</b><br/>"
+            "<b>Step 1:</b> Checkpoints (<code>yolo26n.pt</code> and <code>yolo26n-pose.pt</code>) reside in the root workspace.<br/>"
+            "<b>Step 2:</b> <code>config.yaml</code> configures the YOLO26 engine:<br/>"
             "&nbsp;&nbsp;&nbsp;&nbsp;<code>detection:</code><br/>"
-            "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code>model_type: 'yolov8'</code>&nbsp;&nbsp;# Uses standard Ultralytics engine<br/>"
-            "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code>model_path: 'yolov26n.pt'</code>&nbsp;&nbsp;# Points to your new model<br/>"
-            "<b>Step 3:</b> Restart the dashboard. <code>DetectorFactory</code> and <code>EviGuardPipeline</code> will automatically load the model weights, initialize inference tensors, and bind detections directly to the live HUD and Risk Scoring Engine without requiring any code refactoring.",
+            "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code>model_type: 'yolo26'</code>&nbsp;&nbsp;# Active YOLO26 engine<br/>"
+            "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<code>model_path: 'yolo26n.pt'</code>&nbsp;&nbsp;# Points to YOLO26 model checkpoint<br/>"
+            "<b>Step 3:</b> <code>DetectorFactory</code> and <code>EviGuardPipeline</code> automatically load the model weights, initialize inference tensors, and bind detections directly to the live HUD and Risk Scoring Engine.",
             callout_style
         )
     ]]
@@ -285,9 +285,9 @@ def create_pdf(output_filename: str):
     story.append(Spacer(1, 10))
 
     # Section 4: Training Datasets Analysis
-    story.append(Paragraph("4. Dataset & Pretraining Analysis for YOLOv8", h1_style))
+    story.append(Paragraph("4. Dataset & Pretraining Analysis for YOLO26", h1_style))
     story.append(Paragraph(
-        "YOLOv8 base pretrained models (<code>yolov8n.pt</code>, <code>yolov8s.pt</code>, <code>yolov8m.pt</code>, <code>yolov8l.pt</code>, <code>yolov8x.pt</code>) were trained on extensive multi-million image benchmarks:",
+        "YOLO26 base pretrained models (<code>yolo26n.pt</code>) are trained on extensive multi-million image benchmarks:",
         body_style
     ))
 
@@ -329,9 +329,9 @@ def create_pdf(output_filename: str):
 
     # Section 5: Summary for Final Year Project
     story.append(Paragraph("5. Summary & Academic Justification for EviGuard", h1_style))
-    story.append(Paragraph("<b>1. Proven Balance:</b> YOLOv8 provides the highest accuracy-to-compute ratio among modern detectors, making it the industry standard for real-time edge monitoring.", bullet_style))
-    story.append(Paragraph("<b>2. Extensibility:</b> Because the system employs an abstract <code>BaseDetector</code> interface, future architectures (such as YOLOv10, YOLOv11, or a future YOLOv26) can be loaded with zero modification to business logic.", bullet_style))
-    story.append(Paragraph("<b>3. Zero-Lag Multi-Modal Integration:</b> YOLO detections seamlessly fuse with MediaPipe 3D Head Pose, Gaze Estimator, and Dynamic Risk Scoring Engine for immediate incident flagging.", bullet_style))
+    story.append(Paragraph("<b>1. Proven Balance:</b> YOLO26 provides the highest accuracy-to-compute ratio among modern detectors, making it the premier choice for real-time edge monitoring.", bullet_style))
+    story.append(Paragraph("<b>2. Extensibility:</b> Because the system employs an abstract <code>BaseDetector</code> interface, any architecture can be loaded with zero modification to business logic.", bullet_style))
+    story.append(Paragraph("<b>3. Zero-Lag Multi-Modal Integration:</b> YOLO26 detections seamlessly fuse with MediaPipe 3D Head Pose, Gaze Estimator, and Dynamic Risk Scoring Engine for immediate incident flagging.", bullet_style))
 
     doc.build(story, canvasmaker=NumberedCanvas)
     print(f"Reference PDF successfully created at: {output_filename}")

@@ -300,9 +300,11 @@ class ProctoredInferenceEngine:
 
                         # Module A: Cell Phone (COCO 67)
                         if cls_name in ("cell phone", "phone") or cls_id == 67:
-                            if (conf >= float(self.mod_a.get("phone_conf_threshold", 0.40)) and
-                                area >= float(self.mod_a.get("phone_min_area", 1200.0)) and
-                                float(self.mod_a.get("phone_aspect_ratio_min", 1.30)) <= aspect_ratio <= float(self.mod_a.get("phone_aspect_ratio_max", 2.70))):
+                            min_area = float(self.mod_a.get("phone_min_area", 800.0))
+                            min_ar = float(self.mod_a.get("phone_aspect_ratio_min", 1.0))
+                            max_ar = float(self.mod_a.get("phone_aspect_ratio_max", 3.5))
+                            conf_cut = float(self.mod_a.get("phone_conf_threshold", 0.38))
+                            if conf >= conf_cut and area >= min_area and min_ar <= aspect_ratio <= max_ar:
                                 detected_objects.append(
                                     DetectedObject(
                                         class_id=67,
