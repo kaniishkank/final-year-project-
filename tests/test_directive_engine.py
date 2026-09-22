@@ -16,7 +16,7 @@ from main import VideoCircularBuffer, draw_hud
 def test_config_structure_and_thresholds():
     """Verify that config.py contains all mandatory operational thresholds."""
     cfg = EviGuardConfig()
-    assert cfg.get("system")["imgsz"] == 640
+    assert cfg.get("system")["imgsz"] == 320
     assert cfg.get("module_a_devices")["phone_min_area"] == 1200.0
     assert cfg.get("module_a_devices")["phone_conf_threshold"] == 0.40
     assert cfg.get("module_a_devices")["book_conf_threshold"] == 0.35

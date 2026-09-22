@@ -15,7 +15,7 @@ CONFIG: Dict[str, Any] = {
         "app_name": "EviGuard Proctored Inference Engine",
         "version": "2.0.0",
         "device": "auto",  # 'cuda', 'cpu', or 'auto'
-        "imgsz": 640,
+        "imgsz": 320,  # 320x320 tensor for ultra-low latency & 30+ FPS
         "nms_free": True,  # Native YOLO26 end-to-end NMS-free mode
     },
 
