@@ -249,17 +249,6 @@ class EviGuardPipeline:
                 track = self.tracker.get_track(t_id)
                 if track:
                     track.record_evidence_frame(has_phone=has_phone, has_notes=has_notes, has_gesture=has_gesture)
-                    if track.has_phone_temporal_escalation and not has_phone:
-                        # Inject synthetic phone detection to escalate to CRITICAL
-                        tracked_detections.append(
-                            DetectionResult(
-                                box=list(track.box),
-                                confidence=0.85,
-                                class_id=67,
-                                class_name="cell phone",
-                                track_id=t_id
-                            )
-                        )
 
             # Cache results for intervening frames
             self.last_tracked_detections = tracked_detections
@@ -420,9 +409,15 @@ class EviGuardPipeline:
             if "phone" in cls_name or "cell" in cls_name:
                 color = (0, 0, 255)
                 label = f"ALERT: Phone ({det.confidence*100:.0f}%)"
-            elif "book" in cls_name or "paper" in cls_name or "notes" in cls_name:
+            elif "paper" in cls_name or "chit" in cls_name or "notes" in cls_name or cls_name == "unauthorized paper/notes":
+                color = (0, 140, 255)
+                label = f"ALERT: Exam Chit / Notes ({det.confidence*100:.0f}%)"
+            elif "book" in cls_name or "notebook" in cls_name:
                 color = (0, 165, 255)
-                label = f"ALERT: Book / Notes ({det.confidence*100:.0f}%)"
+                label = f"ALERT: Book / Textbook ({det.confidence*100:.0f}%)"
+            elif "laptop" in cls_name:
+                color = (255, 0, 255)
+                label = f"ALERT: Laptop ({det.confidence*100:.0f}%)"
             elif "person" in cls_name:
                 t_id_str = f" [ID:{det.track_id}]" if det.track_id is not None else ""
                 if det is primary_person or len(person_dets) == 1:

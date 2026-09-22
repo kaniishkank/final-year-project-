@@ -88,7 +88,7 @@ class YOLO26Detector(BaseDetector):
         return True
 
     def _detect_white_paper_sheets(self, frame: np.ndarray, person_boxes: Optional[List[List[float]]] = None) -> List[DetectionResult]:
-        """Detects white/light sheets of paper, notebooks, or cheat sheets with border contrast & texture validation to avoid empty walls."""
+        """Detects physical exam chits and cheat notes based on multi-factor physical characteristics (spatial workspace, geometry, border contrast, and text gradient density)."""
         paper_dets: List[DetectionResult] = []
         if not self.enable_paper_heuristic or frame is None or frame.size == 0:
             return paper_dets
@@ -97,10 +97,13 @@ class YOLO26Detector(BaseDetector):
             h, w = frame.shape[:2]
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            # Bright white/light region segmentation (calibrated for indoor lighting: 145-255)
+            # Bright white/light region segmentation (calibrated for indoor desk paper: 145-255)
             bright_mask = cv2.inRange(gray, 145, 255)
 
-            # Exclude upper head/face region if person boxes provided
+            # 1. Spatial Workspace Gating: Exclude upper 20% of frame (ceiling/wall background)
+            bright_mask[0:int(h * 0.20), :] = 0
+
+            # Exclude candidate upper head/face region if person boxes provided
             if person_boxes:
                 for pbox in person_boxes:
                     px1, py1, px2, py2 = [int(v) for v in pbox]
@@ -114,7 +117,8 @@ class YOLO26Detector(BaseDetector):
             contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                if area < 500.0 or area > (h * w * 0.45):
+                # Scale bounds for exam chits & desk paper sheets (500px to 30,000px)
+                if area < 500.0 or area > min(h * w * 0.35, 30000.0):
                     continue
 
                 x, y, bw, bh = cv2.boundingRect(cnt)
@@ -122,20 +126,44 @@ class YOLO26Detector(BaseDetector):
                     continue
 
                 aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
-                if not (1.0 <= aspect_ratio <= 4.0):
+                if not (1.0 <= aspect_ratio <= 3.8):
                     continue
 
-                rect_area = bw * bh
-                fill_ratio = area / (rect_area + 1e-6)
-                if fill_ratio < 0.50:
+                # 2. Geometric Shape Regularity (Quadrilateral & Convex Hull Solidity)
+                hull = cv2.convexHull(cnt)
+                hull_area = cv2.contourArea(hull)
+                solidity = area / (hull_area + 1e-6)
+                if solidity < 0.65:
                     continue
 
-                # 1. Texture Check: A sheet of paper with handwriting/print has Laplacian variance.
+                peri = cv2.arcLength(cnt, True)
+                approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
+                # Real paper chits have rectangular / polygon structure (4 to 8 vertices)
+                if len(approx) > 8:
+                    continue
+
+                # 3. Spatial Proximity to Student Workspace
+                if person_boxes:
+                    in_workspace = False
+                    cx, cy = x + bw / 2.0, y + bh / 2.0
+                    for pbox in person_boxes:
+                        px1, py1, px2, py2 = pbox
+                        # Expanded workspace around student (desk/lap/hands: 140px margin)
+                        if (px1 - 140 <= cx <= px2 + 140) and (py1 <= cy <= min(h, py2 + 140)):
+                            in_workspace = True
+                            break
+                    if not in_workspace:
+                        continue
+
+                # 4. Dense Text / Handwriting Gradient Density Check
                 roi_gray = gray[y:y+bh, x:x+bw]
                 laplacian_var = float(cv2.Laplacian(roi_gray, cv2.CV_64F).var())
+                
+                # Canny edge density (text lines / formula print)
+                canny_edges = cv2.Canny(roi_gray, 50, 150)
+                edge_density = float(np.count_nonzero(canny_edges)) / float(roi_gray.size + 1e-6)
 
-                # 2. Border Contrast Check: A real paper sheet has contrast against its surrounding surface (desk, clothes, dark bg).
-                # A blank empty wall is uniform across its surroundings with zero edge contrast.
+                # 5. Local Border Step Contrast Check against Surrounding Surface (Desk / Lap)
                 my1 = max(0, y - 8)
                 my2 = min(h, y + bh + 8)
                 mx1 = max(0, x - 8)
@@ -151,9 +179,13 @@ class YOLO26Detector(BaseDetector):
                     mean_outside = float(np.mean(surrounding_outer))
                     border_contrast = abs(mean_inside - mean_outside)
 
-                # Must have either high border contrast (> 14px) or visible texture/print (laplacian_var > 18)
-                # Plain empty wall has border_contrast < 10 and laplacian_var < 12
-                if border_contrast < 14.0 and laplacian_var < 18.0:
+                # Strict Verification:
+                # - If border contrast is very high (>= 24px against desk/clothing/surface), it is a distinct sheet/chit.
+                # - If border contrast is moderate (>= 14px), require text/print texture (laplacian_var >= 18.0 or edge_density >= 0.015).
+                # - Empty uniform walls (border_contrast < 14px and laplacian_var < 18) are rejected.
+                if border_contrast < 14.0:
+                    continue
+                if border_contrast < 24.0 and (laplacian_var < 18.0 and edge_density < 0.015):
                     continue
 
                 paper_dets.append(
@@ -214,21 +246,48 @@ class YOLO26Detector(BaseDetector):
                             continue
                         if not self._is_valid_phone_geometry(box):
                             continue
-                        cls_name = "cell phone"
-                        cls_id = 67
+
+                        # Disambiguate Paper Chit / White Slip mistakenly detected as Phone
+                        rx1, ry1, rx2, ry2 = [int(v) for v in box]
+                        rx1, ry1 = max(0, rx1), max(0, ry1)
+                        rx2, ry2 = min(w, rx2), min(h, ry2)
+                        is_paper_chit = False
+                        if rx2 > rx1 and ry2 > ry1:
+                            roi_bgr = frame[ry1:ry2, rx1:rx2]
+                            roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
+                            roi_hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
+                            mean_b = float(np.mean(roi_gray))
+                            mean_sat = float(np.mean(roi_hsv[:, :, 1]))
+                            lap_var = float(cv2.Laplacian(roi_gray, cv2.CV_64F).var()) if (rx2 - rx1 >= 8 and ry2 - ry1 >= 8) else 0.0
+
+                            # Paper chits/sheets have bright surface (mean_b >= 135) and low saturation (mean_sat <= 80)
+                            # with handwriting/text gradients (lap_var >= 15)
+                            if mean_b >= 135.0 and mean_sat <= 80.0 and lap_var >= 15.0:
+                                is_paper_chit = True
+
+                        if is_paper_chit:
+                            cls_name = "unauthorized paper/notes"
+                            cls_id = 73
+                        else:
+                            cls_name = "cell phone"
+                            cls_id = 67
 
                     # 2. Validation for Book / Paper / Notes (COCO Class 73)
                     elif cls_name in ("book", "notebook", "paper") or cls_id == 73:
                         if conf < self.book_conf_threshold:
                             continue
-                        cls_name = "book"
-                        cls_id = 73
+                        # Disambiguate small exam chits / paper notes from large bound books
+                        if box_area < 15000.0 or max(bw, bh) < 140.0:
+                            cls_name = "unauthorized paper/notes"
+                            cls_id = 73
+                        else:
+                            cls_name = "book"
+                            cls_id = 73
 
                     # 3. Disambiguation for Large Book / Textbook mistakenly detected as Laptop (Class 63)
                     elif cls_name in ("laptop",) or cls_id == 63:
                         if conf < self.default_conf_threshold:
                             continue
-                        # If a large book, textbook, or open binder is detected as laptop:
                         rx1, ry1, rx2, ry2 = [int(v) for v in box]
                         rx1, ry1 = max(0, rx1), max(0, ry1)
                         rx2, ry2 = min(w, rx2), min(h, ry2)
@@ -236,10 +295,11 @@ class YOLO26Detector(BaseDetector):
                         if rx2 > rx1 and ry2 > ry1:
                             roi_bgr = frame[ry1:ry2, rx1:rx2]
                             roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
+                            roi_hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
                             mean_b = float(np.mean(roi_gray))
-                            # Hardcover books / open books / binders:
-                            # Height > width (held in portrait), aspect ratio < 1.45, or light/white page content (mean > 115)
-                            if (ry2 - ry1) > (rx2 - rx1) or aspect_ratio < 1.45 or mean_b > 115.0:
+                            mean_sat = float(np.mean(roi_hsv[:, :, 1]))
+                            # Hardcover / open books: portrait orientation or light page reflection
+                            if (ry2 - ry1) > (rx2 - rx1) or aspect_ratio < 1.40 or (mean_b > 120.0 and mean_sat < 70.0):
                                 is_book = True
 
                         if is_book:
