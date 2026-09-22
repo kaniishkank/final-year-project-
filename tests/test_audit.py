@@ -64,6 +64,41 @@ def test_white_paper_sheet_heuristic_detector():
     assert paper_dets[0].confidence >= 0.80
 
 
+def test_plain_white_background_wall_rejected():
+    """Verify that a plain white wall or background touching frame edges is rejected."""
+    detector = YOLO26Detector({"enable_paper_heuristic": True})
+
+    # Create a frame with a large plain white background wall touching frame border
+    frame = np.full((480, 640, 3), 230, dtype=np.uint8)
+    cv2.rectangle(frame, (100, 150), (280, 450), (60, 60, 60), -1) # Student sitting in front of wall
+
+    # The background wall touches borders and has flat uniform color
+    person_boxes = [[100.0, 150.0, 280.0, 450.0]]
+    paper_dets = detector._detect_white_paper_sheets(frame, person_boxes=person_boxes)
+    # Must NOT detect the plain white background wall as a chit
+    assert len(paper_dets) == 0
+
+
+def test_small_exam_chit_in_workspace_detected():
+    """Verify that a small exam chit with writing in student workspace is detected."""
+    detector = YOLO26Detector({"enable_paper_heuristic": True})
+
+    # Dark room frame with student
+    frame = np.full((480, 640, 3), 45, dtype=np.uint8)
+    person_box = [150.0, 100.0, 350.0, 460.0]
+
+    # Draw small exam chit (50x70 px) on student desk/lap workspace at (220, 320)
+    cv2.rectangle(frame, (220, 320), (270, 390), (240, 240, 240), -1)
+    # Add handwriting text lines
+    cv2.line(frame, (225, 335), (265, 335), (30, 30, 30), 1)
+    cv2.line(frame, (225, 350), (265, 350), (30, 30, 30), 1)
+    cv2.line(frame, (225, 365), (265, 365), (30, 30, 30), 1)
+
+    paper_dets = detector._detect_white_paper_sheets(frame, person_boxes=[person_box])
+    assert len(paper_dets) >= 1
+    assert paper_dets[0].class_name == "unauthorized paper/notes"
+
+
 def test_person_tracker_iou_nms_and_distance_validation():
     """Verify that IoU NMS and >150px distance validation merge posture/arm shifts and isolate true secondary persons."""
     tracker = PersonTracker({

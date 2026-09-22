@@ -88,7 +88,7 @@ class YOLO26Detector(BaseDetector):
         return True
 
     def _detect_white_paper_sheets(self, frame: np.ndarray, person_boxes: Optional[List[List[float]]] = None) -> List[DetectionResult]:
-        """Detects physical exam chits and cheat notes based on multi-factor physical characteristics (spatial workspace, geometry, border contrast, and text gradient density)."""
+        """Detects physical small exam chits and paper slips using multi-characteristic isolation (rejecting background walls and ceilings)."""
         paper_dets: List[DetectionResult] = []
         if not self.enable_paper_heuristic or frame is None or frame.size == 0:
             return paper_dets
@@ -100,7 +100,7 @@ class YOLO26Detector(BaseDetector):
             # Bright white/light region segmentation (calibrated for indoor desk paper: 145-255)
             bright_mask = cv2.inRange(gray, 145, 255)
 
-            # 1. Spatial Workspace Gating: Exclude upper 20% of frame (ceiling/wall background)
+            # 1. Reject ceiling/upper wall background (top 20% of frame)
             bright_mask[0:int(h * 0.20), :] = 0
 
             # Exclude candidate upper head/face region if person boxes provided
@@ -117,19 +117,23 @@ class YOLO26Detector(BaseDetector):
             contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                # Scale bounds for exam chits & desk paper sheets (500px to 30,000px)
-                if area < 500.0 or area > min(h * w * 0.35, 30000.0):
+                # Small paper chit bounds: 200px^2 to 16,000px^2 (reject huge background walls)
+                if area < 200.0 or area > 16000.0:
                     continue
 
                 x, y, bw, bh = cv2.boundingRect(cnt)
-                if bw < 20 or bh < 20:
+                if bw < 14 or bh < 14 or bw > 220 or bh > 220:
+                    continue
+
+                # 2. Reject Frame Boundary Touching (Walls, ceiling, door borders)
+                if x <= 4 or y <= 4 or (x + bw) >= (w - 4) or (y + bh) >= (h - 4):
                     continue
 
                 aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
                 if not (1.0 <= aspect_ratio <= 3.8):
                     continue
 
-                # 2. Geometric Shape Regularity (Quadrilateral & Convex Hull Solidity)
+                # 3. Geometric Shape Regularity (Quadrilateral & Convex Hull Solidity)
                 hull = cv2.convexHull(cnt)
                 hull_area = cv2.contourArea(hull)
                 solidity = area / (hull_area + 1e-6)
@@ -142,28 +146,22 @@ class YOLO26Detector(BaseDetector):
                 if len(approx) > 8:
                     continue
 
-                # 3. Spatial Proximity to Student Workspace
+                # 4. Spatial Proximity to Student Workspace
                 if person_boxes:
                     in_workspace = False
                     cx, cy = x + bw / 2.0, y + bh / 2.0
                     for pbox in person_boxes:
                         px1, py1, px2, py2 = pbox
-                        # Expanded workspace around student (desk/lap/hands: 140px margin)
-                        if (px1 - 140 <= cx <= px2 + 140) and (py1 <= cy <= min(h, py2 + 140)):
+                        # Workspace around student (desk/lap/hands: 140px margin, below upper chest)
+                        chest_y = py1 + int((py2 - py1) * 0.30)
+                        if (px1 - 140 <= cx <= px2 + 140) and (chest_y <= cy <= min(h, py2 + 140)):
                             in_workspace = True
                             break
                     if not in_workspace:
                         continue
 
-                # 4. Dense Text / Handwriting Gradient Density Check
+                # 5. Local Border Step Contrast Check against Surrounding Surface (Desk / Lap / Skin)
                 roi_gray = gray[y:y+bh, x:x+bw]
-                laplacian_var = float(cv2.Laplacian(roi_gray, cv2.CV_64F).var())
-                
-                # Canny edge density (text lines / formula print)
-                canny_edges = cv2.Canny(roi_gray, 50, 150)
-                edge_density = float(np.count_nonzero(canny_edges)) / float(roi_gray.size + 1e-6)
-
-                # 5. Local Border Step Contrast Check against Surrounding Surface (Desk / Lap)
                 my1 = max(0, y - 8)
                 my2 = min(h, y + bh + 8)
                 mx1 = max(0, x - 8)
@@ -179,13 +177,19 @@ class YOLO26Detector(BaseDetector):
                     mean_outside = float(np.mean(surrounding_outer))
                     border_contrast = abs(mean_inside - mean_outside)
 
-                # Strict Verification:
-                # - If border contrast is very high (>= 24px against desk/clothing/surface), it is a distinct sheet/chit.
-                # - If border contrast is moderate (>= 14px), require text/print texture (laplacian_var >= 18.0 or edge_density >= 0.015).
-                # - Empty uniform walls (border_contrast < 14px and laplacian_var < 18) are rejected.
-                if border_contrast < 14.0:
+                # Must have clear step contrast (>= 16px) against surrounding desk/hand/clothing
+                if border_contrast < 16.0:
                     continue
-                if border_contrast < 24.0 and (laplacian_var < 18.0 and edge_density < 0.015):
+
+                # 6. Reject Plain Uniform Background Walls (Check interior variance & text/edges)
+                roi_std = float(np.std(roi_gray))
+                laplacian_var = float(cv2.Laplacian(roi_gray, cv2.CV_64F).var())
+                canny_edges = cv2.Canny(roi_gray, 50, 150)
+                edge_density = float(np.count_nonzero(canny_edges)) / float(roi_gray.size + 1e-6)
+
+                # A plain white background wall has std < 6.0 and laplacian_var < 8.0 and edge_density < 0.005
+                # A chit has handwriting/print texture or is a distinct small card with high contrast (>25px)
+                if border_contrast < 25.0 and (roi_std < 7.0 and laplacian_var < 10.0 and edge_density < 0.008):
                     continue
 
                 paper_dets.append(
@@ -258,11 +262,9 @@ class YOLO26Detector(BaseDetector):
                             roi_hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
                             mean_b = float(np.mean(roi_gray))
                             mean_sat = float(np.mean(roi_hsv[:, :, 1]))
-                            lap_var = float(cv2.Laplacian(roi_gray, cv2.CV_64F).var()) if (rx2 - rx1 >= 8 and ry2 - ry1 >= 8) else 0.0
 
-                            # Paper chits/sheets have bright surface (mean_b >= 135) and low saturation (mean_sat <= 80)
-                            # with handwriting/text gradients (lap_var >= 15)
-                            if mean_b >= 135.0 and mean_sat <= 80.0 and lap_var >= 15.0:
+                            # Paper chits/sheets have bright surface (mean_b >= 125) and low saturation (mean_sat <= 85)
+                            if mean_b >= 125.0 and mean_sat <= 85.0:
                                 is_paper_chit = True
 
                         if is_paper_chit:
