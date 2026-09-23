@@ -70,494 +70,415 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-/* 1. FORCE APP & VIEWPORT BACKGROUND */
+/* ---------------- 1. GLOBAL WHITE/LIGHT LUXURY CANVAS ---------------- */
 [data-testid="stAppViewContainer"], 
 [data-testid="stHeader"], 
-.stApp {
-    background: 
-        radial-gradient(circle at 10% 10%, rgba(14, 165, 233, 0.15) 0%, transparent 40%),
-        radial-gradient(circle at 90% 90%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
-        radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.95) 0%, transparent 100%),
-        #030712 !important;
+.stApp, html, body {
+    background-color: #F8FAFC !important;
+    background-image: 
+        radial-gradient(circle at 10% 10%, rgba(59, 130, 246, 0.04) 0%, transparent 40%),
+        radial-gradient(circle at 90% 90%, rgba(99, 102, 241, 0.04) 0%, transparent 40%),
+        linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 50%, #F1F5F9 100%) !important;
     background-attachment: fixed !important;
+    color: #0F172A !important;
+    font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 
-/* 2. REMOVE DEFAULT STREAMLIT SOLID BACKGROUNDS FROM CONTAINERS */
+/* ---------------- 2. MATCHING MODULE BOXES, CARDS & CONTAINERS ---------------- */
 [data-testid="stVerticalBlockBorderWrapper"],
 [data-testid="stColumn"],
 div[data-testid="stForm"],
-.stCard {
-    background: rgba(15, 23, 42, 0.6) !important;
-    backdrop-filter: blur(16px) !important;
-    -webkit-backdrop-filter: blur(16px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+.stCard,
+.enterprise-card,
+.enterprise-kpi-card,
+.dossier-card {
+    background: #FFFFFF !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 14px !important;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02) !important;
+    transition: all 0.25s ease !important;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"]:hover,
+.enterprise-card:hover,
+.enterprise-kpi-card:hover,
+.dossier-card:hover {
+    border-color: #93C5FD !important;
+    box-shadow: 0 10px 25px -4px rgba(37, 99, 235, 0.08), 0 4px 10px -2px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* ---------------- 3. HIGH-CONTRAST TYPOGRAPHY SYSTEM ---------------- */
+h1, h2, h3, h4, h5, h6, .page-title, .section-header {
+    color: #0F172A !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em !important;
+}
+h1, .page-title {
+    font-size: 24px !important;
+    font-weight: 800 !important;
+    color: #0F172A !important;
+    margin-bottom: 4px !important;
+}
+h2, h3, .section-header {
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    color: #1E293B !important;
+    margin-bottom: 8px !important;
+}
+p, span, li, label, .body-text, .stMarkdown p {
+    color: #334155 !important;
+    font-weight: 500 !important;
+    font-size: 14px !important;
+    line-height: 1.55 !important;
+}
+.eyebrow-label {
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.08em !important;
+    color: #64748B !important;
+}
+.kpi-value-text {
+    font-size: 30px !important;
+    font-weight: 800 !important;
+    color: #0F172A !important;
+    letter-spacing: -0.03em !important;
+    line-height: 1.15 !important;
+}
+
+/* ---------------- 4. SAAS TOP NAVBAR (WHITE CARD) ---------------- */
+.saas-top-navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #FFFFFF !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 14px !important;
+    padding: 13px 24px !important;
+    margin-bottom: 18px !important;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05) !important;
+}
+.saas-brand-title {
+    font-size: 1.22rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #0F172A !important;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.saas-brand-badge {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #2563EB !important;
+    background: #EFF6FF !important;
+    border: 1px solid #BFDBFE !important;
+    border-radius: 6px;
+    padding: 3px 9px;
+}
+
+/* ---------------- 5. TABS NAVIGATION ---------------- */
+div[data-testid="stTabs"] {
+    background: transparent !important;
+}
+div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    gap: 8px;
+    background: #F1F5F9 !important;
+    border: 1px solid #E2E8F0 !important;
     border-radius: 12px !important;
-    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5) !important;
+    padding: 6px !important;
+    margin-bottom: 22px !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03) !important;
 }
-
-/* 3. GLOW EFFECTS FOR CARDS ON HOVER */
-[data-testid="stVerticalBlockBorderWrapper"]:hover {
-    border-color: rgba(56, 189, 248, 0.3) !important;
-    box-shadow: 0 0 20px rgba(14, 165, 233, 0.15) !important;
-    transition: all 0.3s ease-in-out !important;
-}
-
-/* 4. FIX TAB STYLING & ACTIVE INDICATORS */
 button[data-baseweb="tab"] {
-    background: rgba(255, 255, 255, 0.02) !important;
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
-    border-radius: 8px !important;
-    color: #94A3B8 !important;
+    border-radius: 9px !important;
+    padding: 10px 22px !important;
     font-weight: 600 !important;
-    padding: 8px 16px !important;
-    margin-right: 6px !important;
+    font-size: 13.5px !important;
+    color: #64748B !important;
+    border: none !important;
+    background: transparent !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
-
+button[data-baseweb="tab"]:hover {
+    color: #0F172A !important;
+    background: rgba(255, 255, 255, 0.8) !important;
+}
 button[data-baseweb="tab"][aria-selected="true"] {
-    background: rgba(56, 189, 248, 0.15) !important;
-    color: #38BDF8 !important;
-    border: 1px solid #38BDF8 !important;
-    box-shadow: 0 0 12px rgba(56, 189, 248, 0.3) !important;
+    background: #FFFFFF !important;
+    border: 1px solid #DBEAFE !important;
+    color: #2563EB !important;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12) !important;
+    font-weight: 700 !important;
+}
+div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+    display: none !important;
+}
+div[data-testid="stTabs"] [data-baseweb="tab-border"] {
+    display: none !important;
 }
 
-/* 5. INPUT FIELD & BUTTON GLOWS */
-input, textarea, select {
-    background-color: rgba(30, 41, 59, 0.8) !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+/* ---------------- 6. ENTERPRISE CARDS & KPIS ---------------- */
+.enterprise-card {
+    background: #FFFFFF !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 16px !important;
+    padding: 22px 24px !important;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05) !important;
+    margin-bottom: 20px !important;
+}
+.enterprise-kpi-card {
+    background: #FFFFFF !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 16px !important;
+    padding: 20px 22px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    min-height: 124px !important;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* ---------------- 7. STATUS PILLS & BADGES ---------------- */
+.pill-safe {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #ECFDF5 !important;
+    color: #059669 !important;
+    border: 1px solid #A7F3D0 !important;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+.pill-warn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #FFFBEB !important;
+    color: #D97706 !important;
+    border: 1px solid #FDE68A !important;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+.pill-alert {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #FFF1F2 !important;
+    color: #E11D48 !important;
+    border: 1px solid #FECDD3 !important;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+/* ---------------- 8. TELEMETRY & EVIDENCE DOSSIER ---------------- */
+.enterprise-telemetry-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 13px 18px;
+    background: #F8FAFC !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 12px;
+    margin-bottom: 9px;
+    transition: all 0.2s ease;
+}
+.enterprise-telemetry-row:hover {
+    background: #F1F5F9 !important;
+    border-color: #CBD5E1 !important;
+}
+.dossier-card {
+    background: #FFFFFF !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+}
+.dossier-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px 18px;
+    background: #F8FAFC !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-top: 12px;
+    margin-bottom: 12px;
+}
+.dossier-meta-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748B !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.dossier-meta-val {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #0F172A !important;
+    font-family: 'JetBrains Mono', monospace;
+    margin-top: 2px;
+}
+
+/* ---------------- 9. AUDIT LOG TABLE ---------------- */
+.audit-table-wrapper {
+    width: 100%;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 14px;
+    overflow: hidden;
+    margin-top: 14px;
+    margin-bottom: 18px;
+    background: #FFFFFF !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+}
+.audit-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+}
+.audit-table th {
+    background: #F8FAFC !important;
+    color: #475569 !important;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid #E2E8F0 !important;
+}
+.audit-table td {
+    padding: 12px 16px;
+    color: #0F172A !important;
+    border-bottom: 1px solid #F1F5F9 !important;
+}
+.audit-table tr:nth-child(even) {
+    background: #FBFDFE !important;
+}
+.audit-table tr:hover {
+    background: #EFF6FF !important;
+}
+
+/* ---------------- 10. INPUTS, FORMS & BUTTON SYSTEM ---------------- */
+input, textarea, select, .stSelectbox div[data-baseweb="select"], .stTextInput input, div[data-baseweb="input"] {
+    background-color: #FFFFFF !important;
+    border: 1px solid #CBD5E1 !important;
+    border-radius: 10px !important;
+    color: #0F172A !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+}
+input:focus, .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:hover {
+    border-color: #2563EB !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
+}
+div[data-baseweb="tag"] {
+    background-color: #EFF6FF !important;
+    color: #2563EB !important;
+    border: 1px solid #BFDBFE !important;
+    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+}
+
+div.stButton > button, 
+div.stDownloadButton > button,
+div[data-testid="stFormSubmitButton"] > button {
+    border-radius: 11px !important;
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    padding: 10px 20px !important;
+    line-height: 1.4 !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    cursor: pointer !important;
+}
+
+/* Primary Action Buttons */
+div.stDownloadButton > button,
+div[data-testid="stFormSubmitButton"] > button,
+button[kind="primary"],
+div[data-testid="baseButton-primary"] {
+    background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%) !important;
+    border: 1px solid #1D4ED8 !important;
     color: #FFFFFF !important;
-    border-radius: 8px !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25) !important;
+}
+div.stDownloadButton > button:hover,
+div[data-testid="stFormSubmitButton"] > button:hover,
+button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%) !important;
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35) !important;
+    transform: translateY(-1px) !important;
 }
 
-input:focus {
-    border-color: #38BDF8 !important;
-    box-shadow: 0 0 10px rgba(56, 189, 248, 0.4) !important;
+/* Secondary Buttons */
+div.stButton > button {
+    background-color: #FFFFFF !important;
+    border: 1px solid #CBD5E1 !important;
+    color: #1E293B !important;
+    font-weight: 600 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+}
+div.stButton > button:hover {
+    background-color: #F8FAFC !important;
+    border-color: #94A3B8 !important;
+    color: #0F172A !important;
+    transform: translateY(-1px) !important;
 }
 
-/* 6. HIDE STREAMLIT TOP BAR & FOOTER */
+/* Decision Action Buttons */
+button:has(p:contains("Confirm")), button:has(span:contains("Confirm")) {
+    background: linear-gradient(135deg, #059669 0%, #10B981 100%) !important;
+    color: #FFFFFF !important;
+    border: 1px solid #059669 !important;
+    box-shadow: 0 3px 10px rgba(16, 185, 129, 0.2) !important;
+}
+button:has(p:contains("False Positive")), button:has(span:contains("False Positive")) {
+    background: #FFFBEB !important;
+    color: #D97706 !important;
+    border: 1px solid #FDE68A !important;
+}
+button:has(p:contains("Dismiss")), button:has(span:contains("Dismiss")) {
+    background: #F8FAFC !important;
+    color: #64748B !important;
+    border: 1px solid #CBD5E1 !important;
+}
+
+div[data-testid="stImage"] img {
+    border-radius: 12px !important;
+    border: 1px solid #E2E8F0 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ---------------- 11. HIDE CHROME & CONTAINER PADDING ---------------- */
 header[data-testid="stHeader"] {
     background: transparent !important;
 }
-footer {visibility: hidden;}
+footer {visibility: hidden; display: none !important;}
+#MainMenu {visibility: hidden !important;}
 
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600;1,700&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
-
-    #MainMenu {
-        visibility: hidden !important;
-    }
-
-    *, *::before, *::after, html, body, [class*="css"],
-    h1, h2, h3, h4, h5, h6, p, span, div, label, input, button, select, textarea {
-        font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-    }
-
-    html, body {
-        background: transparent !important;
-        color: #F8FAFC !important;
-    }
-
-    .block-container {
-        padding-top: 1.25rem !important;
-        padding-bottom: 3.5rem !important;
-        max-width: 1440px !important;
-        margin: 0 auto !important;
-    }
-
-    /* ---------------- HIGH-CONTRAST TYPOGRAPHY HIERARCHY ---------------- */
-    h1, .page-title {
-        font-size: 24px !important;
-        font-weight: 800 !important;
-        letter-spacing: -0.025em !important;
-        color: #FFFFFF !important;
-        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6) !important;
-        margin-bottom: 4px !important;
-    }
-    h2, h3, .section-header {
-        font-size: 16px !important;
-        font-weight: 700 !important;
-        color: #FFFFFF !important;
-        letter-spacing: -0.01em !important;
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5) !important;
-        margin-bottom: 8px !important;
-    }
-    p, span, li, .body-text {
-        font-size: 14px !important;
-        font-weight: 500 !important;
-        color: #CBD5E1 !important;
-        line-height: 1.55 !important;
-    }
-    .eyebrow-label {
-        font-size: 11px !important;
-        font-weight: 800 !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.08em !important;
-        color: #CBD5E1 !important;
-    }
-    .kpi-value-text {
-        font-size: 30px !important;
-        font-weight: 800 !important;
-        color: #FFFFFF !important;
-        letter-spacing: -0.03em !important;
-        line-height: 1.15 !important;
-        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7) !important;
-    }
-
-    /* ---------------- SAAS TOP NAVBAR ---------------- */
-    .saas-top-navbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: rgba(15, 23, 42, 0.82);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 14px;
-        padding: 13px 24px;
-        margin-bottom: 18px;
-        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    }
-    .saas-brand-title {
-        font-size: 1.22rem;
-        font-weight: 800;
-        letter-spacing: -0.02em;
-        color: #FFFFFF;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-    }
-    .saas-brand-badge {
-        font-size: 11px;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #60A5FA;
-        background: rgba(59, 130, 246, 0.16);
-        border: 1px solid rgba(59, 130, 246, 0.4);
-        border-radius: 6px;
-        padding: 3px 9px;
-    }
-
-    /* ---------------- SAAS TOP TABS NAVIGATION ---------------- */
-    div[data-testid="stTabs"] {
-        background: transparent;
-    }
-    div[data-testid="stTabs"] [data-baseweb="tab-list"] {
-        gap: 8px;
-        background: rgba(15, 23, 42, 0.75);
-        backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 12px;
-        padding: 6px;
-        margin-bottom: 22px;
-        box-shadow: 0 6px 20px -5px rgba(0, 0, 0, 0.6);
-    }
-    div[data-testid="stTabs"] [data-baseweb="tab"] {
-        border-radius: 9px;
-        padding: 10px 22px;
-        font-weight: 700;
-        font-size: 13.5px;
-        color: #CBD5E1;
-        border: none !important;
-        background: transparent;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    div[data-testid="stTabs"] [data-baseweb="tab"]:hover {
-        color: #FFFFFF;
-        background: rgba(255, 255, 255, 0.06);
-    }
-    div[data-testid="stTabs"] [aria-selected="true"] {
-        background: linear-gradient(135deg, rgba(59, 130, 246, 0.28) 0%, rgba(37, 99, 235, 0.38) 100%) !important;
-        border: 1px solid rgba(96, 165, 250, 0.6) !important;
-        color: #93C5FD !important;
-        box-shadow: 0 0 16px rgba(59, 130, 246, 0.28);
-        text-shadow: 0 0 8px rgba(147, 197, 253, 0.5);
-    }
-    div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
-        display: none !important;
-    }
-    div[data-testid="stTabs"] [data-baseweb="tab-border"] {
-        display: none !important;
-    }
-
-    /* ---------------- ENTERPRISE SURFACE CARDS ---------------- */
-    .enterprise-card {
-        background: rgba(15, 23, 42, 0.75) !important;
-        backdrop-filter: blur(14px) !important;
-        -webkit-backdrop-filter: blur(14px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: 16px !important;
-        padding: 22px 24px !important;
-        box-shadow: 
-            0 10px 30px -10px rgba(0, 0, 0, 0.8), 
-            inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
-        margin-bottom: 20px !important;
-        transition: all 0.25s ease !important;
-    }
-    .enterprise-card:hover {
-        border-color: rgba(96, 165, 250, 0.35) !important;
-        box-shadow: 
-            0 14px 38px -10px rgba(0, 0, 0, 0.9), 
-            0 0 20px -5px rgba(59, 130, 246, 0.15),
-            inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
-    }
-
-    /* KPI Scorecard Tiles */
-    .enterprise-kpi-card {
-        background: rgba(15, 23, 42, 0.75) !important;
-        backdrop-filter: blur(14px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: 16px !important;
-        padding: 20px 22px !important;
-        display: flex !important;
-        flex-direction: column !important;
-        justify-content: space-between !important;
-        min-height: 124px !important;
-        box-shadow: 
-            0 10px 25px -10px rgba(0, 0, 0, 0.75), 
-            inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
-        transition: all 0.25s ease !important;
-    }
-    .enterprise-kpi-card:hover {
-        transform: translateY(-2px) !important;
-        border-color: rgba(96, 165, 250, 0.4) !important;
-        box-shadow: 0 12px 35px -8px rgba(59, 130, 246, 0.22) !important;
-    }
-
-    /* Telemetry Row */
-    .enterprise-telemetry-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 13px 18px;
-        background: rgba(10, 15, 30, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.07);
-        border-radius: 12px;
-        margin-bottom: 9px;
-        transition: all 0.2s ease;
-    }
-    .enterprise-telemetry-row:hover {
-        background: rgba(30, 41, 59, 0.75);
-        border-color: rgba(96, 165, 250, 0.35);
-    }
-
-    /* ---------------- STATUS PILLS & BADGES ---------------- */
-    .pill-safe {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: rgba(16, 185, 129, 0.16);
-        color: #34D399;
-        border: 1px solid rgba(16, 185, 129, 0.4);
-        border-radius: 20px;
-        padding: 4px 12px;
-        font-size: 11.5px;
-        font-weight: 800;
-        letter-spacing: 0.04em;
-        text-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
-    }
-    .pill-warn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: rgba(245, 158, 11, 0.16);
-        color: #FBBF24;
-        border: 1px solid rgba(245, 158, 11, 0.4);
-        border-radius: 20px;
-        padding: 4px 12px;
-        font-size: 11.5px;
-        font-weight: 800;
-        letter-spacing: 0.04em;
-        text-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
-    }
-    .pill-alert {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: rgba(244, 63, 94, 0.18);
-        color: #FB7185;
-        border: 1px solid rgba(244, 63, 94, 0.45);
-        border-radius: 20px;
-        padding: 4px 12px;
-        font-size: 11.5px;
-        font-weight: 800;
-        letter-spacing: 0.04em;
-        text-shadow: 0 0 8px rgba(244, 63, 94, 0.4);
-    }
-
-    /* ---------------- EVIDENCE DOSSIER CARD ---------------- */
-    .dossier-card {
-        background: rgba(10, 15, 30, 0.65);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 14px;
-        padding: 18px 20px;
-        margin-bottom: 16px;
-        transition: all 0.2s ease;
-    }
-    .dossier-card:hover {
-        border-color: rgba(96, 165, 250, 0.35);
-        background: rgba(15, 23, 42, 0.85);
-    }
-    .dossier-meta-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 10px 18px;
-        background: rgba(0, 0, 0, 0.35);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 10px;
-        padding: 12px 16px;
-        margin-top: 12px;
-        margin-bottom: 12px;
-    }
-    .dossier-meta-item {
-        display: flex;
-        flex-direction: column;
-    }
-    .dossier-meta-label {
-        font-size: 11px;
-        font-weight: 800;
-        color: #94A3B8;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-    }
-    .dossier-meta-val {
-        font-size: 13.5px;
-        font-weight: 700;
-        color: #FFFFFF;
-        font-family: 'JetBrains Mono', monospace;
-        margin-top: 2px;
-    }
-
-    /* ---------------- ENTERPRISE AUDIT LOG TABLE ---------------- */
-    .audit-table-wrapper {
-        width: 100%;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 14px;
-        overflow: hidden;
-        margin-top: 14px;
-        margin-bottom: 18px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-    }
-    .audit-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 13.5px;
-    }
-    .audit-table th {
-        background: rgba(10, 15, 30, 0.95);
-        color: #CBD5E1;
-        font-weight: 700;
-        text-transform: uppercase;
-        font-size: 11px;
-        letter-spacing: 0.08em;
-        padding: 12px 16px;
-        text-align: left;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    .audit-table td {
-        padding: 12px 16px;
-        color: #F8FAFC;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    .audit-table tr:nth-child(even) {
-        background: rgba(255, 255, 255, 0.025);
-    }
-    .audit-table tr:hover {
-        background: rgba(59, 130, 246, 0.08);
-    }
-
-    /* ---------------- SAPPHIRE & EMERALD BUTTON SYSTEM ---------------- */
-    div.stButton > button, 
-    div.stDownloadButton > button,
-    div[data-testid="stFormSubmitButton"] > button {
-        border-radius: 11px !important;
-        font-family: 'Plus Jakarta Sans', sans-serif !important;
-        font-size: 13.5px !important;
-        font-weight: 700 !important;
-        padding: 10px 20px !important;
-        line-height: 1.4 !important;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        cursor: pointer !important;
-    }
-
-    /* Primary Action Buttons (Sapphire Blue Gradient) */
-    div.stDownloadButton > button,
-    div[data-testid="stFormSubmitButton"] > button,
-    button[kind="primary"],
-    div[data-testid="baseButton-primary"] {
-        background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%) !important;
-        border: 1px solid #1D4ED8 !important;
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
-        box-shadow: 0 4px 16px rgba(37, 99, 235, 0.32) !important;
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4) !important;
-    }
-    div.stDownloadButton > button:hover,
-    div[data-testid="stFormSubmitButton"] > button:hover,
-    button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #1D4ED8 0%, #2563EB 100%) !important;
-        box-shadow: 0 6px 22px rgba(37, 99, 235, 0.45) !important;
-        transform: translateY(-1px) !important;
-    }
-
-    /* Secondary Buttons */
-    div.stButton > button {
-        background-color: rgba(30, 41, 59, 0.7) !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
-    }
-    div.stButton > button:hover {
-        background-color: rgba(51, 65, 85, 0.9) !important;
-        border-color: rgba(96, 165, 250, 0.5) !important;
-        color: #93C5FD !important;
-        transform: translateY(-1px) !important;
-    }
-
-    /* Decision Actions */
-    button:has(p:contains("Confirm")), button:has(span:contains("Confirm")) {
-        background: linear-gradient(135deg, #059669 0%, #10B981 100%) !important;
-        color: #FFFFFF !important;
-        border: 1px solid #059669 !important;
-        box-shadow: 0 3px 12px rgba(16, 185, 129, 0.3) !important;
-    }
-    button:has(p:contains("False Positive")), button:has(span:contains("False Positive")) {
-        background: rgba(245, 158, 11, 0.18) !important;
-        color: #FCD34D !important;
-        border: 1px solid rgba(245, 158, 11, 0.45) !important;
-    }
-    button:has(p:contains("Dismiss")), button:has(span:contains("Dismiss")) {
-        background: rgba(255, 255, 255, 0.06) !important;
-        color: #CBD5E1 !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    }
-
-    /* Form Controls */
-    .stSelectbox div[data-baseweb="select"], .stTextInput input, div[data-baseweb="input"] {
-        background-color: rgba(10, 15, 30, 0.85) !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        border-radius: 10px !important;
-        color: #FFFFFF !important;
-        font-size: 13.5px !important;
-        font-weight: 600 !important;
-    }
-    .stSelectbox div[data-baseweb="select"]:hover, .stTextInput input:focus {
-        border-color: #3B82F6 !important;
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25) !important;
-    }
-    div[data-baseweb="tag"] {
-        background-color: rgba(59, 130, 246, 0.2) !important;
-        color: #93C5FD !important;
-        border: 1px solid rgba(59, 130, 246, 0.4) !important;
-        border-radius: 6px !important;
-        font-size: 12px !important;
-        font-weight: 700 !important;
-    }
-
-    div[data-testid="stImage"] img {
-        border-radius: 12px !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7) !important;
-    }
+.block-container {
+    padding-top: 1.25rem !important;
+    padding-bottom: 3.5rem !important;
+    max-width: 1440px !important;
+    margin: 0 auto !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -698,18 +619,15 @@ class ThreadedCamera:
 def get_threat_meter_html(risk_score: float, risk_level: str) -> str:
     """Renders a clean SVG circular threat dial with dynamic progress arcs."""
     if risk_score >= 70.0 or risk_level == "CRITICAL":
-        color = "#FB7185"
-        glow_color = "rgba(244, 63, 94, 0.5)"
+        color = "#E11D48"
         badge_text = "CRITICAL THREAT"
         sub_text = "Violation Active"
     elif risk_score >= 30.0 or risk_level in ("SUSPICIOUS", "MEDIUM"):
-        color = "#FBBF24"
-        glow_color = "rgba(245, 158, 11, 0.5)"
+        color = "#D97706"
         badge_text = "ELEVATED RISK"
         sub_text = "Sensor Deviation"
     else:
-        color = "#34D399"
-        glow_color = "rgba(16, 185, 129, 0.5)"
+        color = "#059669"
         badge_text = "OPTIMAL INTEGRITY"
         sub_text = "Compliant Session"
 
@@ -721,16 +639,16 @@ def get_threat_meter_html(risk_score: float, risk_level: str) -> str:
     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px 0 10px 0;">
         <div style="position: relative; width: 200px; height: 120px; display: flex; justify-content: center; align-items: flex-end;">
             <svg width="200" height="200" viewBox="0 0 220 220" style="position: absolute; top: -45px; transform: rotate(180deg);">
-                <circle cx="110" cy="110" r="75" fill="none" stroke="rgba(255, 255, 255, 0.08)" stroke-width="14" stroke-dasharray="235.6 235.6" stroke-dashoffset="0" />
+                <circle cx="110" cy="110" r="75" fill="none" stroke="#E2E8F0" stroke-width="14" stroke-dasharray="235.6 235.6" stroke-dashoffset="0" />
                 <circle cx="110" cy="110" r="75" fill="none" stroke="{color}" stroke-width="14" 
                     stroke-dasharray="235.6 235.6" stroke-dashoffset="{dash_offset}" 
                     stroke-linecap="round" 
-                    style="transition: stroke-dashoffset 0.2s ease; filter: drop-shadow(0 0 8px {glow_color});" />
+                    style="transition: stroke-dashoffset 0.2s ease;" />
             </svg>
             <div style="text-align: center; z-index: 5; margin-bottom: 2px;">
-                <div style="font-size: 28px; font-weight: 800; color: #FFFFFF; line-height: 1; letter-spacing: -0.03em; text-shadow: 0 2px 6px rgba(0,0,0,0.6);">{risk_score:.0f}</div>
+                <div style="font-size: 28px; font-weight: 800; color: #0F172A; line-height: 1; letter-spacing: -0.03em;">{risk_score:.0f}</div>
                 <div style="font-size: 11px; font-weight: 800; color: {color}; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px;">{badge_text}</div>
-                <div style="font-size: 11px; font-weight: 600; color: #CBD5E1;">{sub_text}</div>
+                <div style="font-size: 11px; font-weight: 600; color: #64748B;">{sub_text}</div>
             </div>
         </div>
     </div>
@@ -760,16 +678,16 @@ st.markdown(f"""
 <div class="saas-top-navbar">
     <div class="saas-brand-title">
         <span style="font-size: 1.35rem;">🛡️</span>
-        <span>EviGuard AI</span>
+        <span style="color: #0F172A; font-weight: 800;">EviGuard AI</span>
         <span class="saas-brand-badge">LIVE TEST PLATFORM</span>
     </div>
     <div style="display: flex; align-items: center; gap: 14px;">
-        <div style="display: flex; align-items: center; gap: 8px; background: rgba(10, 15, 30, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 6px 14px; font-size: 13.5px;">
-            <span style="color: #94A3B8; font-weight: 600;">Active:</span>
-            <span style="font-weight: 700; color: #FFFFFF;">{candidate_name} ({candidate_id})</span>
+        <div style="display: flex; align-items: center; gap: 8px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 6px 14px; font-size: 13.5px;">
+            <span style="color: #64748B; font-weight: 600;">Active:</span>
+            <span style="font-weight: 700; color: #0F172A;">{candidate_name} ({candidate_id})</span>
         </div>
         <div class="pill-safe">
-            <span style="width: 7px; height: 7px; background: #34D399; border-radius: 50%; box-shadow: 0 0 8px #34D399;"></span>
+            <span style="width: 7px; height: 7px; background: #059669; border-radius: 50%;"></span>
             LIVE READY
         </div>
     </div>
@@ -796,15 +714,15 @@ with tab_overview:
     total_flags = len(incidents)
     integrity_score = float(current_session.get("integrity_index", 100.0)) if current_session else 100.0
     peak_risk = float(current_session.get("peak_risk_score", 0.0)) if current_session else 0.0
-    score_color = "#34D399" if integrity_score >= 80 else ("#FBBF24" if integrity_score >= 50 else "#FB7185")
+    score_color = "#059669" if integrity_score >= 80 else ("#D97706" if integrity_score >= 50 else "#E11D48")
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     with kpi1:
         st.markdown(f"""
         <div class="enterprise-kpi-card">
             <div class="eyebrow-label">🛡️ Overall Integrity Index</div>
-            <div class="kpi-value-text" style="color: {score_color}; text-shadow: 0 0 12px {score_color}60;">{integrity_score:.1f}%</div>
-            <div class="body-text" style="font-size: 12.5px; font-weight: 600;">Status: <b>{'COMPLIANT' if integrity_score >= 80 else 'FLAGGED'}</b></div>
+            <div class="kpi-value-text" style="color: {score_color};">{integrity_score:.1f}%</div>
+            <div class="body-text" style="font-size: 12.5px; font-weight: 600; color: #64748B;">Status: <b style="color: {score_color};">{'COMPLIANT' if integrity_score >= 80 else 'FLAGGED'}</b></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -813,7 +731,7 @@ with tab_overview:
         <div class="enterprise-kpi-card">
             <div class="eyebrow-label">🚨 Total Flags Logged</div>
             <div class="kpi-value-text">{total_flags}</div>
-            <div class="body-text" style="font-size: 12.5px; font-weight: 600;">{confirmed_count} Confirmed Violations</div>
+            <div class="body-text" style="font-size: 12.5px; font-weight: 600; color: #64748B;">{confirmed_count} Confirmed Violations</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -822,7 +740,7 @@ with tab_overview:
         <div class="enterprise-kpi-card">
             <div class="eyebrow-label">📈 Peak Threat Score</div>
             <div class="kpi-value-text">{peak_risk:.1f}/100</div>
-            <div class="body-text" style="font-size: 12.5px; font-weight: 600;">Peak Live Anomaly</div>
+            <div class="body-text" style="font-size: 12.5px; font-weight: 600; color: #64748B;">Peak Live Anomaly</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -830,8 +748,8 @@ with tab_overview:
         st.markdown(f"""
         <div class="enterprise-kpi-card">
             <div class="eyebrow-label">⚖️ Verified Malpractice</div>
-            <div class="kpi-value-text" style="color: {'#34D399' if confirmed_count == 0 else '#FB7185'};">{confirmed_count}</div>
-            <div class="body-text" style="font-size: 12.5px; font-weight: 600;">Proctor Confirmed Decisions</div>
+            <div class="kpi-value-text" style="color: {'#059669' if confirmed_count == 0 else '#E11D48'};">{confirmed_count}</div>
+            <div class="body-text" style="font-size: 12.5px; font-weight: 600; color: #64748B;">Proctor Confirmed Decisions</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -893,25 +811,25 @@ with tab_overview:
                 <span class="pill-safe">● READY FOR TESTING</span>
             </div>
             <div style="line-height: 2.2; font-size: 13.5px;">
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px;">
-                    <span style="color: #94A3B8; font-weight: 600;">Active Session Ref:</span>
-                    <span style="color: #60A5FA; font-family: 'JetBrains Mono'; font-weight: 700;">{display_session_ref}</span>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding-bottom: 6px;">
+                    <span style="color: #64748B; font-weight: 600;">Active Session Ref:</span>
+                    <span style="color: #2563EB; font-family: 'JetBrains Mono'; font-weight: 700;">{display_session_ref}</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
-                    <span style="color: #94A3B8; font-weight: 600;">Object Detector Engine:</span>
-                    <span style="color: #60A5FA; font-family: 'JetBrains Mono'; font-weight: 700;">YOLO26 NMS-Free (Calibrated)</span>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding: 6px 0;">
+                    <span style="color: #64748B; font-weight: 600;">Object Detector Engine:</span>
+                    <span style="color: #2563EB; font-family: 'JetBrains Mono'; font-weight: 700;">YOLO26 NMS-Free (Calibrated)</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
-                    <span style="color: #94A3B8; font-weight: 600;">3D Head Pose & Gaze:</span>
-                    <span style="color: #60A5FA; font-family: 'JetBrains Mono'; font-weight: 700;">MediaPipe 468 Face Mesh</span>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding: 6px 0;">
+                    <span style="color: #64748B; font-weight: 600;">3D Head Pose & Gaze:</span>
+                    <span style="color: #2563EB; font-family: 'JetBrains Mono'; font-weight: 700;">MediaPipe 468 Face Mesh</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
-                    <span style="color: #94A3B8; font-weight: 600;">Vision Stream Pipeline:</span>
-                    <span style="color: #34D399; font-family: 'JetBrains Mono'; font-weight: 700;">Zero-Latency Multi-Threaded OpenCV</span>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding: 6px 0;">
+                    <span style="color: #64748B; font-weight: 600;">Vision Stream Pipeline:</span>
+                    <span style="color: #059669; font-family: 'JetBrains Mono'; font-weight: 700;">Zero-Latency Multi-Threaded OpenCV</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; padding-top: 6px;">
-                    <span style="color: #94A3B8; font-weight: 600;">Incident Storage Vault:</span>
-                    <span style="color: #34D399; font-weight: 700;">SQLite Clean Storage</span>
+                    <span style="color: #64748B; font-weight: 600;">Incident Storage Vault:</span>
+                    <span style="color: #059669; font-weight: 700;">SQLite Clean Storage</span>
                 </div>
             </div>
         </div>
@@ -950,7 +868,7 @@ with tab_vision:
         <div class="enterprise-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                 <h3 class="section-header" style="margin: 0;">⚡ Live Sensor HUD</h3>
-                <span class="eyebrow-label" style="color: #60A5FA;">TELEMETRY</span>
+                <span class="eyebrow-label" style="color: #2563EB;">TELEMETRY</span>
             </div>
         """, unsafe_allow_html=True)
         threat_gauge_v_holder = st.empty()
@@ -1005,16 +923,16 @@ with tab_vision:
                         if is_flagged or active_violations:
                             alert_str = ' • '.join(active_violations) if active_violations else "ELEVATED RISK DETECTED"
                             vision_banner_holder.markdown(f"""
-                            <div style="background: rgba(244, 63, 94, 0.18); border: 1px solid rgba(244, 63, 94, 0.45); border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
+                            <div style="background: #FFF1F2; border: 1px solid #FECDD3; border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
                                 <span style="font-size: 1.25rem;">🚨</span>
-                                <span style="color: #FB7185; font-weight: 800; font-size: 13.5px; text-shadow: 0 0 8px rgba(244, 63, 94, 0.4);">SECURITY ALERT: {alert_str}</span>
+                                <span style="color: #E11D48; font-weight: 800; font-size: 13.5px;">SECURITY ALERT: {alert_str}</span>
                             </div>
                             """, unsafe_allow_html=True)
                         else:
                             vision_banner_holder.markdown("""
-                            <div style="background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
+                            <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
                                 <span style="font-size: 1.25rem;">✅</span>
-                                <span style="color: #34D399; font-weight: 800; font-size: 13.5px; text-shadow: 0 0 8px rgba(16, 185, 129, 0.3);">COMPLIANCE VERIFIED: Candidate within normal proctoring tolerances</span>
+                                <span style="color: #059669; font-weight: 800; font-size: 13.5px;">COMPLIANCE VERIFIED: Candidate within normal proctoring tolerances</span>
                             </div>
                             """, unsafe_allow_html=True)
 
@@ -1023,20 +941,20 @@ with tab_vision:
                         telemetry_rows_v_holder.markdown(f"""
                         <div style="margin-top: 4px;">
                             <div class="enterprise-telemetry-row">
-                                <span class="body-text" style="color: #CBD5E1; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
-                                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#34D399' if person_count == 1 else '#FB7185'};">{person_count} Detected</span>
+                                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
+                                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#059669' if person_count == 1 else '#E11D48'};">{person_count} Detected</span>
                             </div>
                             <div class="enterprise-telemetry-row">
-                                <span class="body-text" style="color: #CBD5E1; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
-                                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #FFFFFF;">{yaw_val:+.1f}°</span>
+                                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
+                                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">{yaw_val:+.1f}°</span>
                             </div>
                             <div class="enterprise-telemetry-row">
-                                <span class="body-text" style="color: #CBD5E1; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
-                                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #FFFFFF;">{pitch_val:+.1f}°</span>
+                                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
+                                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">{pitch_val:+.1f}°</span>
                             </div>
                             <div class="enterprise-telemetry-row">
-                                <span class="body-text" style="color: #CBD5E1; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
-                                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#34D399' if not output.pose_gaze.is_looking_away else '#FB7185'};">{gaze_status}</span>
+                                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
+                                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#059669' if not output.pose_gaze.is_looking_away else '#E11D48'};">{gaze_status}</span>
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
@@ -1050,17 +968,17 @@ with tab_vision:
 
     else:
         vision_banner_holder.markdown("""
-        <div style="background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
+        <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 1.25rem;">✅</span>
-            <span style="color: #34D399; font-weight: 800; font-size: 13.5px; text-shadow: 0 0 8px rgba(16, 185, 129, 0.3);">VISION SENSOR ON STANDBY: Ready for live stream</span>
+            <span style="color: #059669; font-weight: 800; font-size: 13.5px;">VISION SENSOR ON STANDBY: Ready for live stream</span>
         </div>
         """, unsafe_allow_html=True)
 
         video_placeholder.markdown("""
-        <div style="background: rgba(10, 15, 30, 0.65); border: 2px dashed rgba(255, 255, 255, 0.12); border-radius: 14px; height: 380px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #94A3B8;">
+        <div style="background: #F8FAFC; border: 2px dashed #CBD5E1; border-radius: 14px; height: 380px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #64748B;">
             <span style="font-size: 3rem; margin-bottom: 8px;">📷</span>
-            <div style="font-size: 16px; font-weight: 700; color: #FFFFFF; margin-bottom: 4px;">Camera Feed on Standby</div>
-            <div style="font-size: 13.5px; color: #CBD5E1;">Toggle switch above to activate real-time AI vision proctoring.</div>
+            <div style="font-size: 16px; font-weight: 700; color: #0F172A; margin-bottom: 4px;">Camera Feed on Standby</div>
+            <div style="font-size: 13.5px; color: #64748B;">Toggle switch above to activate real-time AI vision proctoring.</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1069,20 +987,20 @@ with tab_vision:
         telemetry_rows_v_holder.markdown("""
         <div style="margin-top: 4px;">
             <div class="enterprise-telemetry-row">
-                <span class="body-text" style="color: #CBD5E1; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
-                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #34D399;">1 Detected</span>
+                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
+                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #059669;">1 Detected</span>
             </div>
             <div class="enterprise-telemetry-row">
-                <span class="body-text" style="color: #CBD5E1; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
-                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #FFFFFF;">+0.0°</span>
+                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
+                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">+0.0°</span>
             </div>
             <div class="enterprise-telemetry-row">
-                <span class="body-text" style="color: #CBD5E1; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
-                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #FFFFFF;">+0.0°</span>
+                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
+                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">+0.0°</span>
             </div>
             <div class="enterprise-telemetry-row">
-                <span class="body-text" style="color: #CBD5E1; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
-                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #34D399;">Direct (Screen)</span>
+                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
+                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #059669;">Direct (Screen)</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1119,17 +1037,17 @@ with tab_telemetry:
                 labels={"x": "Sample Frames", "risk_score": "Threat Score (0-100)"},
                 title=None
             )
-            fig_line.add_hline(y=70, line_dash="dash", line_color="#FB7185", annotation_text="Critical Threshold", annotation_position="top left")
-            fig_line.add_hline(y=30, line_dash="dot", line_color="#FBBF24", annotation_text="Elevated Risk", annotation_position="top left")
-            fig_line.update_traces(line_color="#3B82F6", line_width=2.5)
+            fig_line.add_hline(y=70, line_dash="dash", line_color="#E11D48", annotation_text="Critical Threshold", annotation_position="top left")
+            fig_line.add_hline(y=30, line_dash="dot", line_color="#D97706", annotation_text="Elevated Risk", annotation_position="top left")
+            fig_line.update_traces(line_color="#2563EB", line_width=2.5)
             fig_line.update_layout(
                 height=260,
                 margin=dict(l=10, r=10, t=10, b=10),
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#CBD5E1", family="Plus Jakarta Sans"),
-                xaxis=dict(gridcolor="rgba(255, 255, 255, 0.06)"),
-                yaxis=dict(gridcolor="rgba(255, 255, 255, 0.06)", range=[0, 100])
+                font=dict(color="#1E293B", family="Plus Jakarta Sans"),
+                xaxis=dict(gridcolor="#E2E8F0"),
+                yaxis=dict(gridcolor="#E2E8F0", range=[0, 100])
             )
             st.plotly_chart(fig_line, use_container_width=True, key="telemetry_timeline_chart")
         else:
@@ -1154,7 +1072,7 @@ with tab_telemetry:
                 height=260,
                 margin=dict(l=10, r=10, t=10, b=10),
                 paper_bgcolor="rgba(0,0,0,0)", 
-                font=dict(color="#FFFFFF", family="Plus Jakarta Sans")
+                font=dict(color="#1E293B", family="Plus Jakarta Sans")
             )
             st.plotly_chart(fig_pie, use_container_width=True, key="telemetry_pie_chart")
         else:
@@ -1186,10 +1104,10 @@ with tab_audit:
 
         if not incidents:
             st.markdown("""
-            <div style="text-align: center; padding: 40px 20px; color: #CBD5E1;">
+            <div style="text-align: center; padding: 40px 20px; color: #64748B;">
                 <span style="font-size: 3rem;">🛡️</span>
-                <h4 style="color: #FFFFFF; font-weight: 700; font-size: 16px; margin-top: 8px;">Full Academic Integrity Maintained</h4>
-                <p style="font-size: 13.5px; color: #94A3B8;">Zero cheating incidents or anomalous infractions recorded for this session.</p>
+                <h4 style="color: #0F172A; font-weight: 700; font-size: 16px; margin-top: 8px;">Full Academic Integrity Maintained</h4>
+                <p style="font-size: 13.5px; color: #64748B;">Zero cheating incidents or anomalous infractions recorded for this session.</p>
             </div>
             """, unsafe_allow_html=True)
         else:
@@ -1203,7 +1121,7 @@ with tab_audit:
                 and (not ver_filter or inc["proctor_verdict"] in ver_filter)
             ]
 
-            st.markdown(f"<div style='font-size: 12px; color: #CBD5E1; font-weight: 600; margin-bottom: 14px;'>Displaying <b>{len(filtered_incidents)}</b> flagged incident(s)</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='font-size: 12px; color: #64748B; font-weight: 600; margin-bottom: 14px;'>Displaying <b>{len(filtered_incidents)}</b> flagged incident(s)</div>", unsafe_allow_html=True)
 
             table_rows_html = ""
             for inc in filtered_incidents:
@@ -1212,11 +1130,11 @@ with tab_audit:
                 
                 table_rows_html += f"""
                 <tr>
-                    <td><span style="font-family: 'JetBrains Mono'; font-weight: 700; color: #FFFFFF;">#{inc['id']}</span></td>
-                    <td><span style="font-family: 'JetBrains Mono'; font-size: 11.5px; color: #CBD5E1;">{inc['timestamp']}</span></td>
-                    <td><b style="color: #FFFFFF;">{inc['violation_type']}</b></td>
+                    <td><span style="font-family: 'JetBrains Mono'; font-weight: 700; color: #2563EB;">#{inc['id']}</span></td>
+                    <td><span style="font-family: 'JetBrains Mono'; font-size: 11.5px; color: #64748B;">{inc['timestamp']}</span></td>
+                    <td><b style="color: #0F172A;">{inc['violation_type']}</b></td>
                     <td><span class="{pill_cls}">{inc['severity']}</span></td>
-                    <td><span style="font-family: 'JetBrains Mono'; font-weight: 700; color: #FFFFFF;">{inc['risk_score']:.0f}/100</span></td>
+                    <td><span style="font-family: 'JetBrains Mono'; font-weight: 700; color: #0F172A;">{inc['risk_score']:.0f}/100</span></td>
                     <td><span class="{v_pill_cls}">{inc['proctor_verdict']}</span></td>
                 </tr>
                 """
@@ -1256,9 +1174,9 @@ with tab_audit:
                         st.markdown(f"""
                         <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
                             <span class="{sev_cls}">{inc['severity']}</span>
-                            <span style="font-size: 13.5px; font-weight: 700; color: #FFFFFF;">{inc['reason_summary']}</span>
+                            <span style="font-size: 13.5px; font-weight: 700; color: #0F172A;">{inc['reason_summary']}</span>
                         </div>
-                        <p class="body-text" style="font-size: 13.5px; margin-bottom: 8px;">{inc['reason_narrative']}</p>
+                        <p class="body-text" style="font-size: 13.5px; margin-bottom: 8px; color: #334155;">{inc['reason_narrative']}</p>
                         """, unsafe_allow_html=True)
 
                         st.markdown(f"""
@@ -1277,7 +1195,7 @@ with tab_audit:
                             </div>
                             <div class="dossier-meta-item">
                                 <span class="dossier-meta-label">Threat Severity Score</span>
-                                <span class="dossier-meta-val" style="color: {'#FB7185' if inc['risk_score'] >= 70 else '#FBBF24'};">{inc['risk_score']:.1f} / 100</span>
+                                <span class="dossier-meta-val" style="color: {'#E11D48' if inc['risk_score'] >= 70 else '#D97706'};">{inc['risk_score']:.1f} / 100</span>
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
@@ -1299,7 +1217,7 @@ with tab_audit:
                                 margin=dict(l=5, r=5, t=10, b=5), 
                                 paper_bgcolor="rgba(0,0,0,0)", 
                                 plot_bgcolor="rgba(0,0,0,0)", 
-                                font=dict(color="#FFFFFF", family="Plus Jakarta Sans")
+                                font=dict(color="#1E293B", family="Plus Jakarta Sans")
                             )
                             st.plotly_chart(fig_b, use_container_width=True, key=f"saas_xai_{inc['id']}")
 
@@ -1374,12 +1292,12 @@ with tab_audit:
 
         # Complete Data Reset & System Purge Card
         st.markdown("""
-        <div class="enterprise-card" style="border-color: rgba(244, 63, 94, 0.3);">
+        <div class="enterprise-card" style="border-color: rgba(225, 29, 72, 0.3);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <h3 class="section-header" style="margin: 0; color: #FB7185;">🧹 Complete Data Reset & Cache Purge</h3>
+                <h3 class="section-header" style="margin: 0; color: #E11D48;">🧹 Complete Data Reset & Cache Purge</h3>
                 <span class="pill-alert">MAINTENANCE</span>
             </div>
-            <p class="body-text" style="font-size: 13px; margin-bottom: 14px;">Flush all session memory, clear neural model caches, purge historical evidence clips, and reset database tables to an empty slate.</p>
+            <p class="body-text" style="font-size: 13px; margin-bottom: 14px; color: #475569;">Flush all session memory, clear neural model caches, purge historical evidence clips, and reset database tables to an empty slate.</p>
         """, unsafe_allow_html=True)
 
         if st.button("⚠️ Reset All Data & Purge System Cache", use_container_width=True, key="btn_system_purge"):
@@ -1410,7 +1328,7 @@ with tab_audit:
         <div class="enterprise-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                 <h3 class="section-header" style="margin: 0;">⚙️ Neural Calibration</h3>
-                <span class="eyebrow-label" style="color: #60A5FA;">CONFIG</span>
+                <span class="eyebrow-label" style="color: #2563EB;">CONFIG</span>
             </div>
         """, unsafe_allow_html=True)
 
