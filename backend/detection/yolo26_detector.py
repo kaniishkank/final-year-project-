@@ -251,11 +251,13 @@ class YOLO26Detector(BaseDetector):
                         if not self._is_valid_phone_geometry(box):
                             continue
 
-                        # Disambiguate Paper Chit / White Slip mistakenly detected as Phone
+                        # Disambiguate Paper Chit / White Slip vs Cell Phone vs Fabric Noise
                         rx1, ry1, rx2, ry2 = [int(v) for v in box]
                         rx1, ry1 = max(0, rx1), max(0, ry1)
                         rx2, ry2 = min(w, rx2), min(h, ry2)
                         is_paper_chit = False
+                        is_cloth_noise = False
+
                         if rx2 > rx1 and ry2 > ry1:
                             roi_bgr = frame[ry1:ry2, rx1:rx2]
                             roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
@@ -263,11 +265,16 @@ class YOLO26Detector(BaseDetector):
                             mean_b = float(np.mean(roi_gray))
                             mean_sat = float(np.mean(roi_hsv[:, :, 1]))
 
-                            # Paper chits/sheets have bright surface (mean_b >= 125) and low saturation (mean_sat <= 85)
-                            if mean_b >= 125.0 and mean_sat <= 85.0:
+                            # A. Small paper slip / exam chit: Neutral matte surface with low saturation and light reflectance
+                            if mean_b >= 88.0 and mean_sat <= 62.0:
                                 is_paper_chit = True
+                            # B. Highly saturated fabric / clothing noise mistakenly flagged as phone
+                            elif mean_sat > 75.0 and conf < 0.38:
+                                is_cloth_noise = True
 
-                        if is_paper_chit:
+                        if is_cloth_noise:
+                            continue
+                        elif is_paper_chit:
                             cls_name = "unauthorized paper/notes"
                             cls_id = 73
                         else:
@@ -278,6 +285,26 @@ class YOLO26Detector(BaseDetector):
                     elif cls_name in ("book", "notebook", "paper") or cls_id == 73:
                         if conf < self.book_conf_threshold:
                             continue
+
+                        rx1, ry1, rx2, ry2 = [int(v) for v in box]
+                        rx1, ry1 = max(0, rx1), max(0, ry1)
+                        rx2, ry2 = min(w, rx2), min(h, ry2)
+                        is_valid_material = True
+                        if rx2 > rx1 and ry2 > ry1:
+                            roi_bgr = frame[ry1:ry2, rx1:rx2]
+                            roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
+                            roi_hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
+                            mean_b = float(np.mean(roi_gray))
+                            mean_sat = float(np.mean(roi_hsv[:, :, 1]))
+
+                            # Reject colored cloth / clothing / fabric / towels mistakenly detected as book:
+                            # Colored cloth has high saturation (mean_sat > 65), dark cloth has low brightness (mean_b < 78)
+                            if mean_sat > 65.0 or mean_b < 78.0:
+                                is_valid_material = False
+
+                        if not is_valid_material:
+                            continue
+
                         # Disambiguate small exam chits / paper notes from large bound books
                         if box_area < 15000.0 or max(bw, bh) < 140.0:
                             cls_name = "unauthorized paper/notes"
