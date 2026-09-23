@@ -1,7 +1,7 @@
 """
-EviGuard AI Proctoring Studio — Next-Gen Cyber-Command UI
-Ultra-Modern Glassmorphic Obsidian & Aurora Enterprise Design.
-Real-Time Threaded OpenCV Vision Feed, Animated Telemetry Cards, Holographic SVG Threat Gauges, and Instant Audit Export.
+EviGuard AI Proctoring Studio — Ultra-Modern Clean Light Enterprise UI
+Sleek White & Soft Slate Design (Apple / Linear / Stripe aesthetic).
+Ultra-fast Threaded OpenCV Video Stream, High-Contrast Typography, Premium SVG Threat Arc Dial, and One-Click Audit Export.
 """
 
 from datetime import datetime
@@ -30,334 +30,308 @@ from backend.pipeline import EviGuardPipeline, PipelineOutput
 from backend.reporting.report_generator import generate_candidate_pdf_report, generate_candidate_csv_report
 
 
-# ---------------- PAGE CONFIGURATION & NEXT-GEN OBSIDIAN THEME ----------------
+# ---------------- PAGE CONFIGURATION & CLEAN LIGHT THEME ----------------
 st.set_page_config(
-    page_title="EviGuard — Next-Gen AI Proctoring Command Studio",
+    page_title="EviGuard — AI Proctoring Command Studio",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom High-End Cyber Glassmorphism Stylesheet
+# Custom High-End Apple / Stripe Clean Light Stylesheet
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-    /* Global Obsidian Cyber Canvas */
+    /* Global Crisp Clean Light Canvas */
     html, body, [class*="css"], .stApp {
-        background-color: #060913 !important;
+        background-color: #F8FAFC !important;
         background-image: 
-            radial-gradient(at 15% 15%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
-            radial-gradient(at 85% 20%, rgba(6, 182, 212, 0.10) 0px, transparent 50%),
-            radial-gradient(at 50% 85%, rgba(139, 92, 246, 0.08) 0px, transparent 50%) !important;
+            radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
+            radial-gradient(at 100% 0%, rgba(59, 130, 246, 0.05) 0px, transparent 50%),
+            radial-gradient(at 50% 100%, rgba(241, 245, 249, 1) 0px, transparent 100%) !important;
         background-attachment: fixed !important;
-        color: #F1F5F9 !important;
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        color: #0F172A !important;
+        font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
     }
 
-    /* Remove Default Streamlit Padding & Header Artifacts */
+    /* Streamlit Container Sizing & Spacing */
     .block-container {
-        padding-top: 1.8rem !important;
+        padding-top: 1.5rem !important;
         padding-bottom: 2.5rem !important;
         max-width: 98% !important;
     }
     header[data-testid="stHeader"] {
-        background: rgba(6, 9, 19, 0.85) !important;
+        background: rgba(255, 255, 255, 0.85) !important;
         backdrop-filter: blur(12px) !important;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+        border-bottom: 1px solid #E2E8F0 !important;
     }
 
-    /* Glowing Glassmorphic Panels */
-    .glass-card {
-        background: linear-gradient(135deg, rgba(17, 24, 39, 0.82) 0%, rgba(15, 23, 42, 0.65) 100%);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+    /* Ultra-Clean White Card Panels */
+    .white-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
         border-radius: 16px;
-        padding: 20px 24px;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
-        margin-bottom: 18px;
-        position: relative;
-        overflow: hidden;
+        padding: 22px 24px;
+        box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+        margin-bottom: 20px;
+        transition: all 0.2s ease;
     }
-    .glass-card::before {
-        content: '';
-        position: absolute;
-        top: 0; left: 0; right: 0; height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.4), rgba(6, 182, 212, 0.4), transparent);
+    .white-card:hover {
+        box-shadow: 0 10px 30px -4px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
+        border-color: #CBD5E1;
     }
 
-    /* Top Futuristic Header Banner */
-    .header-banner {
-        background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);
-        border: 1px solid rgba(99, 102, 241, 0.25);
-        border-radius: 18px;
-        padding: 18px 24px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-    }
-    .header-title {
-        font-family: 'Space Grotesk', sans-serif;
-        font-size: 1.45rem;
-        font-weight: 700;
-        background: linear-gradient(135deg, #FFFFFF 30%, #A5B4FC 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+    /* Clean Card Titles */
+    .card-heading {
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: #0F172A;
         letter-spacing: -0.02em;
-    }
-    .header-subtitle {
-        font-size: 0.78rem;
-        color: #94A3B8;
-        font-weight: 500;
-        margin-top: 2px;
-    }
-
-    /* KPI Metric Cards (Cyber-HUD Tiles) */
-    .kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 16px;
-        margin-bottom: 20px;
-    }
-    .kpi-hud-card {
-        background: linear-gradient(145deg, rgba(20, 27, 45, 0.85) 0%, rgba(13, 18, 30, 0.75) 100%);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 16px;
-        padding: 16px 20px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
-        position: relative;
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .kpi-hud-card:hover {
-        border-color: rgba(99, 102, 241, 0.5);
-        transform: translateY(-3px);
-        box-shadow: 0 10px 28px rgba(99, 102, 241, 0.15);
-    }
-    .kpi-hud-card::after {
-        content: '';
-        position: absolute;
-        bottom: 0; left: 15%; right: 15%; height: 2px;
-        background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.6), transparent);
-        opacity: 0;
-        transition: opacity 0.25s ease;
-    }
-    .kpi-hud-card:hover::after {
-        opacity: 1;
-    }
-
-    .kpi-hud-label {
-        font-size: 0.70rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #94A3B8;
         display: flex;
         align-items: center;
         gap: 8px;
     }
-    .kpi-hud-value {
-        font-size: 1.45rem;
+
+    /* Top KPI Metric Cards (Clean Light Tiles) */
+    .kpi-tile-light {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 16px;
+        padding: 18px 20px;
+        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 120px;
+        transition: all 0.2s ease;
+    }
+    .kpi-tile-light:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 12px 24px -4px rgba(79, 70, 229, 0.12);
+        border-color: #818CF8;
+    }
+    .kpi-label-light {
+        font-size: 0.76rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #64748B;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .kpi-value-light {
+        font-size: 1.65rem;
         font-weight: 800;
-        color: #FFFFFF;
-        font-family: 'Space Grotesk', sans-serif;
-        letter-spacing: -0.02em;
+        color: #0F172A;
+        letter-spacing: -0.03em;
         line-height: 1.2;
         margin-top: 6px;
     }
-    .kpi-hud-meta {
-        font-size: 0.72rem;
+    .kpi-meta-light {
+        font-size: 0.78rem;
         color: #64748B;
         font-family: 'JetBrains Mono', monospace;
         margin-top: 6px;
-        display: flex;
+    }
+
+    /* Status Text Colors */
+    .text-emerald {
+        color: #059669 !important;
+    }
+    .text-amber {
+        color: #D97706 !important;
+    }
+    .text-rose {
+        color: #E11D48 !important;
+    }
+    .text-indigo {
+        color: #4F46E5 !important;
+    }
+
+    /* Modern Rounded Status Badges */
+    .badge-clean-safe {
+        display: inline-flex;
         align-items: center;
         gap: 6px;
-    }
-
-    /* Live Cyber Video Viewport */
-    .video-chassis {
-        background: #090D18;
-        border: 1px solid #1E293B;
-        border-radius: 16px;
-        padding: 12px;
-        position: relative;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    }
-    .video-chassis::before {
-        content: 'HUD DIRECT FEED';
-        position: absolute;
-        top: 18px; left: 24px;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.65rem;
+        background: #ECFDF5;
+        color: #059669;
+        border: 1px solid #A7F3D0;
+        border-radius: 20px;
+        padding: 4px 12px;
+        font-size: 0.78rem;
         font-weight: 700;
-        letter-spacing: 0.12em;
-        color: #38BDF8;
-        background: rgba(14, 165, 233, 0.15);
-        border: 1px solid rgba(56, 189, 248, 0.35);
-        border-radius: 4px;
-        padding: 2px 8px;
-        z-index: 10;
+        letter-spacing: 0.03em;
     }
-    div[data-testid="stImage"] img {
-        border-radius: 12px !important;
-        border: 1px solid rgba(255, 255, 255, 0.06) !important;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45) !important;
+    .badge-clean-alert {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #FFF1F2;
+        color: #E11D48;
+        border: 1px solid #FECDD3;
+        border-radius: 20px;
+        padding: 4px 12px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+    }
+    .badge-clean-warn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #FFFBEB;
+        color: #D97706;
+        border: 1px solid #FDE68A;
+        border-radius: 20px;
+        padding: 4px 12px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
     }
 
-    /* Sensor Telemetry Rows */
-    .sensor-item {
+    /* Telemetry Sensor List Rows */
+    .sensor-row-light {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 11px 16px;
-        background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(20, 27, 45, 0.6) 100%);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 10px;
-        margin-bottom: 9px;
+        padding: 12px 16px;
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        margin-bottom: 10px;
         transition: all 0.2s ease;
     }
-    .sensor-item:hover {
-        border-color: rgba(99, 102, 241, 0.35);
-        background: rgba(30, 41, 59, 0.7);
+    .sensor-row-light:hover {
+        background: #F1F5F9;
+        border-color: #CBD5E1;
+        transform: translateX(2px);
     }
-    .sensor-name {
-        font-size: 0.80rem;
+    .sensor-name-light {
+        font-size: 0.86rem;
         font-weight: 600;
-        color: #94A3B8;
+        color: #475569;
         display: flex;
         align-items: center;
         gap: 8px;
     }
-    .sensor-val {
-        font-size: 0.88rem;
+    .sensor-val-light {
+        font-size: 0.92rem;
         font-weight: 700;
         font-family: 'JetBrains Mono', monospace;
-        color: #F8FAFC;
+        color: #0F172A;
     }
 
-    /* Status Badges */
-    .badge-live-pulse {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: rgba(16, 185, 129, 0.12);
-        color: #34D399;
-        border: 1px solid rgba(52, 211, 153, 0.35);
-        border-radius: 20px;
-        padding: 4px 12px;
-        font-size: 0.74rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        font-family: 'JetBrains Mono', monospace;
-    }
-    .badge-alert-pulse {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: rgba(239, 68, 68, 0.15);
-        color: #F87171;
-        border: 1px solid rgba(248, 113, 113, 0.4);
-        border-radius: 20px;
-        padding: 4px 12px;
-        font-size: 0.74rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        font-family: 'JetBrains Mono', monospace;
+    /* Native Video Frame Display Container */
+    div[data-testid="stImage"] img {
+        border-radius: 14px !important;
+        border: 1px solid #E2E8F0 !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
     }
 
-    /* Buttons */
+    /* Modern Light Buttons */
     div.stButton > button {
         border-radius: 10px !important;
-        font-weight: 600 !important;
+        font-weight: 700 !important;
         font-family: 'Plus Jakarta Sans', sans-serif !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%) !important;
-        color: #F8FAFC !important;
+        border: 1px solid #CBD5E1 !important;
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
         padding: 10px 20px !important;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+        font-size: 0.88rem !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
+        transition: all 0.2s ease !important;
     }
     div.stButton > button:hover {
-        background: linear-gradient(135deg, #334155 0%, #1E293B 100%) !important;
-        border-color: #6366F1 !important;
-        color: #FFFFFF !important;
-        transform: translateY(-2px) !important;
-        box-shadow: 0 6px 18px rgba(99, 102, 241, 0.25) !important;
+        background-color: #F8FAFC !important;
+        border-color: #4F46E5 !important;
+        color: #4F46E5 !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15) !important;
     }
 
-    /* Accent Download Buttons */
+    /* Primary Gradient Buttons */
     div.stDownloadButton > button {
         border-radius: 10px !important;
-        background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%) !important;
-        border: 1px solid #818CF8 !important;
+        background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%) !important;
+        border: 1px solid #4F46E5 !important;
         color: #FFFFFF !important;
         font-weight: 700 !important;
         padding: 12px 24px !important;
-        box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35) !important;
+        font-size: 0.92rem !important;
+        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.30) !important;
         transition: all 0.2s ease !important;
     }
     div.stDownloadButton > button:hover {
-        background: linear-gradient(135deg, #4F46E5 0%, #4338CA 100%) !important;
+        background: linear-gradient(135deg, #4338CA 0%, #2563EB 100%) !important;
         transform: translateY(-2px) !important;
-        box-shadow: 0 8px 24px rgba(99, 102, 241, 0.45) !important;
+        box-shadow: 0 6px 20px rgba(79, 70, 229, 0.40) !important;
     }
 
-    /* Left Sidebar Navigation */
+    /* Left Sidebar Styling */
     section[data-testid="stSidebar"] {
-        background-color: #080C16 !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+        background-color: #FFFFFF !important;
+        border-right: 1px solid #E2E8F0 !important;
+        box-shadow: 2px 0 12px rgba(0, 0, 0, 0.02) !important;
     }
     section[data-testid="stSidebar"] div[role="radiogroup"] {
         display: flex !important;
         flex-direction: column !important;
-        gap: 9px !important;
+        gap: 10px !important;
     }
     section[data-testid="stSidebar"] div[role="radiogroup"] label {
-        background: rgba(17, 24, 39, 0.7) !important;
-        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        background-color: #F8FAFC !important;
+        border: 1px solid #E2E8F0 !important;
         border-radius: 12px !important;
         padding: 12px 16px !important;
         cursor: pointer !important;
         transition: all 0.2s ease !important;
     }
     section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-        background: rgba(30, 41, 59, 0.8) !important;
-        border-color: rgba(99, 102, 241, 0.4) !important;
-        transform: translateX(4px) !important;
+        background-color: #EEF2FF !important;
+        border-color: #C7D2FE !important;
+        transform: translateX(3px) !important;
     }
     section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked),
     section[data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"] {
-        background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%) !important;
-        border-color: #818CF8 !important;
-        box-shadow: 0 4px 18px rgba(79, 70, 229, 0.35) !important;
+        background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%) !important;
+        border-color: #4F46E5 !important;
+        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.25) !important;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p,
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) span,
+    section[data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"] p,
+    section[data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"] span {
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
     }
     section[data-testid="stSidebar"] div[role="radiogroup"] label p,
     section[data-testid="stSidebar"] div[role="radiogroup"] label span {
-        color: #FFFFFF !important;
+        color: #334155 !important;
         font-weight: 600 !important;
-        font-size: 0.88rem !important;
+        font-size: 0.90rem !important;
     }
 
     /* Inputs, Selectboxes */
     .stSelectbox div[data-baseweb="select"], .stTextInput input {
-        background-color: #0F172A !important;
-        border: 1px solid #1E293B !important;
+        background-color: #FFFFFF !important;
+        border: 1px solid #CBD5E1 !important;
         border-radius: 10px !important;
-        color: #F8FAFC !important;
+        color: #0F172A !important;
+        font-size: 0.90rem !important;
     }
     .stSelectbox div[data-baseweb="select"]:hover, .stTextInput input:focus {
-        border-color: #6366F1 !important;
+        border-color: #4F46E5 !important;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15) !important;
     }
 
     .streamlit-expanderHeader {
-        background: rgba(17, 24, 39, 0.85) !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
         border-radius: 12px !important;
-        font-weight: 600 !important;
-        color: #F8FAFC !important;
+        font-weight: 700 !important;
+        color: #0F172A !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -378,7 +352,7 @@ pipeline = get_pipeline()
 
 # ---------------- HIGH-SPEED THREADED OPENCV CAMERA WORKER ----------------
 class ThreadedCamera:
-    """Zero-latency threaded hardware camera capture worker with multi-backend fallback."""
+    """Zero-latency threaded hardware camera capture worker with resilient fallback."""
 
     def __init__(self, src: int = 0, width: int = 640, height: int = 480):
         self.src = src
@@ -451,20 +425,19 @@ class ThreadedCamera:
             if not frame_grabbed:
                 sim_step += 1
                 h, w = self.height, self.width
-                sim_frame = np.zeros((h, w, 3), dtype=np.uint8)
-                sim_frame[:] = (12, 17, 28)
+                sim_frame = np.full((h, w, 3), 245, dtype=np.uint8)
                 
                 center_x = int(w / 2 + math.sin(sim_step * 0.05) * 15)
                 center_y = int(h / 2)
                 
-                cv2.circle(sim_frame, (center_x, center_y - 20), 45, (30, 41, 59), -1)
-                cv2.circle(sim_frame, (center_x, center_y - 20), 45, (99, 102, 241), 2)
-                cv2.ellipse(sim_frame, (center_x, center_y + 110), (90, 70), 0, 0, 360, (20, 27, 45), -1)
+                cv2.circle(sim_frame, (center_x, center_y - 20), 45, (200, 210, 225), -1)
+                cv2.circle(sim_frame, (center_x, center_y - 20), 45, (79, 70, 229), 2)
+                cv2.ellipse(sim_frame, (center_x, center_y + 110), (90, 70), 0, 0, 360, (215, 225, 240), -1)
                 
                 cv2.putText(sim_frame, "EVIGUARD AI VISION ENGINE", (25, 38),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (99, 102, 241), 2, cv2.LINE_AA)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (79, 70, 229), 2, cv2.LINE_AA)
                 cv2.putText(sim_frame, "Connecting to camera feed...", (25, h - 25),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.42, (148, 163, 184), 1, cv2.LINE_AA)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.42, (100, 116, 139), 1, cv2.LINE_AA)
                 
                 with self.lock:
                     self.frame = sim_frame
@@ -490,73 +463,73 @@ class ThreadedCamera:
         self.frame = None
 
 
-# ---------------- HOLOGRAPHIC SVG THREAT GAUGE RENDERER ----------------
+# ---------------- CLEAN MODERN SVG THREAT ARC DIAL ----------------
 def get_threat_meter_html(risk_score: float, risk_level: str) -> str:
-    """Renders an ultra-modern glowing circular cyber threat gauge."""
+    """Renders a beautiful clean white & pastel SVG circular threat meter."""
     if risk_score >= 70.0 or risk_level == "CRITICAL":
-        color = "#EF4444"
-        glow = "rgba(239, 68, 68, 0.4)"
-        status_text = "CRITICAL THREAT"
+        color = "#E11D48"
+        bg_color = "#FFF1F2"
+        badge_text = "CRITICAL THREAT"
     elif risk_score >= 30.0 or risk_level in ("SUSPICIOUS", "MEDIUM"):
-        color = "#F59E0B"
-        glow = "rgba(245, 158, 11, 0.4)"
-        status_text = "ELEVATED RISK"
+        color = "#D97706"
+        bg_color = "#FFFBEB"
+        badge_text = "ELEVATED RISK"
     else:
-        color = "#10B981"
-        glow = "rgba(16, 185, 129, 0.4)"
-        status_text = "SECURE / NORMAL"
+        color = "#059669"
+        bg_color = "#ECFDF5"
+        badge_text = "SECURE / NORMAL"
 
     pct = min(100.0, max(0.0, risk_score))
     dash_total = 235.6
     dash_offset = dash_total - (pct / 100.0) * dash_total
 
     return f"""
-    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 0 14px 0;">
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px 0 16px 0;">
         <div style="position: relative; width: 220px; height: 130px; display: flex; justify-content: center; align-items: flex-end;">
             <svg width="220" height="220" viewBox="0 0 220 220" style="position: absolute; top: -45px; transform: rotate(180deg);">
-                <!-- Outer Track -->
-                <circle cx="110" cy="110" r="75" fill="none" stroke="#0F172A" stroke-width="16" stroke-dasharray="235.6 235.6" stroke-dashoffset="0" />
-                <!-- Active Glow Needle -->
+                <!-- Track -->
+                <circle cx="110" cy="110" r="75" fill="none" stroke="#E2E8F0" stroke-width="16" stroke-dasharray="235.6 235.6" stroke-dashoffset="0" />
+                <!-- Active Arc Needle -->
                 <circle cx="110" cy="110" r="75" fill="none" stroke="{color}" stroke-width="16" 
                     stroke-dasharray="235.6 235.6" stroke-dashoffset="{dash_offset}" 
-                    stroke-linecap="round" style="filter: drop-shadow(0 0 8px {glow}); transition: stroke-dashoffset 0.15s ease;" />
+                    stroke-linecap="round" style="transition: stroke-dashoffset 0.15s ease;" />
             </svg>
             <div style="text-align: center; z-index: 5; margin-bottom: 2px;">
-                <div style="font-size: 2.3rem; font-weight: 800; color: #FFFFFF; font-family: 'Space Grotesk', sans-serif; line-height: 1; letter-spacing: -0.03em;">{risk_score:.0f}</div>
-                <div style="font-size: 0.68rem; font-weight: 700; color: {color}; text-transform: uppercase; letter-spacing: 0.10em; font-family: 'JetBrains Mono', monospace; margin-top: 5px;">{status_text}</div>
+                <div style="font-size: 2.5rem; font-weight: 900; color: #0F172A; font-family: 'Plus Jakarta Sans', sans-serif; line-height: 1; letter-spacing: -0.04em;">{risk_score:.0f}</div>
+                <div style="font-size: 0.72rem; font-weight: 800; color: {color}; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px;">{badge_text}</div>
             </div>
         </div>
     </div>
     """
 
 
-# ---------------- SIDEBAR NAVIGATION ----------------
+# ---------------- SIDEBAR CONTROLS ----------------
 with st.sidebar:
     st.markdown("""
-    <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px; margin-bottom: 6px;">
-        <div style="background: linear-gradient(135deg, #6366F1, #06B6D4); padding: 8px; border-radius: 12px; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);">
-            <span style="font-size: 1.4rem;">🛡️</span>
+    <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px; margin-bottom: 8px;">
+        <div style="background: linear-gradient(135deg, #4F46E5, #3B82F6); padding: 9px; border-radius: 12px; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);">
+            <span style="font-size: 1.35rem; color: #FFFFFF;">🛡️</span>
         </div>
         <div>
-            <div style="font-family: 'Space Grotesk', sans-serif; font-size: 1.22rem; font-weight: 800; color: #FFFFFF; letter-spacing: -0.02em;">EviGuard AI</div>
-            <div style="font-size: 0.68rem; font-weight: 600; color: #38BDF8; letter-spacing: 0.06em; text-transform: uppercase; font-family: 'JetBrains Mono';">Vision Proctor v2.0</div>
+            <div style="font-size: 1.28rem; font-weight: 800; color: #0F172A; letter-spacing: -0.03em;">EviGuard AI</div>
+            <div style="font-size: 0.72rem; font-weight: 700; color: #4F46E5; text-transform: uppercase; letter-spacing: 0.06em;">Proctoring Studio</div>
         </div>
     </div>
-    <div style="margin-top: 10px; margin-bottom: 18px;">
-        <span style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); color: #C7D2FE; border-radius: 6px; padding: 3px 9px; font-size: 0.70rem; font-weight: 700; font-family: 'JetBrains Mono';">● NEURAL CORE ACTIVE</span>
+    <div style="margin-top: 8px; margin-bottom: 18px;">
+        <span style="background: #EEF2FF; border: 1px solid #C7D2FE; color: #4F46E5; border-radius: 6px; padding: 4px 10px; font-size: 0.74rem; font-weight: 700; font-family: 'JetBrains Mono';">● AI VISION ENGINE ACTIVE</span>
     </div>
     """, unsafe_allow_html=True)
 
     menu_option = st.radio(
-        "Navigation",
-        ["📹 Live Proctoring", "🔍 Incident Vault", "📊 Analytics & Audit", "⚙️ System Configuration"],
+        "Navigation Modules",
+        ["📹 Live Proctoring", "🔍 Incident Vault", "📊 Analytics & Reports", "⚙️ Settings & Sensitivity"],
         index=0,
         label_visibility="collapsed"
     )
 
-    st.markdown("<div style='margin-top: 16px; margin-bottom: 16px; border-top: 1px solid rgba(255,255,255,0.06);'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 16px; margin-bottom: 16px; border-top: 1px solid #E2E8F0;'></div>", unsafe_allow_html=True)
 
-    # Session Selection
+    # Session Selector Container
     all_sessions = db_manager.get_all_sessions()
     session_ids = [s["session_id"] for s in all_sessions]
 
@@ -570,8 +543,8 @@ with st.sidebar:
 
     st.markdown("""
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <span style="font-size: 0.70rem; font-weight: 700; text-transform: uppercase; color: #94A3B8; font-family: 'JetBrains Mono';">Target Session</span>
-        <span class="badge-live-pulse" style="font-size: 0.65rem; padding: 1px 7px;">LIVE</span>
+        <span style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; color: #64748B;">Active Assessment</span>
+        <span class="badge-clean-safe" style="padding: 2px 8px; font-size: 0.70rem;">● LIVE</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -594,33 +567,33 @@ with st.sidebar:
             st.success(f"Session {new_s_id} active!")
             st.rerun()
 
-    st.markdown("<div style='margin-top: 16px; margin-bottom: 16px; border-top: 1px solid rgba(255,255,255,0.06);'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 16px; margin-bottom: 16px; border-top: 1px solid #E2E8F0;'></div>", unsafe_allow_html=True)
     
-    # Engine Telemetry Pill
+    # System Diagnostics Box
     st.markdown("""
-    <div style="background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; padding: 12px 14px; font-size: 0.72rem; line-height: 1.7; color: #94A3B8;">
-        <div style="font-weight: 700; color: #64748B; text-transform: uppercase; font-size: 0.66rem; margin-bottom: 6px; font-family: 'JetBrains Mono';">Engine Diagnostics</div>
+    <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px; font-size: 0.76rem; line-height: 1.7; color: #64748B;">
+        <div style="font-weight: 800; color: #0F172A; text-transform: uppercase; font-size: 0.72rem; margin-bottom: 6px;">System Diagnostics</div>
         <div style="display: flex; justify-content: space-between;">
-            <span>Vision Core</span>
-            <span style="color: #38BDF8; font-family: 'JetBrains Mono'; font-weight: 600;">YOLO26 NMS-Free</span>
+            <span>AI Detector</span>
+            <span style="color: #4F46E5; font-family: 'JetBrains Mono'; font-weight: 700;">YOLO26 NMS-Free</span>
         </div>
         <div style="display: flex; justify-content: space-between;">
             <span>Gaze / 3D Pose</span>
-            <span style="color: #A78BFA; font-family: 'JetBrains Mono'; font-weight: 600;">MediaPipe Mesh</span>
+            <span style="color: #4F46E5; font-family: 'JetBrains Mono'; font-weight: 700;">MediaPipe Mesh</span>
         </div>
         <div style="display: flex; justify-content: space-between;">
-            <span>Capture Engine</span>
-            <span style="color: #34D399; font-family: 'JetBrains Mono'; font-weight: 600;">Threaded OpenCV</span>
+            <span>Stream Engine</span>
+            <span style="color: #059669; font-family: 'JetBrains Mono'; font-weight: 700;">Threaded OpenCV</span>
         </div>
         <div style="display: flex; justify-content: space-between;">
             <span>Database</span>
-            <span style="color: #34D399; font-weight: 700;">● Online</span>
+            <span style="color: #059669; font-weight: 800;">● Connected</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
 
-# ---------------- TAB 1: LIVE PROCTORING COMMAND STATION ----------------
+# ---------------- TAB 1: LIVE PROCTORING ----------------
 if menu_option == "📹 Live Proctoring":
     current_session = db_manager.get_session_by_id(st.session_state.active_session_id) or {
         "session_id": st.session_state.active_session_id,
@@ -636,21 +609,23 @@ if menu_option == "📹 Live Proctoring":
     candidate_id = current_session.get("candidate_id", "STD-101")
     exam_title = current_session.get("exam_title", "CS401: Advanced AI Exam")
 
-    # Top KPI HUD Placeholder
+    # Top KPI Metrics Placeholder
     kpi_placeholder = st.empty()
 
-    # Main Command Deck Layout: Left (Live Stream HUD), Right (Tactical Threat Matrix)
+    st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
+
+    # Main Grid Layout: Left 65% (Live Stream), Right 35% (Threat Matrix)
     col_left, col_right = st.columns([13, 7], gap="medium")
 
     with col_left:
         st.markdown("""
-        <div class="glass-card">
+        <div class="white-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 700; color: #FFFFFF;">Live Vision Stream & AI HUD</span>
-                    <span class="badge-live-pulse">● 30+ FPS STREAM</span>
+                    <span class="card-heading">Live Video Stream & AI HUD</span>
+                    <span class="badge-clean-safe">● ZERO-LATENCY</span>
                 </div>
-                <span style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 3px 9px; font-size: 0.70rem; font-family: 'JetBrains Mono'; color: #94A3B8;">640x480 • Resilient Direct Feed</span>
+                <span style="background: #F1F5F9; border: 1px solid #E2E8F0; border-radius: 6px; padding: 4px 10px; font-size: 0.74rem; font-family: 'JetBrains Mono'; font-weight: 600; color: #475569;">640x480 • 30 FPS Native</span>
             </div>
         """, unsafe_allow_html=True)
 
@@ -660,10 +635,10 @@ if menu_option == "📹 Live Proctoring":
 
     with col_right:
         st.markdown("""
-        <div class="glass-card">
+        <div class="white-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 700; color: #FFFFFF;">Tactical Threat Matrix</span>
-                <span style="color: #64748B; font-size: 0.70rem; font-family: 'JetBrains Mono';">SENSOR ARRAY</span>
+                <span class="card-heading">Threat Analysis & Sensors</span>
+                <span style="color: #64748B; font-size: 0.76rem; font-weight: 700;">TELEMETRY</span>
             </div>
         """, unsafe_allow_html=True)
         threat_banner_placeholder = st.empty()
@@ -688,7 +663,7 @@ if menu_option == "📹 Live Proctoring":
                 if frame is not None:
                     loop_frame += 1
 
-                    # Execute full EviGuard AI Vision Pipeline
+                    # Process frame with EviGuard AI Pipeline
                     output: PipelineOutput = pipeline.process_frame(
                         frame=frame,
                         session_id=session_id,
@@ -702,7 +677,7 @@ if menu_option == "📹 Live Proctoring":
                     else:
                         video_placeholder.image(output.annotated_frame, channels="BGR", use_container_width=True)
 
-                    # 2. Extract telemetry
+                    # 2. Extract metrics
                     risk_score = float(output.risk.smoothed_score)
                     risk_level = str(output.risk.risk_level)
                     active_violations = list(output.risk.active_violations)
@@ -712,7 +687,7 @@ if menu_option == "📹 Live Proctoring":
                     gaze_status = str(output.pose_gaze.gaze_direction) if output.pose_gaze.face_detected else "Candidate Absent"
                     is_flagged = bool(output.risk.is_incident_triggered or len(active_violations) > 0 or risk_score >= 70.0)
 
-                    # State Throttling
+                    # Rate-throttle UI updates
                     current_risk_bin = int(risk_score // 5)
                     state_changed = (is_flagged != last_flagged_state) or (current_risk_bin != last_risk_bin)
 
@@ -724,40 +699,40 @@ if menu_option == "📹 Live Proctoring":
                         if is_flagged or active_violations:
                             alert_str = ' • '.join(active_violations) if active_violations else "ELEVATED RISK DETECTED"
                             threat_banner_placeholder.markdown(f"""
-                            <div style="background: rgba(239, 68, 68, 0.16); border: 1px solid rgba(248, 113, 113, 0.45); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 1.1rem;">🚨</span>
-                                <span style="color: #F87171; font-weight: 700; font-size: 0.82rem; font-family: 'JetBrains Mono';">SECURITY ALERT: {alert_str}</span>
+                            <div style="background: #FFF1F2; border: 1px solid #FECDD3; border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.2rem;">🚨</span>
+                                <span style="color: #E11D48; font-weight: 800; font-size: 0.88rem;">SECURITY ALERT: {alert_str}</span>
                             </div>
                             """, unsafe_allow_html=True)
                         else:
                             threat_banner_placeholder.markdown("""
-                            <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 1.1rem;">✅</span>
-                                <span style="color: #34D399; font-weight: 700; font-size: 0.82rem; font-family: 'JetBrains Mono';">COMPLIANCE VERIFIED: Candidate in standard baseline</span>
+                            <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.2rem;">✅</span>
+                                <span style="color: #059669; font-weight: 800; font-size: 0.88rem;">COMPLIANCE VERIFIED: Candidate within normal limits</span>
                             </div>
                             """, unsafe_allow_html=True)
 
-                        # 4. Update Holographic SVG Threat Dial Meter
+                        # 4. Update Clean Threat Dial Meter
                         threat_gauge_placeholder.markdown(get_threat_meter_html(risk_score, risk_level), unsafe_allow_html=True)
 
                         # 5. Update Sensor Telemetry Rows
                         telemetry_rows_placeholder.markdown(f"""
                         <div style="margin-top: 4px; margin-bottom: 10px;">
-                            <div class="sensor-item">
-                                <span class="sensor-name">👥 Entity Tracking</span>
-                                <span class="sensor-val" style="color: {'#34D399' if person_count == 1 else '#F87171'};">{person_count} Candidate Tracked</span>
+                            <div class="sensor-row-light">
+                                <span class="sensor-name-light">👥 Candidate Tracking</span>
+                                <span class="sensor-val-light" style="color: {'#059669' if person_count == 1 else '#E11D48'};">{person_count} Detected</span>
                             </div>
-                            <div class="sensor-item">
-                                <span class="sensor-name">🔄 Head Pose Yaw (L/R)</span>
-                                <span class="sensor-val">{yaw_val:+.1f}°</span>
+                            <div class="sensor-row-light">
+                                <span class="sensor-name-light">🔄 Head Pose Yaw (L/R)</span>
+                                <span class="sensor-val-light">{yaw_val:+.1f}°</span>
                             </div>
-                            <div class="sensor-item">
-                                <span class="sensor-name">📐 Head Pose Pitch (U/D)</span>
-                                <span class="sensor-val">{pitch_val:+.1f}°</span>
+                            <div class="sensor-row-light">
+                                <span class="sensor-name-light">📐 Head Pose Pitch (U/D)</span>
+                                <span class="sensor-val-light">{pitch_val:+.1f}°</span>
                             </div>
-                            <div class="sensor-item">
-                                <span class="sensor-name">👀 Gaze Orientation</span>
-                                <span class="sensor-val" style="color: {'#34D399' if not output.pose_gaze.is_looking_away else '#F87171'};">{gaze_status}</span>
+                            <div class="sensor-row-light">
+                                <span class="sensor-name-light">👀 Gaze Orientation</span>
+                                <span class="sensor-val-light" style="color: {'#059669' if not output.pose_gaze.is_looking_away else '#E11D48'};">{gaze_status}</span>
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
@@ -768,47 +743,47 @@ if menu_option == "📹 Live Proctoring":
                         cached_total_incidents = len(incidents)
                         cached_confirmed_incidents = sum(1 for i in incidents if i.get("proctor_verdict") == "CONFIRMED")
                         cached_integrity_pct = max(0.0, 100.0 - (cached_confirmed_incidents * 5.0) - (cached_total_incidents * 1.5))
-                        score_color = "#34D399" if cached_integrity_pct >= 80 else ("#FBBF24" if cached_integrity_pct >= 50 else "#F87171")
+                        score_color_cls = "text-emerald" if cached_integrity_pct >= 80 else ("text-amber" if cached_integrity_pct >= 50 else "text-rose")
 
                         if is_flagged or risk_score >= 70.0:
-                            badge_html = '<span class="badge-alert-pulse">● CRITICAL RISK</span>'
+                            badge_html = '<span class="badge-clean-alert">● CRITICAL RISK</span>'
                         elif risk_score >= 30.0:
-                            badge_html = '<span class="badge-alert-pulse" style="background: rgba(245, 158, 11, 0.2); color: #FCD34D; border-color: rgba(245, 158, 11, 0.4);">● ELEVATED</span>'
+                            badge_html = '<span class="badge-clean-warn">● ELEVATED</span>'
                         else:
-                            badge_html = '<span class="badge-live-pulse">● SECURE</span>'
+                            badge_html = '<span class="badge-clean-safe">● ALL CLEAR</span>'
 
                         with kpi_placeholder.container():
                             k_col1, k_col2, k_col3, k_col4 = st.columns(4)
                             with k_col1:
                                 st.markdown(f"""
-                                <div class="kpi-hud-card">
-                                    <div class="kpi-hud-label">👤 Candidate Profile</div>
-                                    <div class="kpi-hud-value">{candidate_name}</div>
-                                    <div class="kpi-hud-meta">UID: <code>{candidate_id}</code></div>
+                                <div class="kpi-tile-light">
+                                    <div class="kpi-label-light">👤 Candidate Profile</div>
+                                    <div class="kpi-value-light">{candidate_name}</div>
+                                    <div class="kpi-meta-light">ID: <b>{candidate_id}</b></div>
                                 </div>
                                 """, unsafe_allow_html=True)
                             with k_col2:
                                 st.markdown(f"""
-                                <div class="kpi-hud-card">
-                                    <div class="kpi-hud-label">📚 Active Assessment</div>
-                                    <div class="kpi-hud-value" style="font-size: 1.18rem;">{exam_title}</div>
-                                    <div class="kpi-hud-meta">Ref: <code>{session_id}</code></div>
+                                <div class="kpi-tile-light">
+                                    <div class="kpi-label-light">📚 Assessment Module</div>
+                                    <div class="kpi-value-light" style="font-size: 1.25rem;">{exam_title}</div>
+                                    <div class="kpi-meta-light">Ref: <code>{session_id}</code></div>
                                 </div>
                                 """, unsafe_allow_html=True)
                             with k_col3:
                                 st.markdown(f"""
-                                <div class="kpi-hud-card">
-                                    <div class="kpi-hud-label">🛡️ Integrity Quotient</div>
-                                    <div class="kpi-hud-value" style="color: {score_color};">{cached_integrity_pct:.1f}%</div>
-                                    <div class="kpi-hud-meta">Flags: {cached_total_incidents} ({cached_confirmed_incidents} Confirmed)</div>
+                                <div class="kpi-tile-light">
+                                    <div class="kpi-label-light">🛡️ Integrity Score</div>
+                                    <div class="kpi-value-light {score_color_cls}">{cached_integrity_pct:.1f}%</div>
+                                    <div class="kpi-meta-light">Flags: {cached_total_incidents} ({cached_confirmed_incidents} Confirmed)</div>
                                 </div>
                                 """, unsafe_allow_html=True)
                             with k_col4:
                                 st.markdown(f"""
-                                <div class="kpi-hud-card">
-                                    <div class="kpi-hud-label">🚦 Defense Status</div>
+                                <div class="kpi-tile-light">
+                                    <div class="kpi-label-light">🚦 Defense Status</div>
                                     <div style="margin-top: 5px;">{badge_html}</div>
-                                    <div class="kpi-hud-meta">Throughput: 30 FPS Native</div>
+                                    <div class="kpi-meta-light">Stream: 30 FPS Native</div>
                                 </div>
                                 """, unsafe_allow_html=True)
 
@@ -823,10 +798,10 @@ if menu_option == "📹 Live Proctoring":
         # Standby UI when stream is toggled off
         with video_placeholder:
             st.markdown("""
-            <div style="background: rgba(15, 23, 42, 0.6); border: 2px dashed rgba(255, 255, 255, 0.12); border-radius: 14px; height: 380px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #64748B;">
-                <span style="font-size: 2.8rem; margin-bottom: 8px;">📷</span>
-                <div style="font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; font-weight: 700; color: #F8FAFC; margin-bottom: 4px;">Vision Stream on Standby</div>
-                <div style="font-size: 0.84rem; color: #94A3B8;">Switch toggle above to <b>▶ Enable Live Stream</b> to activate neural vision proctoring.</div>
+            <div style="background: #F8FAFC; border: 2px dashed #CBD5E1; border-radius: 14px; height: 380px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #64748B;">
+                <span style="font-size: 3rem; margin-bottom: 8px;">📷</span>
+                <div style="font-size: 1.2rem; font-weight: 800; color: #0F172A; margin-bottom: 4px;">Camera Feed on Standby</div>
+                <div style="font-size: 0.88rem; color: #64748B;">Switch toggle above to <b>▶ Enable Live Stream</b> to activate AI vision proctoring.</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -834,41 +809,41 @@ if menu_option == "📹 Live Proctoring":
             k_col1, k_col2, k_col3, k_col4 = st.columns(4)
             with k_col1:
                 st.markdown(f"""
-                <div class="kpi-hud-card">
-                    <div class="kpi-hud-label">👤 Candidate Profile</div>
-                    <div class="kpi-hud-value">{candidate_name}</div>
-                    <div class="kpi-hud-meta">UID: <code>{candidate_id}</code></div>
+                <div class="kpi-tile-light">
+                    <div class="kpi-label-light">👤 Candidate Profile</div>
+                    <div class="kpi-value-light">{candidate_name}</div>
+                    <div class="kpi-meta-light">ID: <b>{candidate_id}</b></div>
                 </div>
                 """, unsafe_allow_html=True)
             with k_col2:
                 st.markdown(f"""
-                <div class="kpi-hud-card">
-                    <div class="kpi-hud-label">📚 Active Assessment</div>
-                    <div class="kpi-hud-value" style="font-size: 1.18rem;">{exam_title}</div>
-                    <div class="kpi-hud-meta">Ref: <code>{session_id}</code></div>
+                <div class="kpi-tile-light">
+                    <div class="kpi-label-light">📚 Assessment Module</div>
+                    <div class="kpi-value-light" style="font-size: 1.25rem;">{exam_title}</div>
+                    <div class="kpi-meta-light">Ref: <code>{session_id}</code></div>
                 </div>
                 """, unsafe_allow_html=True)
             with k_col3:
                 st.markdown("""
-                <div class="kpi-hud-card">
-                    <div class="kpi-hud-label">🛡️ Integrity Quotient</div>
-                    <div class="kpi-hud-value" style="color: #34D399;">100.0%</div>
-                    <div class="kpi-hud-meta">Flags: 0 (0 Confirmed)</div>
+                <div class="kpi-tile-light">
+                    <div class="kpi-label-light">🛡️ Integrity Score</div>
+                    <div class="kpi-value-light text-emerald">100.0%</div>
+                    <div class="kpi-meta-light">Flags: 0 (0 Confirmed)</div>
                 </div>
                 """, unsafe_allow_html=True)
             with k_col4:
                 st.markdown("""
-                <div class="kpi-hud-card">
-                    <div class="kpi-hud-label">🚦 Defense Status</div>
-                    <div style="margin-top: 5px;"><span class="badge-live-pulse">● SECURE</span></div>
-                    <div class="kpi-hud-meta">Stream: Standby</div>
+                <div class="kpi-tile-light">
+                    <div class="kpi-label-light">🚦 Defense Status</div>
+                    <div style="margin-top: 5px;"><span class="badge-clean-safe">● ALL CLEAR</span></div>
+                    <div class="kpi-meta-light">Stream: Standby</div>
                 </div>
                 """, unsafe_allow_html=True)
 
         threat_banner_placeholder.markdown("""
-        <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 1.1rem;">✅</span>
-            <span style="color: #34D399; font-weight: 700; font-size: 0.82rem; font-family: 'JetBrains Mono';">COMPLIANCE VERIFIED: Candidate in standard baseline</span>
+        <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.2rem;">✅</span>
+            <span style="color: #059669; font-weight: 800; font-size: 0.88rem;">COMPLIANCE VERIFIED: Candidate within normal limits</span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -876,21 +851,21 @@ if menu_option == "📹 Live Proctoring":
 
         telemetry_rows_placeholder.markdown("""
         <div style="margin-top: 4px; margin-bottom: 10px;">
-            <div class="sensor-item">
-                <span class="sensor-name">👥 Entity Tracking</span>
-                <span class="sensor-val" style="color: #34D399;">1 Candidate Tracked</span>
+            <div class="sensor-row-light">
+                <span class="sensor-name-light">👥 Candidate Tracking</span>
+                <span class="sensor-val-light text-emerald">1 Detected</span>
             </div>
-            <div class="sensor-item">
-                <span class="sensor-name">🔄 Head Pose Yaw (L/R)</span>
-                <span class="sensor-val">+0.0°</span>
+            <div class="sensor-row-light">
+                <span class="sensor-name-light">🔄 Head Pose Yaw (L/R)</span>
+                <span class="sensor-val-light">+0.0°</span>
             </div>
-            <div class="sensor-item">
-                <span class="sensor-name">📐 Head Pose Pitch (U/D)</span>
-                <span class="sensor-val">+0.0°</span>
+            <div class="sensor-row-light">
+                <span class="sensor-name-light">📐 Head Pose Pitch (U/D)</span>
+                <span class="sensor-val-light">+0.0°</span>
             </div>
-            <div class="sensor-item">
-                <span class="sensor-name">👀 Gaze Orientation</span>
-                <span class="sensor-val" style="color: #34D399;">Direct (Screen)</span>
+            <div class="sensor-row-light">
+                <span class="sensor-name-light">👀 Gaze Orientation</span>
+                <span class="sensor-val-light text-emerald">Direct (Screen)</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -899,9 +874,9 @@ if menu_option == "📹 Live Proctoring":
 # ---------------- TAB 2: INCIDENT VAULT & EVIDENCE REVIEW ----------------
 elif menu_option == "🔍 Incident Vault":
     st.markdown("""
-    <div style="margin-bottom: 16px;">
-        <h2 style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: #FFFFFF; letter-spacing: -0.02em; margin-bottom: 4px;">🔍 Incident Vault & Forensic Evidence Review</h2>
-        <p style="color: #94A3B8; font-size: 0.84rem; margin: 0;">Comprehensive audit archive with automated video clips, snapshots, and Explainable AI (XAI) justifications.</p>
+    <div style="margin-bottom: 20px;">
+        <h2 style="font-weight: 800; color: #0F172A; letter-spacing: -0.03em; margin-bottom: 4px;">🔍 Incident Vault & Forensic Evidence Review</h2>
+        <p style="color: #64748B; font-size: 0.92rem; margin: 0;">Review flagged security violations with automated video clips, snapshots, and Explainable AI (XAI) factor attributions.</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -909,21 +884,21 @@ elif menu_option == "🔍 Incident Vault":
 
     if not incidents:
         st.markdown("""
-        <div class="glass-card" style="text-align: center; padding: 40px 20px;">
-            <span style="font-size: 3rem;">🛡️</span>
-            <h3 style="color: #FFFFFF; font-family: 'Space Grotesk'; font-size: 1.2rem; margin-top: 10px;">No Violations Recorded</h3>
-            <p style="color: #94A3B8; font-size: 0.84rem;">The candidate maintained full compliance throughout the proctored assessment session.</p>
+        <div class="white-card" style="text-align: center; padding: 50px 20px;">
+            <span style="font-size: 3.5rem;">🛡️</span>
+            <h3 style="color: #0F172A; font-weight: 800; font-size: 1.35rem; margin-top: 12px;">No Suspicious Incidents Recorded</h3>
+            <p style="color: #64748B; font-size: 0.90rem;">The candidate maintained full compliance throughout this assessment session.</p>
         </div>
         """, unsafe_allow_html=True)
     else:
         f_col1, f_col2 = st.columns([2, 2])
         severity_filter = f_col1.multiselect(
-            "Filter Severity",
+            "Filter by Severity",
             ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
             default=["CRITICAL", "HIGH", "MEDIUM"]
         )
         verdict_filter = f_col2.multiselect(
-            "Filter Verdict",
+            "Filter by Verdict",
             ["PENDING", "CONFIRMED", "FALSE_POSITIVE", "DISMISSED"],
             default=["PENDING", "CONFIRMED", "FALSE_POSITIVE"]
         )
@@ -934,7 +909,7 @@ elif menu_option == "🔍 Incident Vault":
             and (not verdict_filter or inc["proctor_verdict"] in verdict_filter)
         ]
 
-        st.markdown(f"<div style='font-size: 0.82rem; color: #94A3B8; margin-bottom: 12px;'>Displaying <b>{len(filtered_incidents)}</b> flagged incident(s)</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size: 0.88rem; color: #64748B; margin-bottom: 14px;'>Displaying <b>{len(filtered_incidents)}</b> flagged incident(s)</div>", unsafe_allow_html=True)
 
         for inc in filtered_incidents:
             with st.expander(
@@ -978,7 +953,7 @@ elif menu_option == "🔍 Incident Vault":
                             margin=dict(l=10, r=10, t=30, b=10),
                             paper_bgcolor="rgba(0,0,0,0)",
                             plot_bgcolor="rgba(0,0,0,0)",
-                            font=dict(color="#E2E8F0", family="Plus Jakarta Sans")
+                            font=dict(color="#334155", family="Plus Jakarta Sans")
                         )
                         st.plotly_chart(fig_bar, use_container_width=True, key=f"xai_chart_{inc['id']}")
 
@@ -1010,12 +985,12 @@ elif menu_option == "🔍 Incident Vault":
                         st.success("Notes saved.")
 
 
-# ---------------- TAB 3: SESSION ANALYTICS & AUDIT ----------------
-elif menu_option == "📊 Analytics & Audit":
+# ---------------- TAB 3: SESSION ANALYTICS & REPORTS ----------------
+elif menu_option == "📊 Analytics & Reports":
     st.markdown("""
-    <div style="margin-bottom: 16px;">
-        <h2 style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: #FFFFFF; letter-spacing: -0.02em; margin-bottom: 4px;">📊 Telemetry Analytics & Audit Reports</h2>
-        <p style="color: #94A3B8; font-size: 0.84rem; margin: 0;">Institutional candidate malpractice metrics, integrity timeline, and formal report export.</p>
+    <div style="margin-bottom: 20px;">
+        <h2 style="font-weight: 800; color: #0F172A; letter-spacing: -0.03em; margin-bottom: 4px;">📊 Proctoring Analytics & Session Audit</h2>
+        <p style="color: #64748B; font-size: 0.92rem; margin: 0;">Institutional candidate malpractice breakdown, continuous timeline, and official report exports.</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -1044,8 +1019,8 @@ elif menu_option == "📊 Analytics & Audit":
             v_types = [i["violation_type"] for i in incidents]
             v_df = pd.Series(v_types).value_counts().reset_index()
             v_df.columns = ["Violation Type", "Count"]
-            fig_pie = px.pie(v_df, values="Count", names="Violation Type", hole=0.45, color_discrete_sequence=px.colors.sequential.RdBu)
-            fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#E2E8F0", family="Plus Jakarta Sans"))
+            fig_pie = px.pie(v_df, values="Count", names="Violation Type", hole=0.45, color_discrete_sequence=px.colors.sequential.Teal)
+            fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#334155", family="Plus Jakarta Sans"))
             st.plotly_chart(fig_pie, use_container_width=True, key="analytics_pie")
         else:
             st.info("No violations recorded for this candidate.")
@@ -1063,13 +1038,13 @@ elif menu_option == "📊 Analytics & Audit":
             )
             fig_line.add_hline(y=70, line_dash="dash", line_color="#EF4444")
             fig_line.add_hline(y=30, line_dash="dot", line_color="#F59E0B")
-            fig_line.update_traces(line_color="#6366F1", line_width=2.5)
+            fig_line.update_traces(line_color="#4F46E5", line_width=2.5)
             fig_line.update_layout(
                 height=185,
                 margin=dict(l=10, r=10, t=25, b=10),
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#94A3B8", family="Plus Jakarta Sans")
+                font=dict(color="#64748B", family="Plus Jakarta Sans")
             )
             st.plotly_chart(fig_line, use_container_width=True, key="analytics_timeline")
         else:
@@ -1109,12 +1084,12 @@ elif menu_option == "📊 Analytics & Audit":
             st.error(f"Error compiling CSV export: {e}")
 
 
-# ---------------- TAB 4: SYSTEM CONFIGURATION ----------------
-elif menu_option == "⚙️ System Configuration":
+# ---------------- TAB 4: SETTINGS & SENSITIVITY ----------------
+elif menu_option == "⚙️ Settings & Sensitivity":
     st.markdown("""
-    <div style="margin-bottom: 16px;">
-        <h2 style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: #FFFFFF; letter-spacing: -0.02em; margin-bottom: 4px;">⚙️ Proctoring Sensitivity & Threshold Configuration</h2>
-        <p style="color: #94A3B8; font-size: 0.84rem; margin: 0;">Customize neural model thresholds, head pose tolerances, and risk penalty weights.</p>
+    <div style="margin-bottom: 20px;">
+        <h2 style="font-weight: 800; color: #0F172A; letter-spacing: -0.03em; margin-bottom: 4px;">⚙️ Proctoring Sensitivity & Threshold Configuration</h2>
+        <p style="color: #64748B; font-size: 0.92rem; margin: 0;">Customize neural model thresholds, head pose tolerances, and risk penalty weights.</p>
     </div>
     """, unsafe_allow_html=True)
 
