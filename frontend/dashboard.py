@@ -41,21 +41,26 @@ st.set_page_config(
 # Custom High-End Apple / Stripe Clean Light Stylesheet
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-    /* Global Crisp Clean Light Canvas */
+    /* 1. Global Reset & Universal Typography */
+    html, body, [class*="css"], .stApp, 
+    h1, h2, h3, h4, h5, h6, p, span, div, label, input, button, select, textarea {
+        font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    }
+
+    /* Global Canvas Background */
     html, body, [class*="css"], .stApp {
         background-color: #F8FAFC !important;
         background-image: 
-            radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
-            radial-gradient(at 100% 0%, rgba(59, 130, 246, 0.05) 0px, transparent 50%),
+            radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.04) 0px, transparent 50%),
+            radial-gradient(at 100% 0%, rgba(59, 130, 246, 0.04) 0px, transparent 50%),
             radial-gradient(at 50% 100%, rgba(241, 245, 249, 1) 0px, transparent 100%) !important;
         background-attachment: fixed !important;
         color: #0F172A !important;
-        font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
     }
 
-    /* Streamlit Container Sizing & Spacing */
+    /* Container Sizing & Spacing */
     .block-container {
         padding-top: 1.5rem !important;
         padding-bottom: 2.5rem !important;
@@ -82,15 +87,29 @@ st.markdown("""
         border-color: #CBD5E1;
     }
 
-    /* Clean Card Titles */
+    /* Clean Card Headings & Typography Hierarchy */
     .card-heading {
-        font-size: 1.15rem;
-        font-weight: 800;
-        color: #0F172A;
-        letter-spacing: -0.02em;
+        font-size: 1.15rem !important;
+        font-weight: 800 !important;
+        color: #0F172A !important;
+        letter-spacing: -0.02em !important;
         display: flex;
         align-items: center;
         gap: 8px;
+    }
+    h1, h2 {
+        font-weight: 800 !important;
+        color: #0F172A !important;
+        letter-spacing: -0.03em !important;
+    }
+    h3, h4 {
+        font-weight: 700 !important;
+        color: #1E293B !important;
+        letter-spacing: -0.02em !important;
+    }
+    p, span, li, label {
+        color: #334155 !important;
+        font-size: 0.90rem !important;
     }
 
     /* Top KPI Metric Cards (Clean Light Tiles) */
@@ -112,45 +131,31 @@ st.markdown("""
         border-color: #818CF8;
     }
     .kpi-label-light {
-        font-size: 0.76rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: #64748B;
+        font-size: 0.76rem !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.06em !important;
+        color: #64748B !important;
         display: flex;
         align-items: center;
         gap: 8px;
     }
     .kpi-value-light {
-        font-size: 1.65rem;
-        font-weight: 800;
-        color: #0F172A;
-        letter-spacing: -0.03em;
-        line-height: 1.2;
+        font-size: 1.65rem !important;
+        font-weight: 800 !important;
+        color: #0F172A !important;
+        letter-spacing: -0.03em !important;
+        line-height: 1.2 !important;
         margin-top: 6px;
     }
     .kpi-meta-light {
-        font-size: 0.78rem;
-        color: #64748B;
-        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.78rem !important;
+        color: #64748B !important;
+        font-family: 'JetBrains Mono', monospace !important;
         margin-top: 6px;
     }
 
-    /* Status Text Colors */
-    .text-emerald {
-        color: #059669 !important;
-    }
-    .text-amber {
-        color: #D97706 !important;
-    }
-    .text-rose {
-        color: #E11D48 !important;
-    }
-    .text-indigo {
-        color: #4F46E5 !important;
-    }
-
-    /* Modern Rounded Status Badges */
+    /* Status Badges */
     .badge-clean-safe {
         display: inline-flex;
         align-items: center;
@@ -209,18 +214,18 @@ st.markdown("""
         transform: translateX(2px);
     }
     .sensor-name-light {
-        font-size: 0.86rem;
-        font-weight: 600;
-        color: #475569;
+        font-size: 0.86rem !important;
+        font-weight: 600 !important;
+        color: #475569 !important;
         display: flex;
         align-items: center;
         gap: 8px;
     }
     .sensor-val-light {
-        font-size: 0.92rem;
-        font-weight: 700;
-        font-family: 'JetBrains Mono', monospace;
-        color: #0F172A;
+        font-size: 0.92rem !important;
+        font-weight: 700 !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        color: #0F172A !important;
     }
 
     /* Native Video Frame Display Container */
@@ -230,43 +235,129 @@ st.markdown("""
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
     }
 
-    /* Modern Light Buttons */
-    div.stButton > button {
+    /* ---------------- BUTTON DESIGN SYSTEM ---------------- */
+
+    /* Universal Button Reset */
+    div.stButton > button, 
+    div.stDownloadButton > button,
+    div[data-testid="stFormSubmitButton"] > button {
         border-radius: 10px !important;
-        font-weight: 700 !important;
         font-family: 'Plus Jakarta Sans', sans-serif !important;
-        border: 1px solid #CBD5E1 !important;
-        background-color: #FFFFFF !important;
-        color: #0F172A !important;
-        padding: 10px 20px !important;
         font-size: 0.88rem !important;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
-        transition: all 0.2s ease !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.01em !important;
+        padding: 10px 20px !important;
+        line-height: 1.4 !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        cursor: pointer !important;
+    }
+
+    /* 1. Primary Action Buttons (Download, Submit, Primary) */
+    div.stDownloadButton > button,
+    div[data-testid="stFormSubmitButton"] > button,
+    button[kind="primary"],
+    div[data-testid="baseButton-primary"] {
+        background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%) !important;
+        border: 1px solid #4338CA !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.28) !important;
+    }
+    div.stDownloadButton > button:hover,
+    div[data-testid="stFormSubmitButton"] > button:hover,
+    button[kind="primary"]:hover,
+    div[data-testid="baseButton-primary"]:hover {
+        background: linear-gradient(135deg, #4338CA 0%, #2563EB 100%) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 20px rgba(79, 70, 229, 0.38) !important;
+        color: #FFFFFF !important;
+    }
+    div.stDownloadButton > button:active,
+    div[data-testid="stFormSubmitButton"] > button:active,
+    button[kind="primary"]:active {
+        transform: translateY(0px) !important;
+        box-shadow: 0 2px 6px rgba(79, 70, 229, 0.20) !important;
+    }
+
+    /* 2. Secondary / Standard Light Buttons */
+    div.stButton > button {
+        background-color: #FFFFFF !important;
+        border: 1.5px solid #CBD5E1 !important;
+        color: #0F172A !important;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04) !important;
     }
     div.stButton > button:hover {
         background-color: #F8FAFC !important;
-        border-color: #4F46E5 !important;
+        border-color: #6366F1 !important;
         color: #4F46E5 !important;
         transform: translateY(-1px) !important;
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15) !important;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.12) !important;
+    }
+    div.stButton > button:active {
+        transform: translateY(0px) !important;
     }
 
-    /* Primary Gradient Buttons */
-    div.stDownloadButton > button {
-        border-radius: 10px !important;
-        background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%) !important;
-        border: 1px solid #4F46E5 !important;
+    /* 3. Decision Buttons in Incident Vault */
+    /* Confirm Button (Emerald Green Gradient) */
+    button:has(p:contains("Confirm")), 
+    button:has(span:contains("Confirm")) {
+        background: linear-gradient(135deg, #059669 0%, #10B981 100%) !important;
+        color: #FFFFFF !important;
+        border: 1px solid #059669 !important;
+        box-shadow: 0 3px 10px rgba(16, 185, 129, 0.25) !important;
+    }
+    button:has(p:contains("Confirm")) p,
+    button:has(span:contains("Confirm")) span {
         color: #FFFFFF !important;
         font-weight: 700 !important;
-        padding: 12px 24px !important;
-        font-size: 0.92rem !important;
-        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.30) !important;
-        transition: all 0.2s ease !important;
     }
-    div.stDownloadButton > button:hover {
-        background: linear-gradient(135deg, #4338CA 0%, #2563EB 100%) !important;
+    button:has(p:contains("Confirm")):hover, 
+    button:has(span:contains("Confirm")):hover {
+        background: linear-gradient(135deg, #047857 0%, #059669 100%) !important;
         transform: translateY(-2px) !important;
-        box-shadow: 0 6px 20px rgba(79, 70, 229, 0.40) !important;
+        box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35) !important;
+        color: #FFFFFF !important;
+    }
+
+    /* False Positive Button (Amber Soft Tint) */
+    button:has(p:contains("False Positive")), 
+    button:has(span:contains("False Positive")) {
+        background: #FFFBEB !important;
+        color: #B45309 !important;
+        border: 1.5px solid #FCD34D !important;
+        box-shadow: 0 2px 6px rgba(245, 158, 11, 0.10) !important;
+    }
+    button:has(p:contains("False Positive")) p,
+    button:has(span:contains("False Positive")) span {
+        color: #B45309 !important;
+        font-weight: 700 !important;
+    }
+    button:has(p:contains("False Positive")):hover, 
+    button:has(span:contains("False Positive")):hover {
+        background: #FEF3C7 !important;
+        border-color: #F59E0B !important;
+        color: #92400E !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 10px rgba(245, 158, 11, 0.18) !important;
+    }
+
+    /* Dismiss Button (Slate Tint) */
+    button:has(p:contains("Dismiss")), 
+    button:has(span:contains("Dismiss")) {
+        background: #F8FAFC !important;
+        color: #475569 !important;
+        border: 1.5px solid #CBD5E1 !important;
+    }
+    button:has(p:contains("Dismiss")) p,
+    button:has(span:contains("Dismiss")) span {
+        color: #475569 !important;
+        font-weight: 700 !important;
+    }
+    button:has(p:contains("Dismiss")):hover, 
+    button:has(span:contains("Dismiss")):hover {
+        background: #F1F5F9 !important;
+        border-color: #94A3B8 !important;
+        color: #1E293B !important;
+        transform: translateY(-1px) !important;
     }
 
     /* Left Sidebar Styling */
@@ -313,25 +404,65 @@ st.markdown("""
         font-size: 0.90rem !important;
     }
 
-    /* Inputs, Selectboxes */
-    .stSelectbox div[data-baseweb="select"], .stTextInput input {
+    /* Form Inputs, Selectboxes, Multiselects */
+    .stSelectbox div[data-baseweb="select"], .stTextInput input, div[data-baseweb="input"] {
         background-color: #FFFFFF !important;
         border: 1px solid #CBD5E1 !important;
         border-radius: 10px !important;
         color: #0F172A !important;
         font-size: 0.90rem !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
-    .stSelectbox div[data-baseweb="select"]:hover, .stTextInput input:focus {
+    .stSelectbox div[data-baseweb="select"]:hover, .stTextInput input:focus, div[data-baseweb="input"]:focus-within {
         border-color: #4F46E5 !important;
         box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15) !important;
     }
-
-    .streamlit-expanderHeader {
-        background-color: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 12px !important;
+    div[data-baseweb="tag"] {
+        background-color: #EEF2FF !important;
+        color: #4F46E5 !important;
+        border: 1px solid #C7D2FE !important;
+        border-radius: 6px !important;
         font-weight: 700 !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+    }
+
+    /* Native Metric Cards */
+    div[data-testid="stMetric"] {
+        background: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 14px !important;
+        padding: 16px 20px !important;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03) !important;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 1.65rem !important;
+        font-weight: 800 !important;
         color: #0F172A !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        letter-spacing: -0.03em !important;
+    }
+    div[data-testid="stMetricLabel"] {
+        font-size: 0.78rem !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.06em !important;
+        color: #64748B !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+    }
+
+    /* Expanders */
+    div[data-testid="stExpander"] {
+        background: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 14px !important;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03) !important;
+        margin-bottom: 12px !important;
+    }
+    div[data-testid="stExpander"] summary {
+        font-weight: 700 !important;
+        font-size: 0.94rem !important;
+        color: #0F172A !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -561,7 +692,7 @@ with st.sidebar:
         new_c_id = st.text_input("Candidate ID", "STD-102")
         new_c_name = st.text_input("Candidate Name", "Jane Doe")
         new_exam = st.text_input("Exam Name", "Final Engineering Assessment")
-        if st.button("Start Assessment", use_container_width=True):
+        if st.button("🚀 Start Assessment", key="btn_init_exam", type="primary", use_container_width=True):
             db_manager.create_session(new_s_id, new_c_id, new_c_name, new_exam)
             st.session_state.active_session_id = new_s_id
             st.success(f"Session {new_s_id} active!")
@@ -980,7 +1111,7 @@ elif menu_option == "🔍 Incident Vault":
                         st.rerun()
 
                     notes = st.text_input("Proctor Notes", value=inc.get("proctor_notes") or "", key=f"notes_{inc['id']}")
-                    if st.button("Save Notes", key=f"save_notes_{inc['id']}", use_container_width=True):
+                    if st.button("💾 Save Notes", key=f"save_notes_{inc['id']}", use_container_width=True):
                         db_manager.update_incident_verdict(inc['id'], inc['proctor_verdict'], notes)
                         st.success("Notes saved.")
 
@@ -1063,6 +1194,7 @@ elif menu_option == "📊 Analytics & Reports":
                 data=cand_pdf_data,
                 file_name=f"EviGuard_Integrity_Report_{current_session.get('session_id')}.pdf",
                 mime="application/pdf",
+                type="primary",
                 help="Download formal academic integrity report with candidate identity, incident breakdown, and proctor sign-off.",
                 use_container_width=True
             )
@@ -1077,6 +1209,7 @@ elif menu_option == "📊 Analytics & Reports":
                 data=cand_csv_data,
                 file_name=f"EviGuard_Audit_Trail_{current_session.get('session_id')}.csv",
                 mime="text/csv",
+                type="primary",
                 help="Export complete tabular incident logs and AI confidence metrics for university archives.",
                 use_container_width=True
             )
@@ -1112,7 +1245,7 @@ elif menu_option == "⚙️ Settings & Sensitivity":
         w_absent = r3.slider("Face Absent Weight", 10.0, 100.0, 85.0, 5.0)
         w_gaze = r4.slider("Gaze Deviation Weight", 5.0, 100.0, 35.0, 5.0)
 
-        submitted = st.form_submit_button("💾 Save & Apply Configuration", use_container_width=True)
+        submitted = st.form_submit_button("💾 Save & Apply Configuration", type="primary", use_container_width=True)
         if submitted:
             updated_cfg = {
                 "system": {"app_name": "EviGuard AI", "version": "2.0.0", "inference_stride": 3},
