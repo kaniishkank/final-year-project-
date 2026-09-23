@@ -1,27 +1,27 @@
 """
 EviGuard AI — Enterprise SaaS AI Proctoring & Cyber-Command Platform
-Rich Midnight Indigo Theme with High-Contrast Typography & Visual Hierarchy.
+Pristine Live-Testing Production Architecture (Zero Mock Data / Fresh Initialization).
 
-Design Specifications:
-1. Palette: Deep Midnight Indigo Canvas:
-   radial-gradient(circle at 50% -20%, #1E1B4B 0%, #0F172A 60%, #020617 100%) fixed.
-2. Elevated Cards:
-   rgba(15, 23, 42, 0.75) with backdrop-filter: blur(12px) and 1px solid rgba(255, 255, 255, 0.1).
-3. High-Contrast Typography:
-   - Headers: #FFFFFF, Font Weight 700/800 with text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6).
-   - Eyebrows & Field Names: #CBD5E1, Font Weight 700, Uppercase, letter-spacing: 0.06em.
-   - Values & Metrics: #FFFFFF, Font Weight 700.
-   - Secondary Text: #94A3B8, Font Weight 500.
-4. Overhauled Evidence & Incident Dossier:
-   - Summary Audit Log Table with alternating row shading and pill status tags.
-   - Detailed Timeline Evidence Cards with 2-column key-value metadata grids.
-   - 1-Click Institutional Certified Export (PDF/CSV) and Neural Model Calibration.
+Features:
+1. Dynamic State & Cache Reset:
+   - Programmatic cache purging (`@st.cache_data.clear()` / `@st.cache_resource.clear()`).
+   - Clean session state initialization with empty data structures.
+   - 1-Click System Data Reset & Storage Purge button.
+2. Zero Mock/Hardcoded Placeholders:
+   - Dynamically generated session timestamps.
+   - Onboarding candidate registration flow for real-world testing.
+3. High-Contrast Midnight Indigo Aesthetic & Modular 4-View Architecture:
+   - Executive Overview & Metrics (Clean zero counters on fresh session).
+   - Real-Time Vision & AI Proctoring (Zero-latency live OpenCV stream).
+   - Threat Telemetry & Behavioral Analytics (Dynamic timeline & anomaly breakdown).
+   - Audit Dossier & Neural Settings (Evidence review, XAI attributions, PDF/CSV export).
 """
 
 from datetime import datetime
 import json
 import math
 import os
+import shutil
 import threading
 import time
 from typing import Dict, Any, List, Optional
@@ -45,7 +45,21 @@ from backend.reporting.report_generator import generate_candidate_pdf_report, ge
 
 
 # ==============================================================================
-# 1. PAGE SETUP & MIDNIGHT INDIGO HIGH-CONTRAST STYLESHEET
+# 1. STREAMLIT SESSION STATE & SYSTEM INITIALIZATION
+# ==============================================================================
+if "system_initialized" not in st.session_state:
+    st.session_state.system_initialized = True
+    st.session_state.incident_logs = []
+    st.session_state.flagged_events = []
+    st.session_state.evidence_snapshots = []
+    st.session_state.audit_history = []
+    st.session_state.telemetry_data = []
+    st.session_state.active_session_id = None
+    st.session_state.live_stream_active = False
+
+
+# ==============================================================================
+# 2. PAGE SETUP & MIDNIGHT INDIGO HIGH-CONTRAST STYLESHEET
 # ==============================================================================
 st.set_page_config(
     page_title="EviGuard AI — Enterprise Proctoring Suite",
@@ -493,7 +507,7 @@ st.markdown("""
 
 
 # ==============================================================================
-# 2. BACKEND CONNECTIONS & PIPELINE INITIALIZATION
+# 3. BACKEND CONNECTIONS & PIPELINE INITIALIZATION
 # ==============================================================================
 @st.cache_resource
 def get_db_manager():
@@ -508,7 +522,7 @@ pipeline = get_pipeline()
 
 
 # ==============================================================================
-# 3. HIGH-SPEED THREADED OPENCV CAMERA WORKER
+# 4. HIGH-SPEED THREADED OPENCV CAMERA WORKER
 # ==============================================================================
 class ThreadedCamera:
     """Zero-latency threaded hardware camera capture worker with graceful fallback."""
@@ -591,7 +605,7 @@ class ThreadedCamera:
                 
                 cv2.circle(sim_frame, (center_x, center_y - 20), 45, (30, 41, 59), -1)
                 cv2.circle(sim_frame, (center_x, center_y - 20), 45, (59, 130, 246), 2)
-                cv2.ellipse(sim_frame, (center_x, center_y + 110), (90, 70), 0, 0, 360, (22, 30, 46), -1)
+                cv2.ellipse(sim_frame, (center_y + 110, center_y + 110), (90, 70), 0, 0, 360, (22, 30, 46), -1)
                 
                 cv2.putText(sim_frame, "EVIGUARD AI VISION ENGINE", (25, 38),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.55, (59, 130, 246), 2, cv2.LINE_AA)
@@ -623,7 +637,7 @@ class ThreadedCamera:
 
 
 # ==============================================================================
-# 4. GLOWING CIRCULAR THREAT ARC DIAL
+# 5. GLOWING CIRCULAR THREAT ARC DIAL
 # ==============================================================================
 def get_threat_meter_html(risk_score: float, risk_level: str) -> str:
     """Renders a clean SVG circular threat dial with dynamic progress arcs."""
@@ -668,51 +682,39 @@ def get_threat_meter_html(risk_score: float, risk_level: str) -> str:
 
 
 # ==============================================================================
-# 5. SAAS TOP APPLICATION HEADER & SESSION MANAGEMENT
+# 6. SAAS TOP APPLICATION HEADER & SESSION MANAGEMENT
 # ==============================================================================
 all_sessions = db_manager.get_all_sessions()
 session_ids = [s["session_id"] for s in all_sessions]
 
-if "active_session_id" not in st.session_state:
-    if session_ids:
-        st.session_state.active_session_id = session_ids[0]
-    else:
-        default_id = f"EXAM_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        db_manager.create_session(default_id, "STD-101", "Alex Johnson", "CS401: Advanced AI Exam")
-        st.session_state.active_session_id = default_id
+if st.session_state.active_session_id not in session_ids:
+    st.session_state.active_session_id = session_ids[0] if session_ids else None
 
-current_session = db_manager.get_session_by_id(st.session_state.active_session_id) or {
-    "session_id": st.session_state.active_session_id,
-    "candidate_id": "STD-101",
-    "candidate_name": "Alex Johnson",
-    "exam_title": "CS401: Advanced AI Exam",
-    "integrity_index": 100.0,
-    "status": "ACTIVE"
-}
+current_session = db_manager.get_session_by_id(st.session_state.active_session_id) if st.session_state.active_session_id else None
 
-session_id = current_session.get("session_id", "default_session")
-candidate_name = current_session.get("candidate_name", "Alex Johnson")
-candidate_id = current_session.get("candidate_id", "STD-101")
-exam_title = current_session.get("exam_title", "CS401: Advanced AI Exam")
-incidents = db_manager.get_session_incidents(session_id)
-metrics = db_manager.get_session_metrics(session_id, limit=500)
+session_id = current_session.get("session_id") if current_session else "NO_ACTIVE_SESSION"
+candidate_name = current_session.get("candidate_name") if current_session else "Unregistered Candidate"
+candidate_id = current_session.get("candidate_id") if current_session else "N/A"
+exam_title = current_session.get("exam_title") if current_session else "Live Assessment Session"
+incidents = db_manager.get_session_incidents(session_id) if current_session else []
+metrics = db_manager.get_session_metrics(session_id, limit=500) if current_session else []
 
-# Top SaaS Navigation Bar
+# Top SaaS Navigation Bar with System Reset Action
 st.markdown(f"""
 <div class="saas-top-navbar">
     <div class="saas-brand-title">
         <span style="font-size: 1.35rem;">🛡️</span>
         <span>EviGuard AI</span>
-        <span class="saas-brand-badge">ENTERPRISE SAAS</span>
+        <span class="saas-brand-badge">LIVE TEST PLATFORM</span>
     </div>
     <div style="display: flex; align-items: center; gap: 14px;">
         <div style="display: flex; align-items: center; gap: 8px; background: rgba(10, 15, 30, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 6px 14px; font-size: 13.5px;">
-            <span style="color: #94A3B8; font-weight: 600;">Candidate:</span>
+            <span style="color: #94A3B8; font-weight: 600;">Active:</span>
             <span style="font-weight: 700; color: #FFFFFF;">{candidate_name} ({candidate_id})</span>
         </div>
         <div class="pill-safe">
             <span style="width: 7px; height: 7px; background: #34D399; border-radius: 50%; box-shadow: 0 0 8px #34D399;"></span>
-            SYSTEM ONLINE
+            LIVE READY
         </div>
     </div>
 </div>
@@ -720,24 +722,24 @@ st.markdown(f"""
 
 
 # ==============================================================================
-# 6. FULL-WIDTH MODULAR TABBED SaaS ARCHITECTURE
+# 7. FULL-WIDTH MODULAR TABBED SaaS ARCHITECTURE
 # ==============================================================================
 tab_overview, tab_vision, tab_telemetry, tab_audit = st.tabs([
-    "📊 Executive Overview & Metrics",
+    "📊 Executive Overview & Registration",
     "📹 Real-Time Vision & AI Proctoring",
     "⚡ Threat Telemetry & Behavioral Analytics",
-    "🔍 Audit Dossier & Neural Settings"
+    "🔍 Audit Dossier & System Reset"
 ])
 
 
 # ------------------------------------------------------------------------------
-# MODULE 1: EXECUTIVE OVERVIEW & METRICS
+# MODULE 1: EXECUTIVE OVERVIEW & REGISTRATION
 # ------------------------------------------------------------------------------
 with tab_overview:
     confirmed_count = sum(1 for i in incidents if i["proctor_verdict"] == "CONFIRMED")
     total_flags = len(incidents)
-    integrity_score = float(current_session.get("integrity_index", 100.0))
-    peak_risk = float(current_session.get("peak_risk_score", 0.0))
+    integrity_score = float(current_session.get("integrity_index", 100.0)) if current_session else 100.0
+    peak_risk = float(current_session.get("peak_risk_score", 0.0)) if current_session else 0.0
     score_color = "#34D399" if integrity_score >= 80 else ("#FBBF24" if integrity_score >= 50 else "#FB7185")
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -746,7 +748,7 @@ with tab_overview:
         <div class="enterprise-kpi-card">
             <div class="eyebrow-label">🛡️ Overall Integrity Index</div>
             <div class="kpi-value-text" style="color: {score_color}; text-shadow: 0 0 12px {score_color}60;">{integrity_score:.1f}%</div>
-            <div class="body-text" style="font-size: 12.5px; font-weight: 600;">Status: <b>{'COMPLIANT' if integrity_score >= 80 else 'SUSPICIOUS'}</b></div>
+            <div class="body-text" style="font-size: 12.5px; font-weight: 600;">Status: <b>{'COMPLIANT' if integrity_score >= 80 else 'FLAGGED'}</b></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -764,7 +766,7 @@ with tab_overview:
         <div class="enterprise-kpi-card">
             <div class="eyebrow-label">📈 Peak Threat Score</div>
             <div class="kpi-value-text">{peak_risk:.1f}/100</div>
-            <div class="body-text" style="font-size: 12.5px; font-weight: 600;">Peak Anomaly Value</div>
+            <div class="body-text" style="font-size: 12.5px; font-weight: 600;">Peak Live Anomaly</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -773,7 +775,7 @@ with tab_overview:
         <div class="enterprise-kpi-card">
             <div class="eyebrow-label">⚖️ Verified Malpractice</div>
             <div class="kpi-value-text" style="color: {'#34D399' if confirmed_count == 0 else '#FB7185'};">{confirmed_count}</div>
-            <div class="body-text" style="font-size: 12.5px; font-weight: 600;">Proctor Sign-Off Actions</div>
+            <div class="body-text" style="font-size: 12.5px; font-weight: 600;">Proctor Confirmed Decisions</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -785,54 +787,43 @@ with tab_overview:
         st.markdown("""
         <div class="enterprise-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-                <h3 class="section-header" style="margin: 0;">👤 Candidate Identity & Session Context</h3>
-                <span class="pill-safe">● VERIFIED ID</span>
+                <h3 class="section-header" style="margin: 0;">🚀 Live Candidate Onboarding & Setup</h3>
+                <span class="pill-safe">● ONBOARDING</span>
             </div>
         """, unsafe_allow_html=True)
 
-        st.markdown(f"""
-        <div style="line-height: 2.2; font-size: 13.5px;">
-            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px;">
-                <span style="color: #94A3B8; font-weight: 600;">Candidate Full Name:</span>
-                <span style="font-weight: 700; color: #FFFFFF;">{candidate_name}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
-                <span style="color: #94A3B8; font-weight: 600;">Student / Candidate ID:</span>
-                <span style="font-weight: 700; color: #60A5FA; font-family: 'JetBrains Mono';">{candidate_id}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
-                <span style="color: #94A3B8; font-weight: 600;">Assessment Module:</span>
-                <span style="font-weight: 700; color: #FFFFFF;">{exam_title}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding-top: 6px;">
-                <span style="color: #94A3B8; font-weight: 600;">Session Reference:</span>
-                <span style="font-weight: 700; color: #CBD5E1; font-family: 'JetBrains Mono';">{session_id}</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        if not current_session:
+            st.info("No active session initialized. Fill in the candidate details below to launch a live test session.")
 
-        st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
-        st.markdown("<span class='eyebrow-label'>Switch Active Assessment</span>", unsafe_allow_html=True)
-        selected_session = st.selectbox(
-            "Session Switcher",
-            session_ids if session_ids else [st.session_state.active_session_id],
-            index=0 if not session_ids else (session_ids.index(st.session_state.active_session_id) if st.session_state.active_session_id in session_ids else 0),
-            label_visibility="collapsed",
-            key="overview_session_switch"
-        )
-        if selected_session != st.session_state.active_session_id:
-            st.session_state.active_session_id = selected_session
-            st.rerun()
+        with st.form("onboarding_form"):
+            c_name_in = st.text_input("Candidate Full Name", placeholder="e.g. John Doe")
+            c_id_in = st.text_input("Candidate / Student ID", placeholder="e.g. CAND-2026-001")
+            c_exam_in = st.text_input("Assessment Title", placeholder="e.g. Midterm Machine Learning Exam")
+            c_session_id_in = st.text_input("Session Identifier (Auto-generated)", value=f"SESSION_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
-        with st.expander("➕ Initialize New Assessment"):
-            n_s_id = st.text_input("New Session ID", f"EXAM_{datetime.now().strftime('%H%M%S')}", key="new_s_id_overview")
-            n_c_id = st.text_input("New Candidate ID", "STD-103", key="new_c_id_overview")
-            n_c_name = st.text_input("New Candidate Name", "Emily Clark", key="new_c_name_overview")
-            n_exam = st.text_input("Exam Name", "CS500: Advanced Machine Learning", key="new_exam_overview")
-            if st.button("🚀 Start Assessment Session", key="btn_init_overview", type="primary", use_container_width=True):
-                db_manager.create_session(n_s_id, n_c_id, n_c_name, n_exam)
-                st.session_state.active_session_id = n_s_id
-                st.success(f"Session {n_s_id} initialized!")
+            launch_btn = st.form_submit_button("🚀 Launch Live Assessment Session", type="primary", use_container_width=True)
+            if launch_btn:
+                cand_name = c_name_in.strip() if c_name_in.strip() else "Live Candidate"
+                cand_id = c_id_in.strip() if c_id_in.strip() else f"ID-{datetime.now().strftime('%H%M%S')}"
+                exam_name = c_exam_in.strip() if c_exam_in.strip() else "Real-World AI Proctoring Assessment"
+                
+                db_manager.create_session(c_session_id_in, cand_id, cand_name, exam_name)
+                st.session_state.active_session_id = c_session_id_in
+                st.success(f"Assessment session {c_session_id_in} active!")
+                st.rerun()
+
+        if session_ids:
+            st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
+            st.markdown("<span class='eyebrow-label'>Switch Existing Session</span>", unsafe_allow_html=True)
+            switch_selected = st.selectbox(
+                "Session Select Box",
+                session_ids,
+                index=session_ids.index(st.session_state.active_session_id) if st.session_state.active_session_id in session_ids else 0,
+                label_visibility="collapsed",
+                key="switch_existing_session_select"
+            )
+            if switch_selected != st.session_state.active_session_id:
+                st.session_state.active_session_id = switch_selected
                 st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
@@ -841,29 +832,29 @@ with tab_overview:
         st.markdown("""
         <div class="enterprise-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-                <h3 class="section-header" style="margin: 0;">⚙️ AI Proctoring Engine Diagnostics</h3>
-                <span class="pill-safe">● ALL NODES ACTIVE</span>
+                <h3 class="section-header" style="margin: 0;">⚙️ Real-Time Vision & Engine Status</h3>
+                <span class="pill-safe">● READY FOR TESTING</span>
             </div>
             <div style="line-height: 2.2; font-size: 13.5px;">
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px;">
-                    <span style="color: #94A3B8; font-weight: 600;">Object Detection Model:</span>
-                    <span style="color: #60A5FA; font-family: 'JetBrains Mono'; font-weight: 700;">YOLO26 NMS-Free</span>
+                    <span style="color: #94A3B8; font-weight: 600;">Active Session Ref:</span>
+                    <span style="color: #60A5FA; font-family: 'JetBrains Mono'; font-weight: 700;">{session_id}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
-                    <span style="color: #94A3B8; font-weight: 600;">3D Head Pose & Gaze Engine:</span>
+                    <span style="color: #94A3B8; font-weight: 600;">Object Detector Engine:</span>
+                    <span style="color: #60A5FA; font-family: 'JetBrains Mono'; font-weight: 700;">YOLO26 NMS-Free (Calibrated)</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
+                    <span style="color: #94A3B8; font-weight: 600;">3D Head Pose & Gaze:</span>
                     <span style="color: #60A5FA; font-family: 'JetBrains Mono'; font-weight: 700;">MediaPipe 468 Face Mesh</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
-                    <span style="color: #94A3B8; font-weight: 600;">Stream Video Pipeline:</span>
-                    <span style="color: #34D399; font-family: 'JetBrains Mono'; font-weight: 700;">Threaded OpenCV Capture</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
-                    <span style="color: #94A3B8; font-weight: 600;">Incident Evidence Storage:</span>
-                    <span style="color: #34D399; font-weight: 700;">SQLite Vault & Snapshot Archive</span>
+                    <span style="color: #94A3B8; font-weight: 600;">Vision Stream Pipeline:</span>
+                    <span style="color: #34D399; font-family: 'JetBrains Mono'; font-weight: 700;">Zero-Latency Multi-Threaded OpenCV</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; padding-top: 6px;">
-                    <span style="color: #94A3B8; font-weight: 600;">Inference Pipeline Stride:</span>
-                    <span style="color: #FFFFFF; font-family: 'JetBrains Mono'; font-weight: 700;">Stride 3 (Smooth 30 FPS Native)</span>
+                    <span style="color: #94A3B8; font-weight: 600;">Incident Storage Vault:</span>
+                    <span style="color: #34D399; font-weight: 700;">SQLite Clean Storage</span>
                 </div>
             </div>
         </div>
@@ -878,11 +869,14 @@ with tab_vision:
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
         <div>
             <h3 class="page-title" style="margin: 0;">📹 High-Definition Real-Time Vision Feed</h3>
-            <p class="body-text" style="margin-top: 4px; margin-bottom: 0;">Hardware vision stream with real-time neural HUD overlays, 3D head pose vectors, and violation alerts.</p>
+            <p class="body-text" style="margin-top: 4px; margin-bottom: 0;">Zero-latency hardware vision stream with neural HUD overlays, 3D head pose vectors, and violation alerts.</p>
         </div>
         <span class="pill-safe">● ZERO-LATENCY • 60 FPS • NATIVE</span>
     </div>
     """, unsafe_allow_html=True)
+
+    if not current_session:
+        st.warning("⚠️ No candidate registered for proctoring. Please register a candidate in the **Executive Overview & Registration** tab before starting.")
 
     vision_banner_holder = st.empty()
 
@@ -890,7 +884,7 @@ with tab_vision:
 
     with col_v_left:
         st.markdown('<div class="enterprise-card" style="padding: 18px 20px;">', unsafe_allow_html=True)
-        start_stream = st.toggle("▶ Enable Live AI Vision Stream", value=True, key="vision_tab_stream_toggle")
+        start_stream = st.toggle("▶ Enable Live AI Vision Stream", value=True if current_session else False, key="vision_tab_stream_toggle")
         video_placeholder = st.empty()
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -906,7 +900,7 @@ with tab_vision:
         telemetry_rows_v_holder = st.empty()
         st.markdown('</div>', unsafe_allow_html=True)
 
-    if start_stream:
+    if start_stream and current_session:
         camera = ThreadedCamera(src=0, width=640, height=480).start()
         time.sleep(0.15)
 
@@ -1001,7 +995,7 @@ with tab_vision:
         vision_banner_holder.markdown("""
         <div style="background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 1.25rem;">✅</span>
-            <span style="color: #34D399; font-weight: 800; font-size: 13.5px; text-shadow: 0 0 8px rgba(16, 185, 129, 0.3);">COMPLIANCE VERIFIED: Candidate within normal proctoring tolerances</span>
+            <span style="color: #34D399; font-weight: 800; font-size: 13.5px; text-shadow: 0 0 8px rgba(16, 185, 129, 0.3);">VISION SENSOR ON STANDBY: Ready for live stream</span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1082,7 +1076,7 @@ with tab_telemetry:
             )
             st.plotly_chart(fig_line, use_container_width=True, key="telemetry_timeline_chart")
         else:
-            st.info("No continuous frame telemetry recorded yet.")
+            st.info("No continuous frame telemetry recorded yet for this session.")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_t_right:
@@ -1112,13 +1106,13 @@ with tab_telemetry:
 
 
 # ------------------------------------------------------------------------------
-# MODULE 4: AUDIT DOSSIER & NEURAL SETTINGS (COMPLETE OVERHAUL)
+# MODULE 4: AUDIT DOSSIER & SYSTEM RESET
 # ------------------------------------------------------------------------------
 with tab_audit:
     st.markdown("""
     <div style="margin-bottom: 16px;">
-        <h3 class="page-title" style="margin: 0;">🔍 Forensic Evidence Dossier & Institutional Audit</h3>
-        <p class="body-text" style="margin-top: 4px; margin-bottom: 0;">Structured timeline cards, aligned metadata grids, Explainable AI attributions, and certified institutional exports.</p>
+        <h3 class="page-title" style="margin: 0;">🔍 Forensic Evidence Dossier & System Control</h3>
+        <p class="body-text" style="margin-top: 4px; margin-bottom: 0;">Review flagged forensic evidence, download certified institutional reports, calibrate neural models, and manage system caches.</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1142,7 +1136,6 @@ with tab_audit:
             </div>
             """, unsafe_allow_html=True)
         else:
-            # Filter bar
             f1, f2 = st.columns(2)
             sev_filter = f1.multiselect("Filter by Severity", ["CRITICAL", "HIGH", "MEDIUM", "LOW"], default=["CRITICAL", "HIGH", "MEDIUM"], key="audit_sev_filt")
             ver_filter = f2.multiselect("Filter by Verdict", ["PENDING", "CONFIRMED", "FALSE_POSITIVE", "DISMISSED"], default=["PENDING", "CONFIRMED", "FALSE_POSITIVE"], key="audit_ver_filt")
@@ -1155,7 +1148,6 @@ with tab_audit:
 
             st.markdown(f"<div style='font-size: 12px; color: #CBD5E1; font-weight: 600; margin-bottom: 14px;'>Displaying <b>{len(filtered_incidents)}</b> flagged incident(s)</div>", unsafe_allow_html=True)
 
-            # 1. Summary Audit Table
             table_rows_html = ""
             for inc in filtered_incidents:
                 pill_cls = "pill-alert" if inc["severity"] in ("CRITICAL", "HIGH") else ("pill-warn" if inc["severity"] == "MEDIUM" else "pill-safe")
@@ -1192,7 +1184,6 @@ with tab_audit:
             </div>
             """, unsafe_allow_html=True)
 
-            # 2. Detailed Timeline Dossier Cards
             st.markdown("<div style='margin-top: 18px; margin-bottom: 12px;'><span class='eyebrow-label'>Detailed Incident Forensics</span></div>", unsafe_allow_html=True)
 
             for inc in filtered_incidents:
@@ -1213,7 +1204,6 @@ with tab_audit:
                         <p class="body-text" style="font-size: 13.5px; margin-bottom: 8px;">{inc['reason_narrative']}</p>
                         """, unsafe_allow_html=True)
 
-                        # Structured 2-Column Key-Value Metadata Grid
                         st.markdown(f"""
                         <div class="dossier-meta-grid">
                             <div class="dossier-meta-item">
@@ -1283,44 +1273,78 @@ with tab_audit:
 
     with col_a2:
         # 1-Click Institutional Export Box
+        if current_session:
+            st.markdown("""
+            <div class="enterprise-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h3 class="section-header" style="margin: 0;">📄 Institutional Reports</h3>
+                    <span class="pill-safe">● 1-CLICK EXPORT</span>
+                </div>
+                <p class="body-text" style="font-size: 13.5px; margin-bottom: 14px;">Generate certified academic integrity PDF certificates and tabular CSV audit logs.</p>
+            """, unsafe_allow_html=True)
+
+            try:
+                cand_pdf_data = generate_candidate_pdf_report(session_id, db_manager)
+                st.download_button(
+                    label="📄 Download Candidate PDF Report",
+                    data=cand_pdf_data,
+                    file_name=f"EviGuard_Report_{session_id}.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True,
+                    key="saas_dl_pdf"
+                )
+            except Exception as e:
+                st.error(f"Error compiling PDF: {e}")
+
+            st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
+
+            try:
+                cand_csv_data = generate_candidate_csv_report(session_id, db_manager)
+                st.download_button(
+                    label="📊 Export Tabular Audit Trail (.csv)",
+                    data=cand_csv_data,
+                    file_name=f"EviGuard_Audit_{session_id}.csv",
+                    mime="text/csv",
+                    type="primary",
+                    use_container_width=True,
+                    key="saas_dl_csv"
+                )
+            except Exception as e:
+                st.error(f"Error compiling CSV: {e}")
+
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # Complete Data Reset & System Purge Card
         st.markdown("""
-        <div class="enterprise-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <h3 class="section-header" style="margin: 0;">📄 Institutional Reports</h3>
-                <span class="pill-safe">● 1-CLICK EXPORT</span>
+        <div class="enterprise-card" style="border-color: rgba(244, 63, 94, 0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 class="section-header" style="margin: 0; color: #FB7185;">🧹 Complete Data Reset & Cache Purge</h3>
+                <span class="pill-alert">MAINTENANCE</span>
             </div>
-            <p class="body-text" style="font-size: 13.5px; margin-bottom: 14px;">Generate certified academic integrity PDF certificates and tabular CSV audit logs.</p>
+            <p class="body-text" style="font-size: 13px; margin-bottom: 14px;">Flush all session memory, clear neural model caches, purge historical evidence clips, and reset database tables to an empty slate.</p>
         """, unsafe_allow_html=True)
 
-        try:
-            cand_pdf_data = generate_candidate_pdf_report(session_id, db_manager)
-            st.download_button(
-                label="📄 Download Candidate PDF Report",
-                data=cand_pdf_data,
-                file_name=f"EviGuard_Report_{session_id}.pdf",
-                mime="application/pdf",
-                type="primary",
-                use_container_width=True,
-                key="saas_dl_pdf"
-            )
-        except Exception as e:
-            st.error(f"Error compiling PDF: {e}")
+        if st.button("⚠️ Reset All Data & Purge System Cache", use_container_width=True, key="btn_system_purge"):
+            # 1. Clear Streamlit caches
+            st.cache_data.clear()
+            st.cache_resource.clear()
 
-        st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
+            # 2. Purge database and evidence clips
+            db_manager.purge_all_data()
 
-        try:
-            cand_csv_data = generate_candidate_csv_report(session_id, db_manager)
-            st.download_button(
-                label="📊 Export Tabular Audit Trail (.csv)",
-                data=cand_csv_data,
-                file_name=f"EviGuard_Audit_{session_id}.csv",
-                mime="text/csv",
-                type="primary",
-                use_container_width=True,
-                key="saas_dl_csv"
-            )
-        except Exception as e:
-            st.error(f"Error compiling CSV: {e}")
+            # 3. Flush session state
+            st.session_state.clear()
+            st.session_state.system_initialized = True
+            st.session_state.incident_logs = []
+            st.session_state.flagged_events = []
+            st.session_state.evidence_snapshots = []
+            st.session_state.audit_history = []
+            st.session_state.telemetry_data = []
+            st.session_state.active_session_id = None
+
+            st.success("✅ System successfully reset! All cache, database entries, and temporary evidence files purged.")
+            st.rerun()
 
         st.markdown('</div>', unsafe_allow_html=True)
 

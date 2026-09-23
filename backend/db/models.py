@@ -339,3 +339,30 @@ class DatabaseManager:
             return True
         finally:
             db.close()
+
+    def purge_all_data(self) -> bool:
+        """Completely purges all historical sessions, incidents, risk metrics, and clips."""
+        db = self.SessionFactory()
+        try:
+            db.query(RiskMetricLog).delete()
+            db.query(Incident).delete()
+            db.query(ExamSession).delete()
+            db.commit()
+
+            # Clean evidence clips directory if it exists
+            clips_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "evidence_clips")
+            if os.path.exists(clips_dir):
+                for f in os.listdir(clips_dir):
+                    f_path = os.path.join(clips_dir, f)
+                    try:
+                        if os.path.isfile(f_path):
+                            os.remove(f_path)
+                    except Exception:
+                        pass
+            return True
+        except Exception:
+            db.rollback()
+            return False
+        finally:
+            db.close()
+
