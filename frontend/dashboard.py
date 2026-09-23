@@ -70,6 +70,44 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+/* Force Cinematic Mesh Background */
+.stApp {
+    background: 
+        radial-gradient(circle at 15% 15%, rgba(14, 165, 233, 0.18) 0%, transparent 45%),
+        radial-gradient(circle at 85% 80%, rgba(99, 102, 241, 0.18) 0%, transparent 45%),
+        radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.9) 0%, transparent 100%),
+        linear-gradient(180deg, #020617 0%, #0B0F17 50%, #020617 100%) !important;
+    background-attachment: fixed !important;
+}
+
+/* Glassmorphism Containers */
+div[data-testid="stVerticalBlock"] > div[style*="background"] {
+    background: rgba(15, 23, 42, 0.65) !important;
+    backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37) !important;
+}
+
+/* Headers & Key Text High Contrast */
+h1, h2, h3, h4, label, .stMarkdown p {
+    color: #F8FAFC !important;
+    font-weight: 600 !important;
+}
+
+/* Tab Highlight Fix */
+button[data-baseweb="tab"] {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border-radius: 8px !important;
+    color: #94A3B8 !important;
+}
+
+button[data-baseweb="tab"][aria-selected="true"] {
+    background: rgba(56, 189, 248, 0.15) !important;
+    color: #38BDF8 !important;
+    border: 1px solid rgba(56, 189, 248, 0.3) !important;
+}
+
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600;1,700&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
 
     /* ---------------- REMOVE DEFAULT CHROME & ENFORCE CANVAS ---------------- */
@@ -86,20 +124,13 @@ st.markdown("""
         visibility: hidden !important;
     }
 
-    /* ---------------- GLOBAL CINEMATIC CYBER-COMMAND CANVAS ---------------- */
-    *, *::before, *::after, html, body, [class*="css"], .stApp, 
+    *, *::before, *::after, html, body, [class*="css"],
     h1, h2, h3, h4, h5, h6, p, span, div, label, input, button, select, textarea {
         font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
     }
 
-    html, body, [class*="css"], .stApp {
-        background-color: #030712 !important;
-        background: 
-            radial-gradient(circle at 15% 15%, rgba(14, 165, 233, 0.12) 0%, transparent 40%),
-            radial-gradient(circle at 85% 80%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
-            radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.8) 0%, transparent 100%),
-            linear-gradient(180deg, #030712 0%, #0B0F17 50%, #030712 100%) !important;
-        background-attachment: fixed !important;
+    html, body {
+        background: transparent !important;
         color: #F8FAFC !important;
     }
 
@@ -833,7 +864,8 @@ with tab_overview:
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_dash2:
-        st.markdown("""
+        display_session_ref = session_id if current_session else "-"
+        st.markdown(f"""
         <div class="enterprise-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
                 <h3 class="section-header" style="margin: 0;">⚙️ Real-Time Vision & Engine Status</h3>
@@ -842,7 +874,7 @@ with tab_overview:
             <div style="line-height: 2.2; font-size: 13.5px;">
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px;">
                     <span style="color: #94A3B8; font-weight: 600;">Active Session Ref:</span>
-                    <span style="color: #60A5FA; font-family: 'JetBrains Mono'; font-weight: 700;">{session_id}</span>
+                    <span style="color: #60A5FA; font-family: 'JetBrains Mono'; font-weight: 700;">{display_session_ref}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
                     <span style="color: #94A3B8; font-weight: 600;">Object Detector Engine:</span>
