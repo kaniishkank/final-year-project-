@@ -70,56 +70,77 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-/* Force Cinematic Mesh Background */
+/* 1. FORCE APP & VIEWPORT BACKGROUND */
+[data-testid="stAppViewContainer"], 
+[data-testid="stHeader"], 
 .stApp {
     background: 
-        radial-gradient(circle at 15% 15%, rgba(14, 165, 233, 0.18) 0%, transparent 45%),
-        radial-gradient(circle at 85% 80%, rgba(99, 102, 241, 0.18) 0%, transparent 45%),
-        radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.9) 0%, transparent 100%),
-        linear-gradient(180deg, #020617 0%, #0B0F17 50%, #020617 100%) !important;
+        radial-gradient(circle at 10% 10%, rgba(14, 165, 233, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 90% 90%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.95) 0%, transparent 100%),
+        #030712 !important;
     background-attachment: fixed !important;
 }
 
-/* Glassmorphism Containers */
-div[data-testid="stVerticalBlock"] > div[style*="background"] {
-    background: rgba(15, 23, 42, 0.65) !important;
+/* 2. REMOVE DEFAULT STREAMLIT SOLID BACKGROUNDS FROM CONTAINERS */
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stColumn"],
+div[data-testid="stForm"],
+.stCard {
+    background: rgba(15, 23, 42, 0.6) !important;
     backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-radius: 12px !important;
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37) !important;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5) !important;
 }
 
-/* Headers & Key Text High Contrast */
-h1, h2, h3, h4, label, .stMarkdown p {
-    color: #F8FAFC !important;
-    font-weight: 600 !important;
+/* 3. GLOW EFFECTS FOR CARDS ON HOVER */
+[data-testid="stVerticalBlockBorderWrapper"]:hover {
+    border-color: rgba(56, 189, 248, 0.3) !important;
+    box-shadow: 0 0 20px rgba(14, 165, 233, 0.15) !important;
+    transition: all 0.3s ease-in-out !important;
 }
 
-/* Tab Highlight Fix */
+/* 4. FIX TAB STYLING & ACTIVE INDICATORS */
 button[data-baseweb="tab"] {
-    background: rgba(255, 255, 255, 0.03) !important;
+    background: rgba(255, 255, 255, 0.02) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
     border-radius: 8px !important;
     color: #94A3B8 !important;
+    font-weight: 600 !important;
+    padding: 8px 16px !important;
+    margin-right: 6px !important;
 }
 
 button[data-baseweb="tab"][aria-selected="true"] {
     background: rgba(56, 189, 248, 0.15) !important;
     color: #38BDF8 !important;
-    border: 1px solid rgba(56, 189, 248, 0.3) !important;
+    border: 1px solid #38BDF8 !important;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.3) !important;
 }
+
+/* 5. INPUT FIELD & BUTTON GLOWS */
+input, textarea, select {
+    background-color: rgba(30, 41, 59, 0.8) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    color: #FFFFFF !important;
+    border-radius: 8px !important;
+}
+
+input:focus {
+    border-color: #38BDF8 !important;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.4) !important;
+}
+
+/* 6. HIDE STREAMLIT TOP BAR & FOOTER */
+header[data-testid="stHeader"] {
+    background: transparent !important;
+}
+footer {visibility: hidden;}
 
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600;1,700&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
 
-    /* ---------------- REMOVE DEFAULT CHROME & ENFORCE CANVAS ---------------- */
-    header[data-testid="stHeader"] {
-        background: transparent !important;
-        height: 0px !important;
-        visibility: hidden !important;
-    }
-    footer {
-        visibility: hidden !important;
-        display: none !important;
-    }
     #MainMenu {
         visibility: hidden !important;
     }
