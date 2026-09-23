@@ -51,12 +51,14 @@ class RiskEngine:
         
         # Calibrated Threat Weights
         weights_cfg = self.config.get("weights", {})
-        self.w_phone = float(weights_cfg.get("cell_phone", 95.0))             # >= 90 CRITICAL
-        self.w_notes = float(weights_cfg.get("unauthorized_notes", 92.0))      # >= 90 CRITICAL
+        self.w_phone = float(weights_cfg.get("cell_phone", 95.0))             # 95 CRITICAL (70-95 range)
+        self.w_notes = float(weights_cfg.get("unauthorized_notes", 90.0))      # 90 CRITICAL (70-95 range)
+        self.w_watch = float(weights_cfg.get("smart_watch", 85.0))             # 85 CRITICAL (70-95 range)
+        self.w_laptop = float(weights_cfg.get("laptop", 90.0))                 # 90 CRITICAL (70-95 range)
         self.w_multiple_persons = float(weights_cfg.get("multiple_persons", 90.0))
         self.w_face_absent = float(weights_cfg.get("face_absent", 85.0))
         self.w_hand_signalling = float(weights_cfg.get("hand_signalling", 65.0)) # 60-70 SUSPICIOUS
-        self.w_gaze = float(weights_cfg.get("gaze_deviation", 35.0))           # 30-40 MONITOR
+        self.w_gaze = float(weights_cfg.get("gaze_deviation", 35.0))           # 35 MONITOR (strictly below 40)
         self.w_head_pose = float(weights_cfg.get("head_pose_deviation", 35.0))
 
         # Temporal Parameters
@@ -89,7 +91,7 @@ class RiskEngine:
         factors: Dict[str, float] = {}
         is_critical_direct_trigger = False
 
-        # 1. Phone Detection (score >= 90 -> CRITICAL)
+        # 1. Phone Detection (score 70-95 range -> CRITICAL)
         phone_detections = [
             d for d in detections 
             if d.class_name in ("cell phone", "phone") and d.confidence >= 0.35
@@ -99,7 +101,17 @@ class RiskEngine:
             factors["cell_phone"] = self.w_phone
             is_critical_direct_trigger = True
 
-        # 2. Unauthorized Notes / Book Detection (score >= 90 -> CRITICAL)
+        # 2. Smart Watch & Electronic Gadgets (score 70-95 range -> CRITICAL)
+        watch_detections = [
+            d for d in detections 
+            if d.class_name in ("smart watch", "smartwatch", "watch", "remote", "laptop") and d.confidence >= 0.35
+        ]
+        if watch_detections:
+            active_violations.append("ELECTRONIC_DEVICE_DETECTED")
+            factors["smart_watch"] = self.w_watch
+            is_critical_direct_trigger = True
+
+        # 3. Unauthorized Notes / Book Detection (score 70-95 range -> CRITICAL)
         notes_detections = [
             d for d in detections 
             if d.class_name in ("book", "notes", "unauthorized paper/notes", "paper") and d.confidence >= 0.35
@@ -109,26 +121,26 @@ class RiskEngine:
             factors["unauthorized_notes"] = self.w_notes
             is_critical_direct_trigger = True
 
-        # 3. Secondary Person Detection (Intruder -> CRITICAL)
+        # 4. Secondary Person Detection (Intruder -> CRITICAL)
         if person_count > 1 or getattr(pose_gaze, "face_count", 1) > 1:
             active_violations.append("MULTIPLE_PERSONS")
             factors["multiple_persons"] = self.w_multiple_persons
             is_critical_direct_trigger = True
 
-        # 4. Candidate Absence
+        # 5. Candidate Absence
         if pose_gaze.is_absent or (person_count == 0 and not pose_gaze.face_detected):
             active_violations.append("FACE_ABSENT")
             factors["face_absent"] = self.w_face_absent
             if getattr(pose_gaze, "absence_frames", 0) >= 15:
                 is_critical_direct_trigger = True
 
-        # 5. Hand Raised + Signalling (60 <= score <= 70 -> SUSPICIOUS)
+        # 6. Hand Raised + Signalling (60 <= score <= 70 -> SUSPICIOUS)
         if getattr(pose_gaze, "hand_signalling", False) or getattr(pose_gaze, "hand_gesture_label", ""):
             label = getattr(pose_gaze, "hand_gesture_label", "FINGER SIGNALLING") or "FINGER SIGNALLING"
             active_violations.append(f"FLAG: {label}")
             factors["hand_signalling"] = self.w_hand_signalling
 
-        # 6. Prolonged Gaze Malpractice (continuous sustained deviation > 2.0s / ~45 frames)
+        # 7. Prolonged Gaze Malpractice (continuous sustained deviation > 2.0s / ~45 frames)
         if pose_gaze.face_detected and not is_critical_direct_trigger and (
             pose_gaze.is_prolonged_lookaway or 
             getattr(pose_gaze, "gaze_violation_frames", 0) >= 45 or
@@ -141,16 +153,21 @@ class RiskEngine:
             factors["prolonged_gaze_malpractice"] = float(self.config.get("weights", {}).get("prolonged_gaze_malpractice", 85.0))
             is_critical_direct_trigger = True
 
-        # 7. Pose & Gaze Classification:
-        # Check if looking down: Is student legitimately writing on desk/paper?
-        elif pose_gaze.face_detected and not is_critical_direct_trigger and not factors.get("hand_signalling"):
+        # 8. Pose & Gaze Classification: Writing vs Suspicious Hand Movement & Looking Away (< 40)
+        elif pose_gaze.face_detected and not is_critical_direct_trigger:
             gaze_dir = (pose_gaze.gaze_direction or "CENTER (FOCUSED)").upper()
+            has_suspicious_hands = bool(factors.get("hand_signalling") or getattr(pose_gaze, "hand_signalling", False))
             
             if "LOOKING DOWN" in gaze_dir or pose_gaze.pitch > 12.0:
-                # Student writing legitimately: Score <= 10, Normal
-                factors["student_writing"] = 0.0  # Safe normal behavior
+                if has_suspicious_hands:
+                    # Looking down with suspicious/unusual hand movements: Alert triggered (65-75 range)
+                    active_violations.append("SUSPICIOUS_DOWNWARD_SCRUTINY")
+                    factors["suspicious_downward_gaze"] = 70.0
+                else:
+                    # Student looking down and writing normally: Score <= 10, Normal (No alert)
+                    factors["student_writing"] = 0.0
             elif pose_gaze.is_looking_away or ("CENTER" not in gaze_dir):
-                # Lateral gaze diversion (looking left, looking right, looking up)
+                # Lateral gaze diversion (looking left, looking right, looking up) -> Threat meter strictly below 40 (35.0)
                 if "LEFT" in gaze_dir:
                     active_violations.append("HEAD_TURN (LEFT)")
                 elif "RIGHT" in gaze_dir:
@@ -159,7 +176,7 @@ class RiskEngine:
                     active_violations.append("GAZE_AWAY (UP)")
                 else:
                     active_violations.append("GAZE_DEVIATION")
-                factors["gaze_deviation"] = self.w_gaze  # 30-40 MONITOR range
+                factors["gaze_deviation"] = self.w_gaze  # 35.0 (strictly below 40)
 
         # Compute raw instantaneous score
         raw_score = min(100.0, float(sum(factors.values())))
