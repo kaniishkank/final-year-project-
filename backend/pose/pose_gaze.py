@@ -391,8 +391,17 @@ class PoseGazeEstimator:
 
         # Initialize Hand Signalling Detector
         self.hand_detector = HandSignallingDetector(self.config)
+        self._hand_cache = (False, 0, "", [], [])
+        self._hand_counter = 0
 
         self._init_face_mesh()
+
+    def _get_hand_gesture(self, frame: np.ndarray, face_boxes: List[List[float]]) -> Tuple[bool, int, str, List[List[float]], List[Any]]:
+        """Executes hand detection every 2nd frame or continuously when a gesture is active."""
+        self._hand_counter += 1
+        if self._hand_counter % 2 == 0 or self._hand_cache[0]:
+            self._hand_cache = self.hand_detector.detect(frame, face_boxes=face_boxes)
+        return self._hand_cache
 
     def _init_face_mesh(self):
         """Initializes MediaPipe FaceLandmarker Task or legacy FaceMesh."""
@@ -453,7 +462,7 @@ class PoseGazeEstimator:
                 if not result.face_landmarks:
                     self.consecutive_absence_frames += 1
                     self.consecutive_lookaway_frames = 0
-                    is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self.hand_detector.detect(frame, face_boxes=[])
+                    is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self._get_hand_gesture(frame, face_boxes=[])
                     res = self._create_absent_result()
                     res.hand_signalling = is_hand_sig
                     res.extended_fingers = ext_fingers
@@ -475,7 +484,7 @@ class PoseGazeEstimator:
                 primary_face_box = all_face_boxes[0] if all_face_boxes else None
 
                 # Detect Hand Signalling with active face box suppression to eliminate face false positives
-                is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self.hand_detector.detect(frame, face_boxes=all_face_boxes)
+                is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self._get_hand_gesture(frame, face_boxes=all_face_boxes)
 
                 # Extract 2D points for PnP
                 image_points_2d = []
@@ -564,7 +573,7 @@ class PoseGazeEstimator:
                 if not results.multi_face_landmarks:
                     self.consecutive_absence_frames += 1
                     self.consecutive_lookaway_frames = 0
-                    is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self.hand_detector.detect(frame, face_boxes=[])
+                    is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self._get_hand_gesture(frame, face_boxes=[])
                     res = self._create_absent_result()
                     res.hand_signalling = is_hand_sig
                     res.extended_fingers = ext_fingers
@@ -584,7 +593,7 @@ class PoseGazeEstimator:
                     all_face_boxes.append([float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys))])
                 primary_face_box = all_face_boxes[0] if all_face_boxes else None
 
-                is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self.hand_detector.detect(frame, face_boxes=all_face_boxes)
+                is_hand_sig, ext_fingers, gest_label, hand_boxes, hand_lms = self._get_hand_gesture(frame, face_boxes=all_face_boxes)
 
                 image_points_2d = []
                 for idx in self.LANDMARK_INDICES:

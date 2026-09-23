@@ -6,6 +6,9 @@ Provides SQLAlchemy ORM models for exam sessions, detected incidents, and real-t
 from datetime import datetime
 import json
 import os
+import queue
+import threading
+import time
 from typing import Dict, Any, List, Optional
 from sqlalchemy import (
     create_engine,
@@ -162,12 +165,85 @@ class DatabaseManager:
     def __init__(self, db_url: str = "sqlite:///data/eviguard.db"):
         self.db_url = db_url
         self.engine, self.SessionFactory = get_engine_and_session_factory(db_url)
+        self._metric_queue: queue.Queue = queue.Queue(maxsize=2000)
+        self._metric_worker_running = True
+        self._metric_worker_thread = threading.Thread(target=self._process_metric_queue, daemon=True)
+        self._metric_worker_thread.start()
 
     @classmethod
     def get_instance(cls, db_url: str = "sqlite:///data/eviguard.db") -> "DatabaseManager":
         if cls._instance is None:
             cls._instance = cls(db_url)
         return cls._instance
+
+    def _process_metric_queue(self):
+        """Background thread worker to batch commit metric telemetry to SQLite without blocking vision FPS."""
+        while self._metric_worker_running:
+            try:
+                batch = []
+                try:
+                    first_item = self._metric_queue.get(timeout=0.25)
+                    batch.append(first_item)
+                    while len(batch) < 50:
+                        try:
+                            batch.append(self._metric_queue.get_nowait())
+                        except queue.Empty:
+                            break
+                except queue.Empty:
+                    continue
+
+                if batch:
+                    db = self.SessionFactory()
+                    try:
+                        for item in batch:
+                            metric = RiskMetricLog(
+                                session_id=item["session_id"],
+                                frame_index=item["frame_index"],
+                                risk_score=item["risk_score"],
+                                person_count=item["person_count"],
+                                phone_detected=item["phone_detected"],
+                                yaw=item["yaw"],
+                                pitch=item["pitch"],
+                                active_violations=item["active_violations"]
+                            )
+                            db.add(metric)
+                        db.commit()
+                    except Exception:
+                        db.rollback()
+                    finally:
+                        db.close()
+            except Exception:
+                time.sleep(0.05)
+
+    def flush_metrics(self):
+        """Immediately drains and writes any pending in-memory telemetry metrics to SQLite."""
+        batch = []
+        while not self._metric_queue.empty():
+            try:
+                batch.append(self._metric_queue.get_nowait())
+            except queue.Empty:
+                break
+
+        if batch:
+            db = self.SessionFactory()
+            try:
+                for item in batch:
+                    metric = RiskMetricLog(
+                        session_id=item["session_id"],
+                        frame_index=item["frame_index"],
+                        risk_score=item["risk_score"],
+                        person_count=item["person_count"],
+                        phone_detected=item["phone_detected"],
+                        yaw=item["yaw"],
+                        pitch=item["pitch"],
+                        active_violations=item["active_violations"]
+                    )
+                    db.add(metric)
+                db.commit()
+            except Exception:
+                db.rollback()
+            finally:
+                db.close()
 
     def create_session(self, session_id: str, candidate_id: str, candidate_name: str, exam_title: str) -> ExamSession:
         db = self.SessionFactory()
@@ -192,6 +268,7 @@ class DatabaseManager:
             db.close()
 
     def end_session(self, session_id: str) -> Optional[ExamSession]:
+        self.flush_metrics()
         db = self.SessionFactory()
         try:
             session_obj = db.query(ExamSession).filter_by(session_id=session_id).first()
@@ -277,24 +354,24 @@ class DatabaseManager:
         pitch: float,
         active_violations: List[str]
     ):
-        db = self.SessionFactory()
+        """Asynchronously queues metric log for zero-latency frame throughput."""
+        item = {
+            "session_id": session_id,
+            "frame_index": frame_index,
+            "risk_score": float(risk_score),
+            "person_count": int(person_count),
+            "phone_detected": bool(phone_detected),
+            "yaw": float(yaw),
+            "pitch": float(pitch),
+            "active_violations": ",".join(active_violations) if isinstance(active_violations, list) else str(active_violations)
+        }
         try:
-            metric = RiskMetricLog(
-                session_id=session_id,
-                frame_index=frame_index,
-                risk_score=risk_score,
-                person_count=person_count,
-                phone_detected=phone_detected,
-                yaw=yaw,
-                pitch=pitch,
-                active_violations=",".join(active_violations)
-            )
-            db.add(metric)
-            db.commit()
-        finally:
-            db.close()
+            self._metric_queue.put_nowait(item)
+        except queue.Full:
+            pass
 
     def get_all_sessions(self) -> List[Dict[str, Any]]:
+        self.flush_metrics()
         db = self.SessionFactory()
         try:
             sessions = db.query(ExamSession).order_by(desc(ExamSession.start_time)).all()
@@ -319,6 +396,7 @@ class DatabaseManager:
             db.close()
 
     def get_session_metrics(self, session_id: str, limit: int = 1000) -> List[Dict[str, Any]]:
+        self.flush_metrics()
         db = self.SessionFactory()
         try:
             metrics = db.query(RiskMetricLog).filter_by(session_id=session_id).order_by(RiskMetricLog.frame_index).limit(limit).all()

@@ -631,13 +631,19 @@ class ThreadedCamera:
         while self.running:
             if self.cap is not None and self.cap.isOpened():
                 try:
-                    ret, frame = self.cap.read()
-                    if ret and frame is not None and frame.size > 0:
-                        with self.lock:
-                            self.frame = frame
-                    time.sleep(0.005)
+                    # Flush internal hardware frame queue with non-blocking grab()
+                    grabbed = self.cap.grab()
+                    if grabbed:
+                        ret, frame = self.cap.retrieve()
+                        if ret and frame is not None and frame.size > 0:
+                            if frame.shape[1] != self.width or frame.shape[0] != self.height:
+                                frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
+                            with self.lock:
+                                self.frame = frame
+                    else:
+                        time.sleep(0.001)
                 except Exception:
-                    time.sleep(0.02)
+                    time.sleep(0.01)
             else:
                 time.sleep(0.05)
 
@@ -982,8 +988,8 @@ with tab_vision:
                     candidate_name=candidate_name
                 )
 
-                # 1. Update Video Frame
-                ret_enc, encoded_jpeg = cv2.imencode('.jpg', output.annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                # 1. Update Video Frame with high-speed JPEG compression
+                ret_enc, encoded_jpeg = cv2.imencode('.jpg', output.annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
                 if ret_enc:
                     video_placeholder.image(encoded_jpeg.tobytes(), use_container_width=True)
                 else:
@@ -999,11 +1005,11 @@ with tab_vision:
                 gaze_status = str(output.pose_gaze.gaze_direction) if output.pose_gaze.face_detected else "Candidate Absent"
                 is_flagged = bool(output.risk.is_incident_triggered or len(active_violations) > 0 or risk_score >= 70.0)
 
-                # Rate-throttle UI updates
+                # Rate-throttle UI updates to avoid Streamlit websocket queue congestion
                 current_risk_bin = int(risk_score // 5)
                 state_changed = (is_flagged != last_flagged_state) or (current_risk_bin != last_risk_bin)
 
-                if loop_frame % 4 == 0 or state_changed or output.incident_logged:
+                if loop_frame % 5 == 0 or state_changed or output.incident_logged:
                     last_flagged_state = is_flagged
                     last_risk_bin = current_risk_bin
 
@@ -1045,8 +1051,6 @@ with tab_vision:
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-
-                time.sleep(0.001)
 
         except Exception as e:
             st.error(f"Live stream error: {e}")

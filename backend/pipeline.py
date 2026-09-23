@@ -172,6 +172,14 @@ class EviGuardPipeline:
         self.last_pose_gaze_result: Optional[PoseGazeResult] = None
         self.last_person_count: int = 1
 
+        # Model warmup pass on a dummy frame to eliminate first-frame JIT initialization latency
+        try:
+            dummy_img = np.zeros((self.target_h, self.target_w, 3), dtype=np.uint8)
+            self.detector.detect(dummy_img)
+            self.pose_gaze.estimate(dummy_img)
+        except Exception:
+            pass
+
     def _load_config(self, config_path: str) -> Dict[str, Any]:
         """Loads configuration from YAML file or provides robust defaults."""
         if os.path.exists(config_path):
