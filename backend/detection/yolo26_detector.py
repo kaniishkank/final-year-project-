@@ -80,7 +80,11 @@ class YOLO26Detector(BaseDetector):
         if area < self.phone_min_area or bw < self.phone_min_w or bh < self.phone_min_h:
             return False
 
-        # 2. Aspect Ratio Check (supports vertical, horizontal, and diagonal angles)
+        # 2. Maximum Area Check (a handheld phone is not larger than 32,000 px^2 or 220px in webcam view)
+        if area > 32000.0 or bw > 220.0 or bh > 220.0:
+            return False
+
+        # 3. Aspect Ratio Check (supports vertical, horizontal, and diagonal angles)
         aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
         if aspect_ratio < self.phone_min_aspect_ratio or aspect_ratio > self.phone_max_aspect_ratio:
             return False
@@ -248,15 +252,17 @@ class YOLO26Detector(BaseDetector):
                     if cls_name in ("cell phone", "phone", "remote") or cls_id in (67, 65):
                         if conf < self.phone_conf_threshold:
                             continue
-                        if not self._is_valid_phone_geometry(box):
-                            continue
 
-                        # Disambiguate Paper Chit / White Slip vs Cell Phone vs Fabric Noise
                         rx1, ry1, rx2, ry2 = [int(v) for v in box]
                         rx1, ry1 = max(0, rx1), max(0, ry1)
                         rx2, ry2 = min(w, rx2), min(h, ry2)
                         is_paper_chit = False
                         is_cloth_noise = False
+                        is_large_book = False
+
+                        # Large rectangular objects (bound textbooks/notebooks: area >= 15000 or dimension >= 150)
+                        if box_area >= 15000.0 or max(bw, bh) >= 150.0:
+                            is_large_book = True
 
                         if rx2 > rx1 and ry2 > ry1:
                             roi_bgr = frame[ry1:ry2, rx1:rx2]
@@ -265,8 +271,10 @@ class YOLO26Detector(BaseDetector):
                             mean_b = float(np.mean(roi_gray))
                             mean_sat = float(np.mean(roi_hsv[:, :, 1]))
 
+                            if is_large_book:
+                                pass  # Will be mapped to book
                             # A. Small paper slip / exam chit: Neutral matte surface with low saturation and light reflectance
-                            if mean_b >= 88.0 and mean_sat <= 62.0:
+                            elif mean_b >= 88.0 and mean_sat <= 62.0:
                                 is_paper_chit = True
                             # B. Highly saturated fabric / clothing noise mistakenly flagged as phone
                             elif mean_sat > 75.0 and conf < 0.38:
@@ -274,10 +282,15 @@ class YOLO26Detector(BaseDetector):
 
                         if is_cloth_noise:
                             continue
+                        elif is_large_book:
+                            cls_name = "book"
+                            cls_id = 73
                         elif is_paper_chit:
                             cls_name = "unauthorized paper/notes"
                             cls_id = 73
                         else:
+                            if not self._is_valid_phone_geometry(box):
+                                continue
                             cls_name = "cell phone"
                             cls_id = 67
 
@@ -298,7 +311,6 @@ class YOLO26Detector(BaseDetector):
                             mean_sat = float(np.mean(roi_hsv[:, :, 1]))
 
                             # Reject colored cloth / clothing / fabric / towels mistakenly detected as book:
-                            # Colored cloth has high saturation (mean_sat > 65), dark cloth has low brightness (mean_b < 78)
                             if mean_sat > 65.0 or mean_b < 78.0:
                                 is_valid_material = False
 
@@ -327,8 +339,13 @@ class YOLO26Detector(BaseDetector):
                             roi_hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
                             mean_b = float(np.mean(roi_gray))
                             mean_sat = float(np.mean(roi_hsv[:, :, 1]))
-                            # Hardcover / open books: portrait orientation or light page reflection
-                            if (ry2 - ry1) > (rx2 - rx1) or aspect_ratio < 1.40 or (mean_b > 120.0 and mean_sat < 70.0):
+                            
+                            # A book, binder, or open textbook:
+                            # - Portrait or natural aspect ratio (aspect ratio < 1.65), OR
+                            # - Paper page reflection (mean_b >= 75.0 and mean_sat <= 70.0), OR
+                            # - Height >= 0.58 * width, OR
+                            # - Moderate confidence (< 0.65)
+                            if aspect_ratio < 1.65 or (ry2 - ry1) >= 0.58 * (rx2 - rx1) or (mean_b >= 75.0 and mean_sat <= 70.0) or conf < 0.65:
                                 is_book = True
 
                         if is_book:
