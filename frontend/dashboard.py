@@ -86,15 +86,19 @@ st.markdown("""
         visibility: hidden !important;
     }
 
-    /* ---------------- GLOBAL MIDNIGHT INDIGO CANVAS ---------------- */
+    /* ---------------- GLOBAL CINEMATIC CYBER-COMMAND CANVAS ---------------- */
     *, *::before, *::after, html, body, [class*="css"], .stApp, 
     h1, h2, h3, h4, h5, h6, p, span, div, label, input, button, select, textarea {
         font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
     }
 
     html, body, [class*="css"], .stApp {
-        background-color: #020617 !important;
-        background-image: radial-gradient(circle at 50% -20%, #1E1B4B 0%, #0F172A 60%, #020617 100%) !important;
+        background-color: #030712 !important;
+        background: 
+            radial-gradient(circle at 15% 15%, rgba(14, 165, 233, 0.12) 0%, transparent 40%),
+            radial-gradient(circle at 85% 80%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
+            radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.8) 0%, transparent 100%),
+            linear-gradient(180deg, #030712 0%, #0B0F17 50%, #030712 100%) !important;
         background-attachment: fixed !important;
         color: #F8FAFC !important;
     }
