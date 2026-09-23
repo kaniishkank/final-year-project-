@@ -660,21 +660,24 @@ class ThreadedCamera:
 # 5. GLOWING CIRCULAR THREAT ARC DIAL
 # ==============================================================================
 def get_threat_meter_html(risk_score: float, risk_level: str) -> str:
-    """Renders a clean SVG circular threat dial with dynamic progress arcs."""
+    """Renders a clean high-contrast SVG circular threat dial with dynamic progress arcs."""
     if risk_score >= 70.0 or risk_level == "CRITICAL":
         color = "#FB7185"
-        glow_color = "rgba(244, 63, 94, 0.5)"
+        glow_color = "rgba(251, 113, 133, 0.6)"
         badge_text = "CRITICAL THREAT"
+        badge_color = "#FB7185"
         sub_text = "Violation Active"
     elif risk_score >= 30.0 or risk_level in ("SUSPICIOUS", "MEDIUM"):
-        color = "#FBBF24"
-        glow_color = "rgba(245, 158, 11, 0.5)"
+        color = "#F59E0B"
+        glow_color = "rgba(245, 158, 11, 0.6)"
         badge_text = "ELEVATED RISK"
+        badge_color = "#FBBF24"
         sub_text = "Sensor Deviation"
     else:
-        color = "#34D399"
-        glow_color = "rgba(16, 185, 129, 0.5)"
+        color = "#10B981"  # Bright Cyber Emerald
+        glow_color = "rgba(16, 185, 129, 0.6)"
         badge_text = "OPTIMAL INTEGRITY"
+        badge_color = "#34D399"
         sub_text = "Compliant Session"
 
     pct = min(100.0, max(0.0, risk_score))
@@ -682,19 +685,21 @@ def get_threat_meter_html(risk_score: float, risk_level: str) -> str:
     dash_offset = dash_total - (pct / 100.0) * dash_total
 
     return f"""
-    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px 0 10px 0;">
-        <div style="position: relative; width: 200px; height: 120px; display: flex; justify-content: center; align-items: flex-end;">
-            <svg width="200" height="200" viewBox="0 0 220 220" style="position: absolute; top: -45px; transform: rotate(180deg);">
-                <circle cx="110" cy="110" r="75" fill="none" stroke="rgba(255, 255, 255, 0.08)" stroke-width="14" stroke-dasharray="235.6 235.6" stroke-dashoffset="0" />
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 0 12px 0;">
+        <div style="position: relative; width: 210px; height: 125px; display: flex; justify-content: center; align-items: flex-end;">
+            <svg width="210" height="210" viewBox="0 0 220 220" style="position: absolute; top: -45px; transform: rotate(180deg);">
+                <!-- Distinct Dark Slate Background Track -->
+                <circle cx="110" cy="110" r="75" fill="none" stroke="#1E293B" stroke-width="14" stroke-dasharray="235.6 235.6" stroke-dashoffset="0" />
+                <!-- Active Ring Progress -->
                 <circle cx="110" cy="110" r="75" fill="none" stroke="{color}" stroke-width="14" 
                     stroke-dasharray="235.6 235.6" stroke-dashoffset="{dash_offset}" 
                     stroke-linecap="round" 
-                    style="transition: stroke-dashoffset 0.2s ease; filter: drop-shadow(0 0 8px {glow_color});" />
+                    style="transition: stroke-dashoffset 0.25s ease; filter: drop-shadow(0 0 10px {glow_color});" />
             </svg>
             <div style="text-align: center; z-index: 5; margin-bottom: 2px;">
-                <div style="font-size: 28px; font-weight: 800; color: #FFFFFF; line-height: 1; letter-spacing: -0.03em; text-shadow: 0 2px 6px rgba(0,0,0,0.6);">{risk_score:.0f}</div>
-                <div style="font-size: 11px; font-weight: 800; color: {color}; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px;">{badge_text}</div>
-                <div style="font-size: 11px; font-weight: 600; color: #CBD5E1;">{sub_text}</div>
+                <div style="font-size: 30px; font-weight: 800; color: #FFFFFF; line-height: 1; letter-spacing: -0.03em; text-shadow: 0 2px 6px rgba(0,0,0,0.9);">{risk_score:.0f}</div>
+                <div style="font-size: 11.5px; font-weight: 800; color: {badge_color}; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">{badge_text}</div>
+                <div style="font-size: 11px; font-weight: 600; color: #CBD5E1; text-shadow: 0 1px 3px rgba(0,0,0,0.8); margin-top: 2px;">{sub_text}</div>
             </div>
         </div>
     </div>
@@ -725,6 +730,26 @@ candidate_id = current_session.get("candidate_id") if current_session else "CAND
 exam_title = current_session.get("exam_title") if current_session else "Real-Time AI Proctoring Assessment"
 incidents = db_manager.get_session_incidents(session_id) if current_session else []
 metrics = db_manager.get_session_metrics(session_id, limit=500) if current_session else []
+
+# Sync dynamic state model into st.session_state
+st.session_state.incidents = incidents
+st.session_state.total_flags = len(incidents)
+st.session_state.confirmed_count = sum(1 for i in incidents if i.get("proctor_verdict") == "CONFIRMED")
+st.session_state.pending_count = sum(1 for i in incidents if i.get("proctor_verdict") == "PENDING")
+
+metric_risk_scores = [float(m.get("risk_score", 0.0)) for m in metrics] if metrics else []
+session_peak_risk = float(current_session.get("peak_risk_score", 0.0)) if current_session else 0.0
+st.session_state.peak_risk = max(metric_risk_scores + [session_peak_risk, 0.0])
+
+# Dynamic Overall Integrity Index Calculation
+if current_session:
+    base_integrity = 100.0
+    confirmed_penalties = st.session_state.confirmed_count * 10.0
+    pending_penalties = sum(3.0 if i.get("severity") in ("CRITICAL", "HIGH") else 1.0 for i in incidents if i.get("proctor_verdict") == "PENDING")
+    calculated_integrity = max(0.0, min(100.0, base_integrity - confirmed_penalties - pending_penalties))
+    st.session_state.integrity_score = calculated_integrity
+else:
+    st.session_state.integrity_score = 100.0
 
 # Top SaaS Navigation Bar with System Reset Action
 st.markdown(f"""
@@ -763,10 +788,10 @@ tab_overview, tab_vision, tab_telemetry, tab_audit = st.tabs([
 # MODULE 1: EXECUTIVE OVERVIEW & REGISTRATION
 # ------------------------------------------------------------------------------
 with tab_overview:
-    confirmed_count = sum(1 for i in incidents if i["proctor_verdict"] == "CONFIRMED")
-    total_flags = len(incidents)
-    integrity_score = float(current_session.get("integrity_index", 100.0)) if current_session else 100.0
-    peak_risk = float(current_session.get("peak_risk_score", 0.0)) if current_session else 0.0
+    confirmed_count = st.session_state.confirmed_count
+    total_flags = st.session_state.total_flags
+    integrity_score = st.session_state.integrity_score
+    peak_risk = st.session_state.peak_risk
     score_color = "#34D399" if integrity_score >= 80 else ("#FBBF24" if integrity_score >= 50 else "#FB7185")
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
