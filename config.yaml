@@ -74,15 +74,15 @@ pose_gaze:
 risk_engine:
   # Score additions per active violation (0 to 100 base scale)
   weights:
-    cell_phone: 85.0 # Instant critical alert on detection
-    multiple_persons: 80.0 # Instant critical intruder alert
-    face_absent: 75.0 # Immediate seat abandonment flag
-    hand_signalling: 75.0 # Suspicious finger gesture / answer signalling
-    prolonged_gaze_malpractice: 85.0 # Sustained >2.0s deviation instant critical alert
-    gaze_deviation: 45.0 # Accumulates to breach alert threshold in <1.5s
-    head_pose_deviation: 45.0
-    suspicious_object: 40.0
-    unusual_movement: 20.0
+    cell_phone: 95.0 # Instant critical alert on phone detection (70-95 range)
+    smart_watch: 85.0 # Instant critical alert on electronic gadget
+    unauthorized_notes: 90.0 # Instant critical alert on books/notes
+    multiple_persons: 90.0 # Instant critical intruder alert
+    face_absent: 85.0 # Immediate seat abandonment flag (>15 frames)
+    hand_signalling: 65.0 # Suspicious finger gesture / answer signalling (60-70 range)
+    suspicious_downward_gaze: 65.0 # Looking down with suspicious hand movements
+    gaze_deviation: 35.0 # Lateral gaze diversion (strictly below 40)
+    head_pose_deviation: 35.0
 
   # Temporal aggregation parameters
   decay_rate: 0.88
@@ -90,8 +90,10 @@ risk_engine:
   
   # Alert Classification Thresholds
   thresholds:
-    low_max: 30.0
-    medium_max: 70.0
+    normal_max: 25.0
+    monitor_max: 50.0
+    suspicious_max: 75.0
+    critical_min: 75.0
     high_threshold: 70.0 # Triggers evidence recording and critical alert
 
 evidence_recorder:

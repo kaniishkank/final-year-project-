@@ -94,7 +94,7 @@ class RiskEngine:
         # 1. Phone Detection (score 70-95 range -> CRITICAL)
         phone_detections = [
             d for d in detections 
-            if d.class_name in ("cell phone", "phone") and d.confidence >= 0.35
+            if d.class_name in ("cell phone", "phone") and d.confidence >= 0.40
         ]
         if phone_detections:
             active_violations.append("PHONE_DETECTED")
@@ -104,7 +104,7 @@ class RiskEngine:
         # 2. Smart Watch & Electronic Gadgets (score 70-95 range -> CRITICAL)
         watch_detections = [
             d for d in detections 
-            if d.class_name in ("smart watch", "smartwatch", "watch", "remote", "laptop") and d.confidence >= 0.35
+            if d.class_name in ("smart watch", "smartwatch", "watch", "remote", "laptop") and d.confidence >= 0.40
         ]
         if watch_detections:
             active_violations.append("ELECTRONIC_DEVICE_DETECTED")
@@ -114,7 +114,7 @@ class RiskEngine:
         # 3. Unauthorized Notes / Book Detection (score 70-95 range -> CRITICAL)
         notes_detections = [
             d for d in detections 
-            if d.class_name in ("book", "notes", "unauthorized paper/notes", "paper") and d.confidence >= 0.35
+            if d.class_name in ("book", "notes", "unauthorized paper/notes", "paper") and d.confidence >= 0.40
         ]
         if notes_detections:
             active_violations.append("UNAUTHORIZED_NOTES")
@@ -127,7 +127,7 @@ class RiskEngine:
             factors["multiple_persons"] = self.w_multiple_persons
             is_critical_direct_trigger = True
 
-        # 5. Candidate Absence
+        # 5. Candidate Absence (>15 frames -> CRITICAL)
         if pose_gaze.is_absent or (person_count == 0 and not pose_gaze.face_detected):
             active_violations.append("FACE_ABSENT")
             factors["face_absent"] = self.w_face_absent
@@ -140,35 +140,31 @@ class RiskEngine:
             active_violations.append(f"FLAG: {label}")
             factors["hand_signalling"] = self.w_hand_signalling
 
-        # 7. Prolonged Gaze Malpractice (continuous sustained deviation > 2.0s / ~45 frames)
-        if pose_gaze.face_detected and not is_critical_direct_trigger and (
-            pose_gaze.is_prolonged_lookaway or 
-            getattr(pose_gaze, "gaze_violation_frames", 0) >= 45 or
-            getattr(pose_gaze, "gaze_violation_seconds", 0.0) >= 2.0
-        ):
-            direction = (pose_gaze.gaze_direction or "LOOKING AWAY").upper()
-            has_suspicious_hands = bool(factors.get("hand_signalling") or getattr(pose_gaze, "hand_signalling", False))
-            seconds = max(2.0, round(getattr(pose_gaze, "gaze_violation_seconds", 2.0), 1))
-            malpractice_label = f"CRITICAL_MALPRACTICE: Sustained Gaze Deviation ({direction}) for {seconds}s"
-            active_violations.append(malpractice_label)
-            factors["prolonged_gaze_malpractice"] = float(self.config.get("weights", {}).get("prolonged_gaze_malpractice", 85.0))
-            is_critical_direct_trigger = True
-
-        # 8. Pose & Gaze Classification: Desk Writing vs Suspicious Hand Movement vs Gaze Diversion (< 40)
-        elif pose_gaze.face_detected and not is_critical_direct_trigger:
+        # 7. Pose & Gaze Classification (Fair Rubric):
+        # - Desk Writing (looking down): NORMAL, Score = 0 (unless accompanied by suspicious hand gestures)
+        # - Lateral Gaze / Sideways / Up: MONITOR, Score = 35.0 (Strictly below 40)
+        # - Direct Screen View: NORMAL, Score = 0
+        if pose_gaze.face_detected and not is_critical_direct_trigger:
             gaze_dir = (pose_gaze.gaze_direction or "CENTER (FOCUSED)").upper()
             has_suspicious_hands = bool(factors.get("hand_signalling") or getattr(pose_gaze, "hand_signalling", False))
-            
-            if "LOOKING DOWN" in gaze_dir or pose_gaze.pitch > 22.0:
+
+            if "prolonged_gaze_malpractice" in self.config.get("weights", {}) and getattr(pose_gaze, "is_prolonged_lookaway", False) and getattr(pose_gaze, "gaze_violation_seconds", 0.0) >= 2.0:
+                seconds = round(getattr(pose_gaze, "gaze_violation_seconds", 2.0), 1)
+                malpractice_label = f"CRITICAL_MALPRACTICE: Sustained Gaze Deviation ({gaze_dir}) for {seconds}s"
+                active_violations.append(malpractice_label)
+                factors["prolonged_gaze_malpractice"] = float(self.config["weights"]["prolonged_gaze_malpractice"])
+                is_critical_direct_trigger = True
+
+            elif "LOOKING DOWN" in gaze_dir or pose_gaze.pitch > 20.0:
                 if has_suspicious_hands:
                     # Looking down with suspicious/unusual hand movements: Alert triggered (65-70 range)
                     active_violations.append("SUSPICIOUS_DOWNWARD_SCRUTINY")
                     factors["suspicious_downward_gaze"] = 65.0
                 else:
-                    # Student looking down and writing normally: Score <= 10, Normal (Optimal Integrity)
+                    # Student looking down and writing normally: Score <= 10 (0.0), Normal (Optimal Integrity)
                     factors["student_writing"] = 0.0
             elif pose_gaze.is_looking_away or ("CENTER" not in gaze_dir):
-                # Lateral gaze diversion (looking left, looking right, looking up) -> Threat meter
+                # Lateral gaze diversion (looking left, looking right, looking up) -> Threat meter strictly below 40
                 if "LEFT" in gaze_dir:
                     active_violations.append("HEAD_TURN (LEFT)")
                 elif "RIGHT" in gaze_dir:
@@ -188,10 +184,10 @@ class RiskEngine:
         # Apply Instant Trigger for High Severity or Smooth Normal Transition
         if is_critical_direct_trigger:
             student_smoothed = max(student_smoothed, raw_score)
-        elif factors.get("hand_signalling"):
-            student_smoothed = self.w_hand_signalling
+        elif factors.get("hand_signalling") or factors.get("suspicious_downward_gaze"):
+            student_smoothed = max(student_smoothed, factors.get("suspicious_downward_gaze", self.w_hand_signalling))
         elif factors.get("gaze_deviation"):
-            student_smoothed = self.w_gaze
+            student_smoothed = self.w_gaze  # Strictly below 40
         elif not factors or factors.get("student_writing", -1) == 0.0:
             student_smoothed = 0.0
         else:
