@@ -864,17 +864,17 @@ with tab_overview:
             c_name_in = st.text_input("Candidate Full Name", placeholder="e.g. John Doe")
             c_id_in = st.text_input("Candidate / Student ID", placeholder="e.g. CAND-2026-001")
             c_exam_in = st.text_input("Assessment Title", placeholder="e.g. Midterm Machine Learning Exam")
-            c_session_id_in = st.text_input("Session Identifier (Auto-generated)", value=f"SESSION_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
-            launch_btn = st.form_submit_button("🚀 Launch Live Assessment Session", type="primary", use_container_width=True)
+            launch_btn = st.form_submit_button("🚀 Launch Live Assessment Session", type="primary", width="stretch")
             if launch_btn:
                 cand_name = c_name_in.strip() if c_name_in.strip() else "Live Candidate"
                 cand_id = c_id_in.strip() if c_id_in.strip() else f"ID-{datetime.now().strftime('%H%M%S')}"
                 exam_name = c_exam_in.strip() if c_exam_in.strip() else "Real-World AI Proctoring Assessment"
+                new_session_id = f"SESSION_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                 
-                db_manager.create_session(c_session_id_in, cand_id, cand_name, exam_name)
-                st.session_state.active_session_id = c_session_id_in
-                st.success(f"Assessment session {c_session_id_in} active!")
+                db_manager.create_session(new_session_id, cand_id, cand_name, exam_name)
+                st.session_state.active_session_id = new_session_id
+                st.success("Assessment session activated successfully!")
                 st.rerun()
 
         if session_ids:
@@ -894,33 +894,40 @@ with tab_overview:
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_dash2:
-        display_session_ref = session_id if current_session else "-"
-        st.markdown(f"""
+        st.markdown("""
         <div class="enterprise-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-                <h3 class="section-header" style="margin: 0;">⚙️ Real-Time Vision & Engine Status</h3>
-                <span class="pill-safe">● READY FOR TESTING</span>
+                <h3 class="section-header" style="margin: 0;">📋 Exam Rules & Integrity Guidelines</h3>
+                <span class="pill-safe">● COMPLIANCE POLICY</span>
             </div>
-            <div style="line-height: 2.2; font-size: 13.5px;">
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px;">
-                    <span style="color: #94A3B8; font-weight: 600;">Active Session Ref:</span>
-                    <span style="color: #60A5FA; font-family: 'JetBrains Mono'; font-weight: 700;">{display_session_ref}</span>
+            <div style="line-height: 2.0; font-size: 13.5px;">
+                <div style="display: flex; align-items: flex-start; gap: 10px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px;">
+                    <span style="font-size: 1.1rem;">📱</span>
+                    <div>
+                        <b style="color: #F8FAFC;">No Unauthorized Devices:</b>
+                        <span style="color: #94A3B8;"> Cell phones, smart watches, secondary screens, and notes are strictly prohibited.</span>
+                    </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
-                    <span style="color: #94A3B8; font-weight: 600;">Object Detector Engine:</span>
-                    <span style="color: #60A5FA; font-family: 'JetBrains Mono'; font-weight: 700;">YOLO26 NMS-Free (Calibrated)</span>
+                <div style="display: flex; align-items: flex-start; gap: 10px; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 8px 0;">
+                    <span style="font-size: 1.1rem;">👀</span>
+                    <div>
+                        <b style="color: #F8FAFC;">Screen & Desk Focus:</b>
+                        <span style="color: #94A3B8;"> Legitimate desk writing is permitted. Avoid prolonged looking away or gazing at periphery.</span>
+                    </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
-                    <span style="color: #94A3B8; font-weight: 600;">3D Head Pose & Gaze:</span>
-                    <span style="color: #60A5FA; font-family: 'JetBrains Mono'; font-weight: 700;">MediaPipe 468 Face Mesh</span>
+                <div style="display: flex; align-items: flex-start; gap: 10px; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 8px 0;">
+                    <span style="font-size: 1.1rem;">👤</span>
+                    <div>
+                        <b style="color: #F8FAFC;">Single Candidate Only:</b>
+                        <span style="color: #94A3B8;"> No secondary persons or external assistance are permitted within the camera frame.</span>
+                    </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
-                    <span style="color: #94A3B8; font-weight: 600;">Vision Stream Pipeline:</span>
-                    <span style="color: #34D399; font-family: 'JetBrains Mono'; font-weight: 700;">Zero-Latency Multi-Threaded OpenCV</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; padding-top: 6px;">
-                    <span style="color: #94A3B8; font-weight: 600;">Incident Storage Vault:</span>
-                    <span style="color: #34D399; font-weight: 700;">SQLite Clean Storage</span>
+                <div style="display: flex; align-items: flex-start; gap: 10px; padding-top: 8px;">
+                    <span style="font-size: 1.1rem;">🛡️</span>
+                    <div>
+                        <b style="color: #F8FAFC;">Continuous Automated Audit:</b>
+                        <span style="color: #94A3B8;"> Telemetry, integrity scores, and evidence snapshots are securely recorded in real time.</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1147,7 +1154,7 @@ with tab_telemetry:
                 xaxis=dict(gridcolor="rgba(255, 255, 255, 0.06)"),
                 yaxis=dict(gridcolor="rgba(255, 255, 255, 0.06)", range=[0, 100])
             )
-            st.plotly_chart(fig_line, use_container_width=True, key="telemetry_timeline_chart")
+            st.plotly_chart(fig_line, key="telemetry_timeline_chart")
         else:
             st.info("No continuous frame telemetry recorded yet for this session.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -1172,7 +1179,7 @@ with tab_telemetry:
                 paper_bgcolor="rgba(0,0,0,0)", 
                 font=dict(color="#FFFFFF", family="Plus Jakarta Sans")
             )
-            st.plotly_chart(fig_pie, use_container_width=True, key="telemetry_pie_chart")
+            st.plotly_chart(fig_pie, key="telemetry_pie_chart")
         else:
             st.info("No violations or anomalies recorded for this candidate.")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -1299,7 +1306,7 @@ with tab_audit:
                         """, unsafe_allow_html=True)
 
                         if inc.get("evidence_snapshot_path") and os.path.exists(inc["evidence_snapshot_path"]):
-                            st.image(inc["evidence_snapshot_path"], caption=f"Forensic Snapshot - Frame #{inc['frame_index']}", use_container_width=True)
+                            st.image(inc["evidence_snapshot_path"], caption=f"Forensic Snapshot - Frame #{inc['frame_index']}", width="stretch")
                         elif inc.get("evidence_clip_path") and os.path.exists(inc["evidence_clip_path"]):
                             st.video(inc["evidence_clip_path"])
 
@@ -1317,28 +1324,28 @@ with tab_audit:
                                 plot_bgcolor="rgba(0,0,0,0)", 
                                 font=dict(color="#FFFFFF", family="Plus Jakarta Sans")
                             )
-                            st.plotly_chart(fig_b, use_container_width=True, key=f"saas_xai_{inc['id']}")
+                            st.plotly_chart(fig_b, key=f"saas_xai_{inc['id']}")
 
                         if details.get("recommended_action"):
                             st.info(f"**Recommended Action**: {details['recommended_action']}")
 
                         st.markdown("<div style='margin-top: 10px;'><span class='eyebrow-label'>Proctor Sign-Off Action</span></div>", unsafe_allow_html=True)
                         v1, v2, v3 = st.columns(3)
-                        if v1.button("✅ Confirm", key=f"saas_conf_{inc['id']}", use_container_width=True):
+                        if v1.button("✅ Confirm", key=f"saas_conf_{inc['id']}", width="stretch"):
                             db_manager.update_incident_verdict(inc['id'], "CONFIRMED")
                             st.success("Confirmed violation.")
                             st.rerun()
-                        if v2.button("⚠️ False Positive", key=f"saas_fp_{inc['id']}", use_container_width=True):
+                        if v2.button("⚠️ False Positive", key=f"saas_fp_{inc['id']}", width="stretch"):
                             db_manager.update_incident_verdict(inc['id'], "FALSE_POSITIVE")
                             st.warning("Marked as False Positive.")
                             st.rerun()
-                        if v3.button("❌ Dismiss", key=f"saas_dsm_{inc['id']}", use_container_width=True):
+                        if v3.button("❌ Dismiss", key=f"saas_dsm_{inc['id']}", width="stretch"):
                             db_manager.update_incident_verdict(inc['id'], "DISMISSED")
                             st.info("Dismissed.")
                             st.rerun()
 
                         p_notes = st.text_input("Proctor Audit Notes", value=inc.get("proctor_notes") or "", key=f"saas_notes_{inc['id']}")
-                        if st.button("💾 Save Notes", key=f"saas_savenotes_{inc['id']}", use_container_width=True):
+                        if st.button("💾 Save Notes", key=f"saas_savenotes_{inc['id']}", width="stretch"):
                             db_manager.update_incident_verdict(inc['id'], inc['proctor_verdict'], p_notes)
                             st.success("Notes saved.")
 
@@ -1364,7 +1371,7 @@ with tab_audit:
                     file_name=f"EviGuard_Report_{session_id}.pdf",
                     mime="application/pdf",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                     key="saas_dl_pdf"
                 )
             except Exception as e:
@@ -1380,7 +1387,7 @@ with tab_audit:
                     file_name=f"EviGuard_Audit_{session_id}.csv",
                     mime="text/csv",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                     key="saas_dl_csv"
                 )
             except Exception as e:
@@ -1398,7 +1405,7 @@ with tab_audit:
             <p class="body-text" style="font-size: 13px; margin-bottom: 14px;">Flush all session memory, clear neural model caches, purge historical evidence clips, and reset database tables to an empty slate.</p>
         """, unsafe_allow_html=True)
 
-        if st.button("⚠️ Reset All Data & Purge System Cache", use_container_width=True, key="btn_system_purge"):
+        if st.button("⚠️ Reset All Data & Purge System Cache", width="stretch", key="btn_system_purge"):
             # 1. Clear Streamlit caches
             st.cache_data.clear()
             st.cache_resource.clear()
@@ -1431,12 +1438,12 @@ with tab_audit:
         """, unsafe_allow_html=True)
 
         with st.form("saas_settings_form"):
-            c_yolo = st.slider("YOLO26 Confidence Cutoff", 0.10, 0.90, 0.22, 0.02)
-            c_yaw = st.slider("Max Head Yaw Tolerance (°)", 5.0, 45.0, 16.0, 1.0)
-            c_pitch = st.slider("Max Head Pitch Tolerance (°)", 5.0, 45.0, 14.0, 1.0)
-            c_phone_w = st.slider("Cell Phone Threat Weight", 10.0, 100.0, 95.0, 5.0)
+            c_yolo = st.slider("Object Detection Sensitivity", 0.10, 0.90, 0.22, 0.02)
+            c_yaw = st.slider("Head Movement Tolerance (°)", 5.0, 45.0, 16.0, 1.0)
+            c_pitch = st.slider("Gaze Pitch Tolerance (°)", 5.0, 45.0, 14.0, 1.0)
+            c_phone_w = st.slider("Prohibited Device Penalty", 10.0, 100.0, 95.0, 5.0)
 
-            if st.form_submit_button("💾 Apply Configuration", type="primary", use_container_width=True):
+            if st.form_submit_button("💾 Apply Configuration", type="primary", width="stretch"):
                 updated_cfg = {
                     "system": {"app_name": "EviGuard AI", "version": "2.5.0", "inference_stride": 3},
                     "detection": {"confidence_threshold": c_yolo, "phone_confidence_threshold": c_yolo, "person_confidence_threshold": 0.35, "book_confidence_threshold": 0.22, "enable_paper_heuristic": False, "imgsz": 416},
