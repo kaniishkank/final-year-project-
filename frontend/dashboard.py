@@ -25,6 +25,13 @@ import shutil
 import threading
 import time
 from typing import Dict, Any, List, Optional
+import warnings
+
+# Suppress background telemetry & deprecation warnings
+os.environ["GLOG_minloglevel"] = "2"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["MEDIAPIPE_DISABLE_GPU"] = "1"
+warnings.filterwarnings("ignore")
 import cv2
 import numpy as np
 import pandas as pd
@@ -991,9 +998,9 @@ with tab_vision:
                 # 1. Update Video Frame with high-speed JPEG compression
                 ret_enc, encoded_jpeg = cv2.imencode('.jpg', output.annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
                 if ret_enc:
-                    video_placeholder.image(encoded_jpeg.tobytes(), use_container_width=True)
+                    video_placeholder.image(encoded_jpeg.tobytes(), width="stretch")
                 else:
-                    video_placeholder.image(output.annotated_frame, channels="BGR", use_container_width=True)
+                    video_placeholder.image(output.annotated_frame, channels="BGR", width="stretch")
 
                 # 2. Extract metrics
                 risk_score = float(output.risk.smoothed_score)
