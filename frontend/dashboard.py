@@ -948,7 +948,7 @@ with tab_vision:
     with col_v_left:
         st.markdown('<div class="enterprise-card" style="padding: 16px 20px;">', unsafe_allow_html=True)
         t_c1, t_c2 = st.columns([3, 2])
-        start_stream = t_c1.toggle("▶ Enable Live AI Vision Stream", value=True, key="vision_tab_stream_toggle")
+        start_stream = t_c1.toggle("▶ Enable Live AI Vision Stream", value=False, key="vision_tab_stream_toggle")
         cam_src = t_c2.selectbox("Select Camera Device Index", [0, 1, 2], index=0, key="vision_cam_src_select")
         video_placeholder = st.empty()
         st.markdown('</div>', unsafe_allow_html=True)
