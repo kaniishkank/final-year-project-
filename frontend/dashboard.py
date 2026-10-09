@@ -1226,45 +1226,7 @@ with tab_audit:
                 and (not ver_filter or inc["proctor_verdict"] in ver_filter)
             ]
 
-            st.markdown(f"<div style='font-size: 12px; color: #CBD5E1; font-weight: 600; margin-bottom: 14px;'>Displaying <b>{len(filtered_incidents)}</b> flagged incident(s)</div>", unsafe_allow_html=True)
-
-            table_rows_html = ""
-            for inc in filtered_incidents:
-                pill_cls = "pill-alert" if inc["severity"] in ("CRITICAL", "HIGH") else ("pill-warn" if inc["severity"] == "MEDIUM" else "pill-safe")
-                v_pill_cls = "pill-safe" if inc["proctor_verdict"] == "CONFIRMED" else ("pill-warn" if inc["proctor_verdict"] == "FALSE_POSITIVE" else "pill-alert")
-                
-                table_rows_html += f"""
-                <tr>
-                    <td><span style="font-family: 'JetBrains Mono'; font-weight: 700; color: #FFFFFF;">#{inc['id']}</span></td>
-                    <td><span style="font-family: 'JetBrains Mono'; font-size: 11.5px; color: #CBD5E1;">{inc['timestamp']}</span></td>
-                    <td><b style="color: #FFFFFF;">{inc['violation_type']}</b></td>
-                    <td><span class="{pill_cls}">{inc['severity']}</span></td>
-                    <td><span style="font-family: 'JetBrains Mono'; font-weight: 700; color: #FFFFFF;">{inc['risk_score']:.0f}/100</span></td>
-                    <td><span class="{v_pill_cls}">{inc['proctor_verdict']}</span></td>
-                </tr>
-                """
-
-            st.markdown(f"""
-            <div class="audit-table-wrapper">
-                <table class="audit-table">
-                    <thead>
-                        <tr>
-                            <th>Incident ID</th>
-                            <th>Timestamp</th>
-                            <th>Violation Category</th>
-                            <th>Severity</th>
-                            <th>Threat Score</th>
-                            <th>Verdict</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {table_rows_html}
-                    </tbody>
-                </table>
-            </div>
-            """, unsafe_allow_html=True)
-
-            st.markdown("<div style='margin-top: 18px; margin-bottom: 12px;'><span class='eyebrow-label'>Detailed Incident Forensics</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='font-size: 13px; color: #CBD5E1; font-weight: 600; margin-bottom: 16px;'>Displaying <b>{len(filtered_incidents)}</b> flagged incident(s) for review:</div>", unsafe_allow_html=True)
 
             for inc in filtered_incidents:
                 sev_cls = "pill-alert" if inc["severity"] in ("CRITICAL", "HIGH") else "pill-warn"
