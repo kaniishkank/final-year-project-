@@ -354,14 +354,14 @@ class HandSignallingDetector:
 class PoseGazeEstimator:
     """Extracts head pose angles, gaze metrics, and hand gesture signalling from frames."""
 
-    # Stable 3D generic facial model points (in mm, centered around nose tip)
+    # Stable 3D generic facial model points in camera coordinates (X right, Y down, Z forward)
     MODEL_POINTS_3D = np.array([
         (0.0, 0.0, 0.0),             # Nose tip (landmark 1)
-        (0.0, -330.0, -65.0),        # Chin (landmark 199)
-        (-225.0, 170.0, -135.0),     # Left Eye Outer Corner (landmark 33)
-        (225.0, 170.0, -135.0),      # Right Eye Outer Corner (landmark 263)
-        (-150.0, -150.0, -125.0),    # Left Mouth Corner (landmark 61)
-        (150.0, -150.0, -125.0)      # Right Mouth Corner (landmark 291)
+        (0.0, 330.0, -65.0),         # Chin (landmark 199)
+        (-225.0, -170.0, -135.0),    # Left Eye Outer Corner (landmark 33)
+        (225.0, -170.0, -135.0),     # Right Eye Outer Corner (landmark 263)
+        (-150.0, 150.0, -125.0),     # Left Mouth Corner (landmark 61)
+        (150.0, 150.0, -125.0)       # Right Mouth Corner (landmark 291)
     ], dtype=np.float64)
 
     LANDMARK_INDICES = [1, 199, 33, 263, 61, 291]
@@ -521,9 +521,7 @@ class PoseGazeEstimator:
 
                 rmat, _ = cv2.Rodrigues(rvec)
                 angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
-                pitch = float(angles[0])
-                yaw = float(angles[1])
-                roll = float(angles[2])
+                pitch, yaw, roll = self._normalize_euler(float(angles[0]), float(angles[1]), float(angles[2]))
 
                 nose_end_point3D = np.array([[0.0, 0.0, 500.0]], dtype=np.float64)
                 nose_end_point2D, _ = cv2.projectPoints(nose_end_point3D, rvec, tvec, camera_matrix, dist_coeffs)
@@ -621,9 +619,7 @@ class PoseGazeEstimator:
                 if success:
                     rmat, _ = cv2.Rodrigues(rvec)
                     angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
-                    pitch = float(angles[0])
-                    yaw = float(angles[1])
-                    roll = float(angles[2])
+                    pitch, yaw, roll = self._normalize_euler(float(angles[0]), float(angles[1]), float(angles[2]))
 
                     nose_end_point3D = np.array([[0.0, 0.0, 500.0]], dtype=np.float64)
                     nose_end_point2D, _ = cv2.projectPoints(nose_end_point3D, rvec, tvec, camera_matrix, dist_coeffs)
@@ -674,6 +670,19 @@ class PoseGazeEstimator:
         res.hand_boxes = hand_boxes
         res.hand_landmarks = hand_lms
         return res
+
+    def _normalize_euler(self, pitch: float, yaw: float, roll: float) -> Tuple[float, float, float]:
+        """Normalizes Euler rotation angles into [-90, +90] principal viewing planes."""
+        pitch = ((pitch + 180.0) % 360.0) - 180.0
+        yaw = ((yaw + 180.0) % 360.0) - 180.0
+        roll = ((roll + 180.0) % 360.0) - 180.0
+        if abs(pitch) > 90.0:
+            pitch = 180.0 - pitch if pitch > 0 else -180.0 - pitch
+        if abs(yaw) > 90.0:
+            yaw = 180.0 - yaw if yaw > 0 else -180.0 - yaw
+        if abs(roll) > 90.0:
+            roll = 180.0 - roll if roll > 0 else -180.0 - roll
+        return float(pitch), float(yaw), float(roll)
 
     def _classify_gaze(self, yaw: float, pitch: float, roll: float) -> Tuple[str, bool]:
         """Symmetric 4-way directional thresholding for LEFT, RIGHT, DOWN, UP, and CENTER."""
