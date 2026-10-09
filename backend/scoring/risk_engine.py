@@ -140,31 +140,18 @@ class RiskEngine:
             active_violations.append(f"FLAG: {label}")
             factors["hand_signalling"] = self.w_hand_signalling
 
-        # 7. Prolonged Gaze Malpractice (continuous sustained deviation > 2.0s / ~45 frames)
-        if pose_gaze.face_detected and not is_critical_direct_trigger and (
-            pose_gaze.is_prolonged_lookaway or 
-            getattr(pose_gaze, "gaze_violation_frames", 0) >= 45 or
-            getattr(pose_gaze, "gaze_violation_seconds", 0.0) >= 2.0
-        ):
-            direction = pose_gaze.gaze_direction or "LOOKING AWAY"
-            seconds = max(2.0, round(getattr(pose_gaze, "gaze_violation_seconds", 2.0), 1))
-            malpractice_label = f"CRITICAL_MALPRACTICE: Sustained Gaze Deviation ({direction}) for {seconds}s"
-            active_violations.append(malpractice_label)
-            factors["prolonged_gaze_malpractice"] = float(self.config.get("weights", {}).get("prolonged_gaze_malpractice", 85.0))
-            is_critical_direct_trigger = True
-
-        # 8. Pose & Gaze Classification: Writing vs Suspicious Hand Movement & Looking Away (< 40)
+        # 7. Pose & Gaze Classification: Desk Writing vs Suspicious Hand Movement vs Gaze Diversion (< 40)
         elif pose_gaze.face_detected and not is_critical_direct_trigger:
             gaze_dir = (pose_gaze.gaze_direction or "CENTER (FOCUSED)").upper()
             has_suspicious_hands = bool(factors.get("hand_signalling") or getattr(pose_gaze, "hand_signalling", False))
             
-            if "LOOKING DOWN" in gaze_dir or pose_gaze.pitch > 12.0:
+            if "LOOKING DOWN" in gaze_dir or pose_gaze.pitch > 22.0:
                 if has_suspicious_hands:
-                    # Looking down with suspicious/unusual hand movements: Alert triggered (65-75 range)
+                    # Looking down with suspicious/unusual hand movements: Alert triggered (65-70 range)
                     active_violations.append("SUSPICIOUS_DOWNWARD_SCRUTINY")
-                    factors["suspicious_downward_gaze"] = 70.0
+                    factors["suspicious_downward_gaze"] = 65.0
                 else:
-                    # Student looking down and writing normally: Score <= 10, Normal (No alert)
+                    # Student looking down and writing normally: Score <= 10, Normal (Optimal Integrity)
                     factors["student_writing"] = 0.0
             elif pose_gaze.is_looking_away or ("CENTER" not in gaze_dir):
                 # Lateral gaze diversion (looking left, looking right, looking up) -> Threat meter strictly below 40 (35.0)
@@ -176,7 +163,7 @@ class RiskEngine:
                     active_violations.append("GAZE_AWAY (UP)")
                 else:
                     active_violations.append("GAZE_DEVIATION")
-                factors["gaze_deviation"] = self.w_gaze  # 35.0 (strictly below 40)
+                factors["gaze_deviation"] = min(35.0, self.w_gaze)  # Strictly below 40
 
         # Compute raw instantaneous score
         raw_score = min(100.0, float(sum(factors.values())))

@@ -54,17 +54,17 @@ pose_gaze:
   enable_pose: true
   enable_gaze: true
   head_pose:
-    # Strict limits (in degrees) to catch slight glancing toward adjacent desks
-    max_yaw_angle: 16.0
-    max_pitch_angle: 14.0
-    yaw_limit_left: -16.0
-    yaw_limit_right: 16.0
-    pitch_limit_down: 14.0 # Catches looking downward at lap/desk materials
-    pitch_limit_up: 20.0
-    roll_limit: 20.0
+    # Calibrated limits (in degrees) allowing natural screen focus without false lookaway triggers
+    max_yaw_angle: 25.0
+    max_pitch_angle: 24.0
+    yaw_limit_left: -25.0
+    yaw_limit_right: 25.0
+    pitch_limit_down: 24.0 # Allows natural screen and desk viewing
+    pitch_limit_up: 22.0
+    roll_limit: 25.0
   gaze:
-    look_away_continuous_frames: 10
-    prolonged_gaze_threshold_frames: 45 # >2.0s continuous lookaway triggers CRITICAL_MALPRACTICE
+    look_away_continuous_frames: 15
+    prolonged_gaze_threshold_frames: 60
   hand_signalling:
     enable: true
     hand_signalling_frames: 35 # >1.2s - 1.5s continuous finger gesture triggers hand_signalling

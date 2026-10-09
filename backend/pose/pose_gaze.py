@@ -369,15 +369,15 @@ class PoseGazeEstimator:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.config = config or {}
         
-        # Symmetric 4-Way Directional Thresholds (Degrees)
+        # Calibrated 4-Way Directional Thresholds (Degrees)
         head_cfg = self.config.get("head_pose", {})
-        self.max_yaw_angle = abs(float(head_cfg.get("max_yaw_angle", head_cfg.get("yaw_limit_right", 16.0))))
-        self.max_pitch_angle = abs(float(head_cfg.get("max_pitch_angle", head_cfg.get("pitch_limit_down", 14.0))))
-        self.max_roll_angle = abs(float(head_cfg.get("max_roll_angle", head_cfg.get("roll_limit", 22.0))))
+        self.max_yaw_angle = abs(float(head_cfg.get("max_yaw_angle", head_cfg.get("yaw_limit_right", 25.0))))
+        self.max_pitch_angle = abs(float(head_cfg.get("max_pitch_angle", head_cfg.get("pitch_limit_down", 24.0))))
+        self.max_roll_angle = abs(float(head_cfg.get("max_roll_angle", head_cfg.get("roll_limit", 25.0))))
 
-        # Continuous Prolonged Gaze Malpractice Threshold (~2.0 seconds / 45-60 frames)
+        # Continuous Prolonged Gaze Malpractice Threshold (~2.5-3.0 seconds / 60 frames)
         self.fps = float(self.config.get("fps", 30.0))
-        self.prolonged_gaze_threshold_frames = int(self.config.get("prolonged_gaze_threshold_frames", 45))
+        self.prolonged_gaze_threshold_frames = int(self.config.get("prolonged_gaze_threshold_frames", 60))
 
         absence_cfg = self.config.get("face_absence", {})
         self.absence_threshold = int(absence_cfg.get("absence_frames_threshold", 15))

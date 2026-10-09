@@ -680,22 +680,27 @@ def get_threat_meter_html(risk_score: float, risk_level: str) -> str:
         badge_text = "CRITICAL THREAT"
         badge_color = "#FB7185"
         sub_text = "Violation Active"
-    elif risk_score >= 30.0 or risk_level in ("SUSPICIOUS", "MEDIUM"):
+        display_val = f"{risk_score:.0f}"
+        pct = min(100.0, max(0.0, risk_score))
+        dash_offset = 235.6 - (pct / 100.0) * 235.6
+    elif risk_score >= 30.0 or risk_level in ("SUSPICIOUS", "MEDIUM", "MONITOR"):
         color = "#F59E0B"
         glow_color = "rgba(245, 158, 11, 0.6)"
         badge_text = "ELEVATED RISK"
         badge_color = "#FBBF24"
         sub_text = "Sensor Deviation"
+        display_val = f"{risk_score:.0f}"
+        pct = min(100.0, max(0.0, risk_score))
+        dash_offset = 235.6 - (pct / 100.0) * 235.6
     else:
         color = "#10B981"  # Bright Cyber Emerald
         glow_color = "rgba(16, 185, 129, 0.6)"
         badge_text = "OPTIMAL INTEGRITY"
         badge_color = "#34D399"
         sub_text = "Compliant Session"
-
-    pct = min(100.0, max(0.0, risk_score))
-    dash_total = 235.6
-    dash_offset = dash_total - (pct / 100.0) * dash_total
+        integrity_pct = max(0.0, min(100.0, 100.0 - risk_score))
+        display_val = "100%" if risk_score <= 2.0 else f"{integrity_pct:.0f}%"
+        dash_offset = 0.0  # Full glowing emerald ring for optimal integrity
 
     return f"""
     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 0 12px 0;">
@@ -710,7 +715,7 @@ def get_threat_meter_html(risk_score: float, risk_level: str) -> str:
                     style="transition: stroke-dashoffset 0.25s ease; filter: drop-shadow(0 0 10px {glow_color});" />
             </svg>
             <div style="text-align: center; z-index: 5; margin-bottom: 2px;">
-                <div style="font-size: 30px; font-weight: 800; color: #FFFFFF; line-height: 1; letter-spacing: -0.03em; text-shadow: 0 2px 6px rgba(0,0,0,0.9);">{risk_score:.0f}</div>
+                <div style="font-size: 30px; font-weight: 800; color: #FFFFFF; line-height: 1; letter-spacing: -0.03em; text-shadow: 0 2px 6px rgba(0,0,0,0.9);">{display_val}</div>
                 <div style="font-size: 11.5px; font-weight: 800; color: {badge_color}; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">{badge_text}</div>
                 <div style="font-size: 11px; font-weight: 600; color: #CBD5E1; text-shadow: 0 1px 3px rgba(0,0,0,0.8); margin-top: 2px;">{sub_text}</div>
             </div>
