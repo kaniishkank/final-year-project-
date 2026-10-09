@@ -77,7 +77,7 @@ class RiskEngine:
         self.student_last_incidents: Dict[int, float] = {}
         self.current_smoothed_score: float = 0.0
         self.last_incident_time: float = 0.0
-        self.incident_cooldown_seconds: float = 3.0
+        self.incident_cooldown_seconds: float = 8.0
 
     def evaluate(
         self,

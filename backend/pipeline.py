@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import math
 import os
+import queue
 import sys
 import threading
 import time
@@ -171,6 +172,12 @@ class EviGuardPipeline:
         self.last_tracked_detections: List[DetectionResult] = []
         self.last_pose_gaze_result: Optional[PoseGazeResult] = None
         self.last_person_count: int = 1
+
+        # Dedicated background video writer worker queue (serializes video encoding to prevent CPU spikes)
+        self._clip_queue: queue.Queue = queue.Queue(maxsize=1)
+        self._clip_worker_running = True
+        self._clip_worker_thread = threading.Thread(target=self._clip_writer_worker, daemon=True)
+        self._clip_worker_thread.start()
 
         # Model warmup pass on a dummy frame to eliminate first-frame JIT initialization latency
         try:
@@ -376,24 +383,39 @@ class EviGuardPipeline:
             fps=self.current_fps
         )
 
-    def _save_evidence_clip_async(self, output_path: str):
-        """Saves current rolling buffer frames into an MP4 clip in a background thread."""
-        frames_snapshot = [f[0].copy() for f in list(self.frame_buffer)]
-        if not frames_snapshot:
-            return
-
-        def _worker(frames: List[np.ndarray], path: str, fps: float):
+    def _clip_writer_worker(self):
+        """Dedicated background daemon worker that serializes video encoding to prevent CPU spikes."""
+        while self._clip_worker_running:
             try:
-                h, w = frames[0].shape[:2]
-                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                writer = cv2.VideoWriter(path, fourcc, max(10.0, fps), (w, h))
-                for f in frames:
-                    writer.write(f)
-                writer.release()
+                item = self._clip_queue.get(timeout=0.5)
+                if item is None:
+                    break
+                frames, path, fps = item
+                if frames and len(frames) > 0:
+                    h, w = frames[0].shape[:2]
+                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    writer = cv2.VideoWriter(path, fourcc, max(8.0, float(fps)), (w, h))
+                    for f in frames:
+                        writer.write(f)
+                    writer.release()
+            except queue.Empty:
+                continue
             except Exception:
                 pass
 
-        threading.Thread(target=_worker, args=(frames_snapshot, output_path, self.current_fps), daemon=True).start()
+    def _save_evidence_clip_async(self, output_path: str):
+        """Queues downsampled evidence frames to the dedicated background video writer."""
+        frames_list = list(self.frame_buffer)
+        if not frames_list:
+            return
+        # Sample every 2nd frame to cut CPU and video encoding time by 50%
+        sampled_frames = [f[0].copy() for f in frames_list[::2]]
+        if not sampled_frames:
+            return
+        try:
+            self._clip_queue.put_nowait((sampled_frames, output_path, max(8.0, self.current_fps / 2.0)))
+        except queue.Full:
+            pass  # Drop extra video tasks if worker is busy to keep streaming silky smooth
 
     def _render_hud(
         self,
