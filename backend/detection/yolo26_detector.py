@@ -33,10 +33,10 @@ class YOLO26Detector(BaseDetector):
         self.nms_free = self.config.get("nms_free", True)
         
         # Specific Confidence Thresholds per object class (calibrated for sensitivity and accuracy)
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.20))
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.55))
         self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.35))
-        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.22))
-        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.20))
+        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.55))
+        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.55))
 
         # Geometric Validation Parameters for Cell Phones (calibrated for far-range detection)
         self.phone_min_area = float(self.config.get("phone_min_area", 80.0))
@@ -247,6 +247,13 @@ class YOLO26Detector(BaseDetector):
                     bh = abs(box[3] - box[1])
                     box_area = bw * bh
                     aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
+
+                    # Filter out any bounding box taking up >40% of frame area or width/height (avoid false positive full-body paper chit triggers)
+                    if cls_name != "person":
+                        if box_area > (0.40 * w * h) or (bw > 0.40 * w and bh > 0.40 * h):
+                            continue
+                        if ("paper" in cls_name or "chit" in cls_name or "cheating" in cls_name) and (bw > 0.40 * w or bh > 0.40 * h):
+                            continue
 
                     # 1. Validation for Cell Phone (Class 67) or Remote/Handheld Device (Class 65)
                     if cls_name in ("cell phone", "phone", "remote") or cls_id in (67, 65):

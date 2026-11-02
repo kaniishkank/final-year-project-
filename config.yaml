@@ -17,10 +17,10 @@ detection:
   model_type: "yolo26"
   model_path: "backend/weights/best.pt"
   imgsz: 416 # High-resolution tensor size for far-range (1.5-2m) object detection
-  confidence_threshold: 0.30 # Calibrated detector baseline
-  phone_confidence_threshold: 0.30 # Calibrated phone detection threshold
-  person_confidence_threshold: 0.30 # Ensures candidate and secondary entities are caught
-  book_confidence_threshold: 0.30 # Calibrated threshold for books/notebooks/notes
+  confidence_threshold: 0.55 # Calibrated detector baseline
+  phone_confidence_threshold: 0.55 # Calibrated phone detection threshold
+  person_confidence_threshold: 0.35 # Ensures candidate and secondary entities are caught
+  book_confidence_threshold: 0.55 # Calibrated threshold for books/notebooks/notes
   enable_paper_heuristic: false # Disabled: pure deep learning detection only to prevent false alerts
   phone_min_area: 80.0 # Responsive area check for distant/small objects
   phone_min_w: 8.0

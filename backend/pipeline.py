@@ -130,12 +130,12 @@ class EviGuardPipeline:
 
         # Initialize Modules
         det_cfg = dict(self.config.get("detection", {}))
-        # Use backend/weights/best.pt with confidence threshold of 0.30
+        # Use backend/weights/best.pt with confidence threshold of 0.55
         det_cfg["model_path"] = "backend/weights/best.pt"
-        det_cfg["confidence_threshold"] = 0.30
-        det_cfg["phone_confidence_threshold"] = 0.30
-        det_cfg["book_confidence_threshold"] = 0.30
-        det_cfg["person_confidence_threshold"] = 0.30
+        det_cfg["confidence_threshold"] = 0.55
+        det_cfg["phone_confidence_threshold"] = 0.55
+        det_cfg["book_confidence_threshold"] = 0.55
+        det_cfg["person_confidence_threshold"] = 0.35
         model_type = det_cfg.get("model_type", "yolo26")
         self.detector = DetectorFactory.create_detector(model_type, det_cfg)
         
@@ -236,6 +236,19 @@ class EviGuardPipeline:
             future_pose = self.executor.submit(self.pose_gaze.estimate, frame)
 
             detections = future_det.result()
+            # Filter out any bounding box whose area or dimensions exceed 40% of the entire frame to avoid false positive full-body paper chit triggers
+            filtered_detections = []
+            for d in detections:
+                if d.class_name != "person":
+                    bw = abs(d.box[2] - d.box[0])
+                    bh = abs(d.box[3] - d.box[1])
+                    if (bw * bh > 0.40 * w * h) or (bw > 0.40 * w and bh > 0.40 * h):
+                        continue
+                    if any(k in d.class_name.lower() for k in ("paper", "chit", "cheating")) and (bw > 0.40 * w or bh > 0.40 * h):
+                        continue
+                filtered_detections.append(d)
+            detections = filtered_detections
+
             pose_gaze_result = future_pose.result()
 
             tracked_detections = self.tracker.update(detections)
