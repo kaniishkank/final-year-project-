@@ -65,11 +65,15 @@ class ReasonGenerator:
         confidences: List[float] = []
 
         # 1. Device Detections (Phone)
-        phones = [d for d in detections if d.class_name in ("cell phone", "phone")]
+        phones = [
+            d for d in detections 
+            if (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (4, 67))
+            and d.confidence > 0.40
+        ]
         if phones:
             p_conf = max(p.confidence for p in phones)
             confidences.append(p_conf)
-            headlines.append("Unauthorized Electronic Device (Phone)")
+            headlines.append("VIOLATION: MOBILE_PHONE_DETECTED")
             sentences.append(
                 f"An unauthorized mobile device was detected in {candidate_name}'s workspace "
                 f"with {p_conf * 100:.1f}% model confidence."
@@ -105,8 +109,8 @@ class ReasonGenerator:
             )
             actions.append("Check if candidate left the workstation or if camera connection was blocked.")
 
-        # 5. Hand / Finger Signalling Malpractice
-        if "hand_signalling" in factors or getattr(pose_gaze, "hand_signalling", False):
+        # 5. Hand / Finger Signalling Malpractice (suppressed if phone detected)
+        if ("hand_signalling" in factors or getattr(pose_gaze, "hand_signalling", False)) and not phones:
             headlines.append("Suspicious Hand / Finger Signalling Detected")
             sentences.append(
                 f"Candidate exhibited sustained suspicious hand/finger signalling "

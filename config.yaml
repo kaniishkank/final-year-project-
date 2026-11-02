@@ -18,7 +18,7 @@ detection:
   model_path: "backend/weights/best.pt"
   imgsz: 416 # High-resolution tensor size for far-range (1.5-2m) object detection
   confidence_threshold: 0.55 # Calibrated detector baseline
-  phone_confidence_threshold: 0.55 # Calibrated phone detection threshold
+  phone_confidence_threshold: 0.40 # Calibrated phone detection threshold (>0.40)
   person_confidence_threshold: 0.35 # Ensures candidate and secondary entities are caught
   book_confidence_threshold: 0.55 # Calibrated threshold for books/notebooks/notes
   enable_paper_heuristic: false # Disabled: pure deep learning detection only to prevent false alerts

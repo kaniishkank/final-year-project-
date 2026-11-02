@@ -94,11 +94,12 @@ class RiskEngine:
         # 1. Phone Detection (score 70-95 range -> CRITICAL)
         phone_detections = [
             d for d in detections 
-            if d.class_name in ("cell phone", "phone") and d.confidence >= 0.40
+            if (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (4, 67)) and d.confidence > 0.40
         ]
         if phone_detections:
+            active_violations.append("VIOLATION: MOBILE_PHONE_DETECTED")
             active_violations.append("PHONE_DETECTED")
-            factors["cell_phone"] = self.w_phone
+            factors["cell_phone"] = max(self.w_phone, 95.0)
             is_critical_direct_trigger = True
 
         # 2. Smart Watch & Electronic Gadgets (score 70-95 range -> CRITICAL)
@@ -134,11 +135,12 @@ class RiskEngine:
             if getattr(pose_gaze, "absence_frames", 0) >= 15:
                 is_critical_direct_trigger = True
 
-        # 6. Hand Raised + Signalling (60 <= score <= 70 -> SUSPICIOUS)
-        if getattr(pose_gaze, "hand_signalling", False) or getattr(pose_gaze, "hand_gesture_label", ""):
-            label = getattr(pose_gaze, "hand_gesture_label", "FINGER SIGNALLING") or "FINGER SIGNALLING"
-            active_violations.append(f"FLAG: {label}")
-            factors["hand_signalling"] = self.w_hand_signalling
+        # 6. Hand Raised + Signalling (60 <= score <= 70 -> SUSPICIOUS, suppressed if phone is detected)
+        if not phone_detections:
+            if getattr(pose_gaze, "hand_signalling", False) or getattr(pose_gaze, "hand_gesture_label", ""):
+                label = getattr(pose_gaze, "hand_gesture_label", "FINGER SIGNALLING") or "FINGER SIGNALLING"
+                active_violations.append(f"FLAG: {label}")
+                factors["hand_signalling"] = self.w_hand_signalling
 
         # 7. Pose & Gaze Classification (Fair Rubric):
         # - Desk Writing (looking down): NORMAL, Score = 0 (unless accompanied by suspicious hand gestures)
@@ -219,7 +221,10 @@ class RiskEngine:
         primary_violation = None
 
         if active_violations:
-            primary_violation = max(factors.keys(), key=lambda k: factors[k], default=active_violations[0])
+            if phone_detections:
+                primary_violation = "VIOLATION: MOBILE_PHONE_DETECTED"
+            else:
+                primary_violation = max(factors.keys(), key=lambda k: factors[k], default=active_violations[0])
             should_trigger = is_critical_direct_trigger or (smoothed_score >= self.critical_min)
             if should_trigger and (now - last_incident) >= self.incident_cooldown_seconds:
                 is_incident_triggered = True

@@ -33,7 +33,7 @@ class YOLO26Detector(BaseDetector):
         self.nms_free = self.config.get("nms_free", True)
         
         # Specific Confidence Thresholds per object class (calibrated for sensitivity and accuracy)
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.55))
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.40))
         self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.35))
         self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.55))
         self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.55))
@@ -224,7 +224,7 @@ class YOLO26Detector(BaseDetector):
             results = self.model.predict(
                 source=frame,
                 imgsz=self.imgsz,
-                conf=self.default_conf_threshold,
+                conf=min(self.default_conf_threshold, self.phone_conf_threshold, 0.35),
                 iou=self.iou_threshold,
                 verbose=False
             )
@@ -255,51 +255,56 @@ class YOLO26Detector(BaseDetector):
                         if ("paper" in cls_name or "chit" in cls_name or "cheating" in cls_name) and (bw > 0.40 * w or bh > 0.40 * h):
                             continue
 
-                    # 1. Validation for Cell Phone (Class 67) or Remote/Handheld Device (Class 65)
-                    if cls_name in ("cell phone", "phone", "remote") or cls_id in (67, 65):
-                        if conf < self.phone_conf_threshold:
-                            continue
-
-                        rx1, ry1, rx2, ry2 = [int(v) for v in box]
-                        rx1, ry1 = max(0, rx1), max(0, ry1)
-                        rx2, ry2 = min(w, rx2), min(h, ry2)
-                        is_paper_chit = False
-                        is_cloth_noise = False
-                        is_large_book = False
-
-                        # Large rectangular objects (bound textbooks/notebooks: area >= 15000 or dimension >= 150)
-                        if box_area >= 15000.0 or max(bw, bh) >= 150.0:
-                            is_large_book = True
-
-                        if rx2 > rx1 and ry2 > ry1:
-                            roi_bgr = frame[ry1:ry2, rx1:rx2]
-                            roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
-                            roi_hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
-                            mean_b = float(np.mean(roi_gray))
-                            mean_sat = float(np.mean(roi_hsv[:, :, 1]))
-
-                            if is_large_book:
-                                pass  # Will be mapped to book
-                            # A. Small paper slip / exam chit: Neutral matte surface with low saturation and light reflectance
-                            elif mean_b >= 88.0 and mean_sat <= 62.0:
-                                is_paper_chit = True
-                            # B. Highly saturated fabric / clothing noise mistakenly flagged as phone
-                            elif mean_sat > 75.0 and conf < 0.38:
-                                is_cloth_noise = True
-
-                        if is_cloth_noise:
-                            continue
-                        elif is_large_book:
-                            cls_name = "book"
-                            cls_id = 73
-                        elif is_paper_chit:
-                            cls_name = "unauthorized paper/notes"
-                            cls_id = 73
-                        else:
-                            if not self._is_valid_phone_geometry(box):
-                                continue
+                    # 1. Validation for Cell Phone (Class 67 in COCO, or Class 4 / 'Phone' in best.pt)
+                    if cls_name in ("cell phone", "phone", "remote") or cls_id in (67, 65, 4):
+                        # Prioritize class Phone (or class ID 4) with confidence > 0.40 directly
+                        if (cls_id == 4 or "phone" in cls_name) and conf > 0.40:
                             cls_name = "cell phone"
-                            cls_id = 67
+                            cls_id = 4
+                        else:
+                            if conf < self.phone_conf_threshold:
+                                continue
+
+                            rx1, ry1, rx2, ry2 = [int(v) for v in box]
+                            rx1, ry1 = max(0, rx1), max(0, ry1)
+                            rx2, ry2 = min(w, rx2), min(h, ry2)
+                            is_paper_chit = False
+                            is_cloth_noise = False
+                            is_large_book = False
+
+                            # Large rectangular objects (bound textbooks/notebooks: area >= 15000 or dimension >= 150)
+                            if box_area >= 15000.0 or max(bw, bh) >= 150.0:
+                                is_large_book = True
+
+                            if rx2 > rx1 and ry2 > ry1:
+                                roi_bgr = frame[ry1:ry2, rx1:rx2]
+                                roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
+                                roi_hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
+                                mean_b = float(np.mean(roi_gray))
+                                mean_sat = float(np.mean(roi_hsv[:, :, 1]))
+
+                                if is_large_book:
+                                    pass  # Will be mapped to book
+                                # A. Small paper slip / exam chit: Neutral matte surface with low saturation and light reflectance
+                                elif mean_b >= 88.0 and mean_sat <= 62.0:
+                                    is_paper_chit = True
+                                # B. Highly saturated fabric / clothing noise mistakenly flagged as phone
+                                elif mean_sat > 75.0 and conf < 0.38:
+                                    is_cloth_noise = True
+
+                            if is_cloth_noise:
+                                continue
+                            elif is_large_book:
+                                cls_name = "book"
+                                cls_id = 73
+                            elif is_paper_chit:
+                                cls_name = "unauthorized paper/notes"
+                                cls_id = 73
+                            else:
+                                if not self._is_valid_phone_geometry(box):
+                                    continue
+                                cls_name = "cell phone"
+                                cls_id = 67
 
                     # 2. Validation for Book / Paper / Notes (COCO Class 73)
                     elif cls_name in ("book", "notebook", "paper") or cls_id == 73:
@@ -404,10 +409,16 @@ class YOLO26Detector(BaseDetector):
                         )
                     )
 
-            # Integrate Paper Sheet Heuristic Detections if explicitly enabled
-            if self.enable_paper_heuristic:
-                heuristic_papers = self._detect_white_paper_sheets(frame, person_boxes=person_boxes)
-                detections.extend(heuristic_papers)
+            # If YOLO detects class Phone (or class ID 4) with confidence > 0.40, suppress any hand gesture / finger signalling flags on that frame
+            has_phone_detected = any(
+                (d.class_name in ("cell phone", "phone") or d.class_id in (4, 67)) and d.confidence > 0.40
+                for d in detections
+            )
+            if has_phone_detected:
+                detections = [
+                    d for d in detections 
+                    if d.class_name not in ("hand_signalling", "hand-gestures", "hand_gestures") and d.class_id not in (2, 99)
+                ]
 
             return detections
 

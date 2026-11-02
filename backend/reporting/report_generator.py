@@ -29,6 +29,8 @@ from backend.db.models import DatabaseManager, ExamSession, Incident
 def _format_violation_name(raw_name: str) -> str:
     """Formats raw violation string to clean human-readable category name."""
     mapping = {
+        "VIOLATION: MOBILE_PHONE_DETECTED": "Mobile Phone Detected",
+        "MOBILE_PHONE_DETECTED": "Mobile Phone Detected",
         "PHONE_DETECTED": "Mobile Phone Detected",
         "UNAUTHORIZED_MATERIAL": "Unauthorized Paper / Notes",
         "UNAUTHORIZED_PAPER": "Unauthorized Paper / Notes",
