@@ -129,7 +129,13 @@ class EviGuardPipeline:
         self.config = self._load_config(config_path)
 
         # Initialize Modules
-        det_cfg = self.config.get("detection", {})
+        det_cfg = dict(self.config.get("detection", {}))
+        # Use backend/weights/best.pt with confidence threshold of 0.30
+        det_cfg["model_path"] = "backend/weights/best.pt"
+        det_cfg["confidence_threshold"] = 0.30
+        det_cfg["phone_confidence_threshold"] = 0.30
+        det_cfg["book_confidence_threshold"] = 0.30
+        det_cfg["person_confidence_threshold"] = 0.30
         model_type = det_cfg.get("model_type", "yolo26")
         self.detector = DetectorFactory.create_detector(model_type, det_cfg)
         
@@ -252,13 +258,16 @@ class EviGuardPipeline:
                 person_count = 1 + len(valid_secondaries)
                 self.active_student_ids = [d.track_id for d in person_dets if d.track_id is not None] or [1]
             else:
-                person_count = 0
+                face_cnt = getattr(pose_gaze_result, "face_count", 0) if pose_gaze_result else 0
+                person_count = max(1, face_cnt) if (pose_gaze_result and pose_gaze_result.face_detected) else 0
                 self.active_student_ids = [1]
 
             # 5.1 & 5.2: Update temporal voting buffers on each tracked student
-            has_phone = any(d.class_name == "cell phone" for d in tracked_detections)
-            has_notes = any(d.class_name in ("book", "unauthorized paper/notes", "notes") for d in tracked_detections)
-            has_gesture = getattr(pose_gaze_result, "hand_signalling", False)
+            has_phone = any(d.class_name in ("cell phone", "phone") for d in tracked_detections)
+            has_notes = any(d.class_name in ("book", "unauthorized paper/notes", "notes", "cheating") for d in tracked_detections)
+            has_gesture = getattr(pose_gaze_result, "hand_signalling", False) or any(d.class_name == "hand_signalling" for d in tracked_detections)
+            if any(d.class_name == "hand_signalling" for d in tracked_detections) and pose_gaze_result:
+                pose_gaze_result.hand_signalling = True
 
             for t_id in self.active_student_ids:
                 track = self.tracker.get_track(t_id)
@@ -448,6 +457,12 @@ class EviGuardPipeline:
             elif "laptop" in cls_name:
                 color = (255, 0, 255)
                 label = f"ALERT: Laptop ({det.confidence*100:.0f}%)"
+            elif "cheating" in cls_name:
+                color = (0, 0, 255)
+                label = f"ALERT: Cheating ({det.confidence*100:.0f}%)"
+            elif "hand_signalling" in cls_name:
+                color = (0, 165, 255)
+                label = f"ALERT: Hand Gesture ({det.confidence*100:.0f}%)"
             elif "person" in cls_name:
                 t_id_str = f" [ID:{det.track_id}]" if det.track_id is not None else ""
                 if det is primary_person or len(person_dets) == 1:
@@ -474,6 +489,20 @@ class EviGuardPipeline:
             (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
             cv2.rectangle(frame, (x1, max(0, y1 - 20)), (x1 + lw + 8, max(0, y1)), color, -1)
             cv2.putText(frame, label, (x1 + 4, max(0, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+
+        # Draw candidate box from face detection if detector is an object-only model
+        if not person_dets and pose_gaze.face_box:
+            fx1, fy1, fx2, fy2 = [int(v) for v in pose_gaze.face_box]
+            bx1 = max(0, fx1 - int((fx2 - fx1) * 0.7))
+            by1 = max(0, fy1 - int((fy2 - fy1) * 0.25))
+            bx2 = min(w, fx2 + int((fx2 - fx1) * 0.7))
+            by2 = min(h, fy2 + int((fy2 - fy1) * 2.6))
+            color = (255, 200, 0)
+            label = "Student [ID:1] (Face Verified)"
+            cv2.rectangle(frame, (bx1, by1), (bx2, by2), color, 2)
+            (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            cv2.rectangle(frame, (bx1, max(0, by1 - 20)), (bx1 + lw + 8, max(0, by1)), color, -1)
+            cv2.putText(frame, label, (bx1 + 4, max(0, by1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
 
         # 2. Draw Hand Signalling Bounding Boxes
         if getattr(pose_gaze, "hand_boxes", None):

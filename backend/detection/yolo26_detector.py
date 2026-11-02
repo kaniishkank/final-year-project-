@@ -355,14 +355,33 @@ class YOLO26Detector(BaseDetector):
                             cls_name = "laptop"
                             cls_id = 63
 
-                    # 4. Validation for Person (Class 0)
-                    elif cls_name == "person" or cls_id == 0:
+                    # 4. Validation for Person (Class 0 in COCO)
+                    elif cls_name == "person" or (cls_id == 0 and "cheating" not in cls_name):
                         if conf < self.person_conf_threshold:
                             continue
                         cls_name = "person"
                         person_boxes.append(box)
 
-                    # 5. Other Target Objects
+                    # 5. Custom Model Classes (best.pt)
+                    elif cls_name in ("non-cheating", "non_cheating"):
+                        continue
+                    elif cls_name in ("cheating-paper", "cheating_paper", "paper"):
+                        if conf < self.book_conf_threshold:
+                            continue
+                        cls_name = "unauthorized paper/notes"
+                        cls_id = 73
+                    elif cls_name in ("cheating",):
+                        if conf < self.default_conf_threshold:
+                            continue
+                        cls_name = "unauthorized paper/notes"
+                        cls_id = 73
+                    elif cls_name in ("hand-gestures", "hand_gestures"):
+                        if conf < self.default_conf_threshold:
+                            continue
+                        cls_name = "hand_signalling"
+                        cls_id = 99
+
+                    # 6. Other Target Objects
                     else:
                         if self.target_classes and cls_name not in self.target_classes:
                             continue
