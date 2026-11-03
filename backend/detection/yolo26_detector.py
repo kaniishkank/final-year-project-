@@ -27,7 +27,7 @@ class YOLO26Detector(BaseDetector):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__(config)
-        self.model_path = self.config.get("model_path", "yolo26n.pt")
+        self.model_path = self.config.get("model_path", "backend/weights/best.pt")
         self.iou_threshold = float(self.config.get("iou_threshold", 0.45))
         self.imgsz = int(self.config.get("imgsz", 416))
         self.nms_free = self.config.get("nms_free", True)
@@ -58,8 +58,10 @@ class YOLO26Detector(BaseDetector):
         try:
             from ultralytics import YOLO
             target = self.model_path if os.path.exists(self.model_path) else (
-                "yolo26n.pt" if os.path.exists("yolo26n.pt") else (
-                    "yolov8n.pt" if os.path.exists("yolov8n.pt") else self.model_path
+                "backend/weights/best.pt" if os.path.exists("backend/weights/best.pt") else (
+                    "yolo26n.pt" if os.path.exists("yolo26n.pt") else (
+                        "yolov8n.pt" if os.path.exists("yolov8n.pt") else self.model_path
+                    )
                 )
             )
             logger.info(f"Loading YOLO26 model from {target}...")
@@ -255,9 +257,9 @@ class YOLO26Detector(BaseDetector):
                         if ("paper" in cls_name or "chit" in cls_name or "cheating" in cls_name) and (bw > 0.40 * w or bh > 0.40 * h):
                             continue
 
-                    # 1. Validation for Cell Phone (Class 67 in COCO, or Class 4 / 'Phone' in best.pt)
-                    if cls_name in ("cell phone", "phone", "remote") or cls_id in (67, 65, 4):
-                        # Prioritize class Phone (or class ID 4) with confidence > 0.40 directly
+                    # 1. Validation for Cell Phone (Class 67 in COCO, or Class 4 / Class 0 'Mobile-phone' in best.pt)
+                    if "phone" in cls_name or cls_name in ("cell phone", "phone", "remote", "mobile-phone") or cls_id in (67, 65, 4):
+                        # Prioritize class Phone / Mobile-phone (or class ID 4) with confidence > 0.40 directly
                         if (cls_id == 4 or "phone" in cls_name) and conf > 0.40:
                             cls_name = "cell phone"
                             cls_id = 4
@@ -368,7 +370,7 @@ class YOLO26Detector(BaseDetector):
                             cls_id = 63
 
                     # 4. Validation for Person (Class 0 in COCO)
-                    elif cls_name == "person" or (cls_id == 0 and "cheating" not in cls_name):
+                    elif cls_name == "person" or (cls_id == 0 and "cheating" not in cls_name and "phone" not in cls_name):
                         if conf < self.person_conf_threshold:
                             continue
                         cls_name = "person"
