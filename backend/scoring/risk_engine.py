@@ -105,7 +105,7 @@ class RiskEngine:
         # 2. Smart Watch & Electronic Gadgets (score 70-95 range -> CRITICAL)
         watch_detections = [
             d for d in detections 
-            if d.class_name in ("smart watch", "smartwatch", "watch", "remote", "laptop") and d.confidence >= 0.40
+            if d.class_name in ("smart watch", "smartwatch", "watch", "remote", "laptop", "headphone", "headphones", "tv") and d.confidence >= 0.40
         ]
         if watch_detections:
             active_violations.append("ELECTRONIC_DEVICE_DETECTED")

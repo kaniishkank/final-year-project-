@@ -29,14 +29,14 @@ class YOLO26Detector(BaseDetector):
         super().__init__(config)
         self.model_path = self.config.get("model_path", "backend/weights/best.pt")
         self.iou_threshold = float(self.config.get("iou_threshold", 0.45))
-        self.imgsz = int(self.config.get("imgsz", 416))
+        self.imgsz = int(self.config.get("imgsz", 640))
         self.nms_free = self.config.get("nms_free", True)
         
         # Specific Confidence Thresholds per object class (calibrated for sensitivity and accuracy)
         self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.40))
         self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.35))
-        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.55))
-        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.55))
+        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.40))
+        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.40))
 
         # Geometric Validation Parameters for Cell Phones (calibrated for far-range detection)
         self.phone_min_area = float(self.config.get("phone_min_area", 80.0))
@@ -226,7 +226,7 @@ class YOLO26Detector(BaseDetector):
             results = self.model.predict(
                 source=frame,
                 imgsz=self.imgsz,
-                conf=min(self.default_conf_threshold, self.phone_conf_threshold, 0.35),
+                conf=self.default_conf_threshold,
                 iou=self.iou_threshold,
                 verbose=False
             )
@@ -369,14 +369,20 @@ class YOLO26Detector(BaseDetector):
                             cls_name = "laptop"
                             cls_id = 63
 
-                    # 4. Validation for Person (Class 0 in COCO)
-                    elif cls_name == "person" or (cls_id == 0 and "cheating" not in cls_name and "phone" not in cls_name):
+                    # 4. Validation for Person (Class 0 in COCO, or Class 4 in custom model)
+                    elif cls_name == "person" or (cls_id == 0 and cls_name not in ("cheating", "phone", "cell phone", "book")):
                         if conf < self.person_conf_threshold:
                             continue
                         cls_name = "person"
                         person_boxes.append(box)
 
                     # 5. Custom Model Classes (best.pt)
+                    elif cls_name in ("headphone", "headphones", "earphone", "earphones", "tv"):
+                        if conf < self.default_conf_threshold:
+                            continue
+                        cls_name = "headphone" if ("headphone" in cls_name or "earphone" in cls_name) else "tv"
+                        cls_id = 85 if cls_name == "headphone" else 62
+
                     elif cls_name in ("non-cheating", "non_cheating"):
                         continue
                     elif cls_name in ("cheating-paper", "cheating_paper", "paper"):

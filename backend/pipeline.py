@@ -130,11 +130,12 @@ class EviGuardPipeline:
 
         # Initialize Modules
         det_cfg = dict(self.config.get("detection", {}))
-        # Use backend/weights/best.pt with confidence threshold of 0.55
+        # Use backend/weights/best.pt with confidence threshold of 0.40 and imgsz 640
         det_cfg["model_path"] = "backend/weights/best.pt"
-        det_cfg["confidence_threshold"] = 0.55
+        det_cfg["imgsz"] = 640
+        det_cfg["confidence_threshold"] = 0.40
         det_cfg["phone_confidence_threshold"] = 0.40
-        det_cfg["book_confidence_threshold"] = 0.55
+        det_cfg["book_confidence_threshold"] = 0.40
         det_cfg["person_confidence_threshold"] = 0.35
         model_type = det_cfg.get("model_type", "yolo26")
         self.detector = DetectorFactory.create_detector(model_type, det_cfg)
@@ -549,6 +550,12 @@ class EviGuardPipeline:
             elif "hand_signalling" in cls_name:
                 color = (0, 165, 255)
                 label = f"ALERT: Hand Gesture ({det.confidence*100:.0f}%)"
+            elif "headphone" in cls_name or "earphone" in cls_name:
+                color = (0, 0, 255)
+                label = f"ALERT: Headphone / Earphone ({det.confidence*100:.0f}%)"
+            elif "tv" in cls_name or "monitor" in cls_name:
+                color = (255, 0, 255)
+                label = f"ALERT: Secondary Display ({det.confidence*100:.0f}%)"
             elif "person" in cls_name:
                 t_id_str = f" [ID:{det.track_id}]" if det.track_id is not None else ""
                 if det is primary_person or len(person_dets) == 1:
