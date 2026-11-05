@@ -130,17 +130,17 @@ class EviGuardPipeline:
 
         # Initialize Modules
         det_cfg = dict(self.config.get("detection", {}))
-        # Use standard yolov8m.pt weights with CLAHE pre-processing, conf=0.18, iou=0.45, imgsz=640, augment=True
+        # Use standard yolov8m.pt weights with CLAHE pre-processing, conf=0.28, iou=0.28, imgsz=640, augment=False
         det_cfg["model_path"] = "yolov8m.pt"
         det_cfg["imgsz"] = 640
-        det_cfg["iou_threshold"] = 0.45
-        det_cfg["augment"] = True
+        det_cfg["iou_threshold"] = 0.28
+        det_cfg["augment"] = False
         det_cfg["enable_clahe"] = True
         det_cfg["enable_paper_heuristic"] = True
-        det_cfg["confidence_threshold"] = 0.18
-        det_cfg["phone_confidence_threshold"] = 0.18
-        det_cfg["book_confidence_threshold"] = 0.18
-        det_cfg["person_confidence_threshold"] = 0.18
+        det_cfg["confidence_threshold"] = 0.28
+        det_cfg["phone_confidence_threshold"] = 0.28
+        det_cfg["book_confidence_threshold"] = 0.28
+        det_cfg["person_confidence_threshold"] = 0.28
         model_type = det_cfg.get("model_type", "yolo26")
         self.detector = DetectorFactory.create_detector(model_type, det_cfg)
         
@@ -256,11 +256,11 @@ class EviGuardPipeline:
 
             pose_gaze_result = future_pose.result()
 
-            # Detection logic order: if Phone (or class ID 1, 67) detected with conf >= 0.18, suppress hand gesture / finger signalling flags
+            # Detection logic order: if Phone (or class ID 1, 67) detected with conf >= 0.28, suppress hand gesture / finger signalling flags
             has_phone_detected = any(
                 (d.class_name.lower() in ("phone", "cell phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
                 and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
-                and d.confidence >= 0.18
+                and d.confidence >= 0.28
                 for d in detections
             )
             if has_phone_detected:
@@ -303,7 +303,7 @@ class EviGuardPipeline:
             has_phone = any(
                 (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
                 and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
-                and d.confidence >= 0.18
+                and d.confidence >= 0.28
                 for d in tracked_detections
             )
             has_notes = any(d.class_name in ("book", "unauthorized paper/notes", "notes", "cheating", "paper") for d in tracked_detections)
@@ -337,7 +337,7 @@ class EviGuardPipeline:
             has_phone = any(
                 (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
                 and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
-                and d.confidence >= 0.18
+                and d.confidence >= 0.28
                 for d in tracked_detections
             )
             if has_phone:
@@ -365,7 +365,7 @@ class EviGuardPipeline:
         has_phone = any(
             (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
             and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
-            and d.confidence >= 0.18
+            and d.confidence >= 0.28
             for d in tracked_detections
         )
         has_notes = any(

@@ -41,23 +41,70 @@ def apply_clahe_preprocessing(frame: np.ndarray) -> np.ndarray:
         return frame
 
 
+def apply_nms_suppression(detections: List[DetectionResult], iou_threshold: float = 0.28) -> List[DetectionResult]:
+    """Class-aware Non-Maximum Suppression to eliminate duplicate / redundant bounding boxes on identical items."""
+    if not detections or len(detections) <= 1:
+        return detections
+
+    filtered: List[DetectionResult] = []
+    # Sort detections by confidence descending
+    sorted_dets = sorted(detections, key=lambda d: d.confidence, reverse=True)
+
+    while sorted_dets:
+        best = sorted_dets.pop(0)
+        filtered.append(best)
+
+        bx1, by1, bx2, by2 = best.box
+        best_area = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+
+        remaining = []
+        for d in sorted_dets:
+            # Group compatible classes together (e.g. book & paper notes, phone variants)
+            is_same_category = (
+                d.class_name == best.class_name
+                or (d.class_name in ("book", "unauthorized paper/notes") and best.class_name in ("book", "unauthorized paper/notes"))
+                or (d.class_name in ("cell phone", "phone") and best.class_name in ("cell phone", "phone"))
+            )
+
+            dx1, dy1, dx2, dy2 = d.box
+            d_area = max(0.0, dx2 - dx1) * max(0.0, dy2 - dy1)
+
+            ix1, iy1 = max(bx1, dx1), max(by1, dy1)
+            ix2, iy2 = min(bx2, dx2), min(by2, dy2)
+            iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+            inter = iw * ih
+            union = best_area + d_area - inter + 1e-6
+            iou = inter / union
+
+            # Containment check (smaller box inside larger box of same category)
+            containment = inter / (min(best_area, d_area) + 1e-6)
+
+            if is_same_category and (iou > iou_threshold or containment > 0.60):
+                continue
+            remaining.append(d)
+
+        sorted_dets = remaining
+
+    return filtered
+
+
 class YOLO26Detector(BaseDetector):
     """Real-time object detector powered by Ultralytics YOLOv8m with OpenCV CLAHE pre-processing."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__(config)
         self.model_path = self.config.get("model_path", "yolov8m.pt")
-        self.iou_threshold = float(self.config.get("iou_threshold", 0.45))
+        self.iou_threshold = float(self.config.get("iou_threshold", 0.28))
         self.imgsz = int(self.config.get("imgsz", 640))
-        self.augment = bool(self.config.get("augment", True))
+        self.augment = bool(self.config.get("augment", False))
         self.enable_clahe = bool(self.config.get("enable_clahe", True))
         self.nms_free = self.config.get("nms_free", True)
         
-        # Specific Confidence Thresholds per object class (calibrated to 0.18 for low-contrast paper chit capture)
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.18))
-        self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.18))
-        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.18))
-        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.18))
+        # Specific Confidence Thresholds per object class (calibrated to 0.28 to filter duplicate noise while retaining real items)
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.28))
+        self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.28))
+        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.28))
+        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.28))
 
         # Geometric Validation Parameters for Cell Phones (calibrated for far-range detection)
         self.phone_min_area = float(self.config.get("phone_min_area", 80.0))
@@ -250,13 +297,13 @@ class YOLO26Detector(BaseDetector):
             # Apply OpenCV CLAHE pre-processing on Luminance channel
             proc_frame = self.apply_clahe(frame) if self.enable_clahe else frame
 
-            # Single-pass high-speed YOLO inference with yolov8m.pt, conf=0.18, iou=0.45, imgsz=640, augment=True
+            # Single-pass high-speed YOLO inference with yolov8m.pt, conf=0.28, iou=0.28, imgsz=640, augment=False
             results = self.model.predict(
                 source=proc_frame,
                 imgsz=640,
-                conf=0.18,
-                iou=0.45,
-                augment=True,
+                conf=0.28,
+                iou=0.28,
+                augment=False,
                 verbose=False
             )
 
@@ -453,11 +500,14 @@ class YOLO26Detector(BaseDetector):
                     if not covered:
                         detections.append(pd)
 
-            # If YOLO detects class Phone (or class ID 1, 67) with confidence >= 0.18, suppress any hand gesture / finger signalling flags on that frame
+            # Apply Class-Aware Non-Maximum Suppression to eliminate duplicate / multi-scale bounding boxes
+            detections = apply_nms_suppression(detections, iou_threshold=self.iou_threshold)
+
+            # If YOLO detects class Phone (or class ID 1, 67) with confidence >= 0.28, suppress any hand gesture / finger signalling flags on that frame
             has_phone_detected = any(
                 (d.class_name in ("cell phone", "phone") or d.class_id in (1, 67) or "phone" in d.class_name.lower())
                 and d.class_name not in ("book", "unauthorized paper/notes", "notes")
-                and d.confidence >= 0.18
+                and d.confidence >= 0.28
                 for d in detections
             )
             if has_phone_detected:
