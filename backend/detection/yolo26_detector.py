@@ -33,10 +33,10 @@ class YOLO26Detector(BaseDetector):
         self.nms_free = self.config.get("nms_free", True)
         
         # Specific Confidence Thresholds per object class (calibrated for sensitivity and accuracy)
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.40))
-        self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.35))
-        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.40))
-        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.40))
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.20))
+        self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.20))
+        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.20))
+        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.20))
 
         # Geometric Validation Parameters for Cell Phones (calibrated for far-range detection)
         self.phone_min_area = float(self.config.get("phone_min_area", 80.0))
@@ -225,9 +225,9 @@ class YOLO26Detector(BaseDetector):
             # Single-pass high-speed YOLO26 inference
             results = self.model.predict(
                 source=frame,
-                imgsz=self.imgsz,
-                conf=self.default_conf_threshold,
-                iou=self.iou_threshold,
+                imgsz=640,
+                conf=0.20,
+                iou=0.45,
                 verbose=False
             )
 
@@ -257,12 +257,12 @@ class YOLO26Detector(BaseDetector):
                         if ("paper" in cls_name or "chit" in cls_name or "cheating" in cls_name) and (bw > 0.40 * w or bh > 0.40 * h):
                             continue
 
-                    # 1. Validation for Cell Phone (Class 67 in COCO, or Class 4 / Class 0 'Mobile-phone' in best.pt)
-                    if "phone" in cls_name or cls_name in ("cell phone", "phone", "remote", "mobile-phone") or cls_id in (67, 65, 4):
-                        # Prioritize class Phone / Mobile-phone (or class ID 4) with confidence > 0.40 directly
-                        if (cls_id == 4 or "phone" in cls_name) and conf > 0.40:
+                    # 1. Validation for Cell Phone (Class 67 in COCO, or Class 1 / Class 4 / 'cell phone' in best.pt)
+                    if "phone" in cls_name or cls_name in ("cell phone", "phone", "remote", "mobile-phone") or cls_id in (67, 65, 4, 1):
+                        # Prioritize class Phone / Mobile-phone (or class ID 1 or 4) with confidence >= 0.20 directly
+                        if (cls_id in (1, 4) or "phone" in cls_name) and conf >= 0.20:
                             cls_name = "cell phone"
-                            cls_id = 4
+                            cls_id = 1
                         else:
                             if conf < self.phone_conf_threshold:
                                 continue
@@ -417,9 +417,9 @@ class YOLO26Detector(BaseDetector):
                         )
                     )
 
-            # If YOLO detects class Phone (or class ID 4) with confidence > 0.40, suppress any hand gesture / finger signalling flags on that frame
+            # If YOLO detects class Phone (or class ID 1, 4, 67) with confidence >= 0.20, suppress any hand gesture / finger signalling flags on that frame
             has_phone_detected = any(
-                (d.class_name in ("cell phone", "phone") or d.class_id in (4, 67)) and d.confidence > 0.40
+                (d.class_name in ("cell phone", "phone") or d.class_id in (1, 4, 67) or "phone" in d.class_name.lower()) and d.confidence >= 0.20
                 for d in detections
             )
             if has_phone_detected:
