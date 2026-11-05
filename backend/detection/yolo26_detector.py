@@ -165,6 +165,106 @@ class YOLO26Detector(BaseDetector):
 
         return True
 
+    def _is_valid_exam_chit(
+        self,
+        frame: np.ndarray,
+        box: List[float],
+        person_boxes: Optional[List[List[float]]] = None
+    ) -> bool:
+        """Strictly validates candidate Exam Chit / Notes detections to eliminate doors,
+
+        door frames, and metallic door handles/latches while accurately preserving real paper chits.
+        """
+        if frame is None or frame.size == 0:
+            return False
+
+        h, w = frame.shape[:2]
+        x1, y1, x2, y2 = [int(v) for v in box]
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(w, x2), min(h, y2)
+        bw = x2 - x1
+        bh = y2 - y1
+        area = bw * bh
+
+        # 1. Tighten Chit Geometry Rules:
+        # Discard paper detections that have area under 25 x 25 pixels (area < 625 px^2) or dimension < 22 px
+        if bw < 22 or bh < 22 or area < 600:
+            return False
+
+        # Discard long, narrow handle ratios (width-to-height ratio > 3.5 or < 0.28)
+        wh_ratio = float(bw) / float(bh + 1e-6)
+        if wh_ratio > 3.5 or wh_ratio < 0.28:
+            return False
+
+        # 2. Door Exclusion Zone & Background Perimeter Mask:
+        # Filter out detections that occur in the upper/background perimeter regions of the video frame
+        # where doors, door frames, and top latches reside, unless in active student workspace
+        cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+        is_upper_door_zone = cy < (0.32 * h)
+        is_side_door_perimeter = (cx < 0.10 * w or cx > 0.90 * w) and cy < (0.60 * h)
+
+        if person_boxes:
+            in_student_workspace = False
+            for pbox in person_boxes:
+                px1, py1, px2, py2 = pbox
+                # Candidate workspace around student: lateral margin 160px, from chin down to desk
+                min_y = py1 + int((py2 - py1) * 0.20)
+                max_y = min(h, py2 + 160)
+                if (px1 - 160 <= cx <= px2 + 160) and (min_y <= cy <= max_y):
+                    in_student_workspace = True
+                    break
+
+            if (is_upper_door_zone or is_side_door_perimeter) and not in_student_workspace:
+                return False
+        else:
+            if is_upper_door_zone or (cx < 0.08 * w or cx > 0.92 * w):
+                return False
+
+        # 3. Enforce Paper Surface Color & Texture Check on ROI:
+        roi = frame[y1:y2, x1:x2]
+        if roi.size == 0 or roi.shape[0] < 8 or roi.shape[1] < 8:
+            return False
+
+        roi_gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        roi_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        v_chan = roi_hsv[:, :, 2]
+        s_chan = roi_hsv[:, :, 1]
+
+        mean_v = float(np.mean(v_chan))
+        mean_s = float(np.mean(s_chan))
+        mean_gray = float(np.mean(roi_gray))
+
+        # A. Reject Metallic, Metallic-Gray, or Harsh Metallic Highlights (Door handles, latches, metal plates)
+        # Metallic glint / specular reflection: harsh localized highlights (V > 242) + dark metal shadow (V < 75)
+        specular_ratio = float(np.count_nonzero(v_chan > 242)) / float(roi.shape[0] * roi.shape[1] + 1e-6)
+        dark_metal_ratio = float(np.count_nonzero(v_chan < 75)) / float(roi.shape[0] * roi.shape[1] + 1e-6)
+        if specular_ratio > 0.04 and dark_metal_ratio > 0.20:
+            return False
+
+        # Dull metallic gray (low saturation S < 25, mid-range metal gray 60 <= V <= 150)
+        is_metallic_gray = (mean_s < 25.0) and (60.0 <= mean_v <= 150.0)
+
+        # B. Accept High Whiteness / Light-Yellow Paper Surface Tones
+        # Paper slips have light diffuse reflectance (mean_gray >= 105 or mean_v >= 105) and low saturation (S <= 68)
+        if mean_gray < 105.0 and mean_v < 105.0:
+            return False
+        if mean_s > 68.0:
+            return False
+
+        # C. Texture & Dark Text Edge Density (Handwriting / printed text lines vs blank metallic handle)
+        canny = cv2.Canny(roi_gray, 40, 130)
+        edge_density = float(np.count_nonzero(canny)) / float(roi_gray.size + 1e-6)
+        lap_var = float(cv2.Laplacian(roi_gray, cv2.CV_64F).var())
+
+        if is_metallic_gray and (edge_density < 0.012 or lap_var < 14.0):
+            return False
+
+        # A real paper chit has fibrous edges, paper boundaries, or writing
+        if edge_density < 0.004 and lap_var < 7.0:
+            return False
+
+        return True
+
     def _detect_white_paper_sheets(self, frame: np.ndarray, person_boxes: Optional[List[List[float]]] = None) -> List[DetectionResult]:
         """Detects physical small exam chits and paper slips using multi-characteristic isolation (rejecting background walls and ceilings)."""
         paper_dets: List[DetectionResult] = []
@@ -270,9 +370,13 @@ class YOLO26Detector(BaseDetector):
                 if border_contrast < 22.0 and (roi_std < 5.0 and laplacian_var < 6.0 and edge_density < 0.005):
                     continue
 
+                chit_box = [float(x), float(y), float(x + bw), float(y + bh)]
+                if not self._is_valid_exam_chit(frame, chit_box, person_boxes=person_boxes):
+                    continue
+
                 paper_dets.append(
                     DetectionResult(
-                        box=[float(x), float(y), float(x + bw), float(y + bh)],
+                        box=chit_box,
                         confidence=0.85,
                         class_id=73,
                         class_name="unauthorized paper/notes"
@@ -309,6 +413,18 @@ class YOLO26Detector(BaseDetector):
 
             detections: List[DetectionResult] = []
             person_boxes: List[List[float]] = []
+
+            # First pass: collect person boxes to establish candidate workspace boundary
+            for r in results:
+                boxes = r.boxes
+                if boxes is None or len(boxes) == 0:
+                    continue
+                for i in range(len(boxes)):
+                    c_id = int(boxes.cls[i].cpu().numpy())
+                    c_name = r.names.get(c_id, str(c_id)).lower()
+                    c_conf = float(boxes.conf[i].cpu().numpy())
+                    if (c_name == "person" or c_id == 0) and c_conf >= self.person_conf_threshold:
+                        person_boxes.append(boxes.xyxy[i].cpu().numpy().tolist())
 
             for r in results:
                 boxes = r.boxes
@@ -374,6 +490,8 @@ class YOLO26Detector(BaseDetector):
                             cls_name = "book"
                             cls_id = 73
                         elif is_paper_chit:
+                            if not self._is_valid_exam_chit(frame, box, person_boxes=person_boxes):
+                                continue
                             cls_name = "unauthorized paper/notes"
                             cls_id = 73
                         else:
@@ -389,6 +507,8 @@ class YOLO26Detector(BaseDetector):
 
                         # Disambiguate small exam chits / paper notes from large bound books
                         if box_area < 12000.0 and max(bw, bh) < 130.0:
+                            if not self._is_valid_exam_chit(frame, box, person_boxes=person_boxes):
+                                continue
                             cls_name = "unauthorized paper/notes"
                             cls_id = 73
                         else:
@@ -431,7 +551,8 @@ class YOLO26Detector(BaseDetector):
                             continue
                         cls_name = "person"
                         cls_id = 0
-                        person_boxes.append(box)
+                        if box not in person_boxes:
+                            person_boxes.append(box)
 
                     # 5. Custom Model Classes (best.pt)
                     elif cls_name in ("headphone", "headphones", "earphone", "earphones", "tv"):
@@ -442,13 +563,10 @@ class YOLO26Detector(BaseDetector):
 
                     elif cls_name in ("non-cheating", "non_cheating"):
                         continue
-                    elif cls_name in ("cheating-paper", "cheating_paper", "paper"):
+                    elif cls_name in ("cheating-paper", "cheating_paper", "paper", "cheating"):
                         if conf < self.book_conf_threshold:
                             continue
-                        cls_name = "unauthorized paper/notes"
-                        cls_id = 73
-                    elif cls_name in ("cheating",):
-                        if conf < self.default_conf_threshold:
+                        if not self._is_valid_exam_chit(frame, box, person_boxes=person_boxes):
                             continue
                         cls_name = "unauthorized paper/notes"
                         cls_id = 73
@@ -478,6 +596,29 @@ class YOLO26Detector(BaseDetector):
             if self.enable_paper_heuristic:
                 paper_dets = self._detect_white_paper_sheets(proc_frame, person_boxes=person_boxes)
                 for pd in paper_dets:
+                    if not self._is_valid_exam_chit(frame, pd.box, person_boxes=person_boxes):
+                        continue
+                    px1, py1, px2, py2 = pd.box
+                    p_area = (px2 - px1) * (py2 - py1)
+                    covered = False
+                    for existing in detections:
+                        ex1, ey1, ex2, ey2 = existing.box
+                        ix1, iy1 = max(px1, ex1), max(py1, ey1)
+                        ix2, iy2 = min(px2, ex2), min(py2, ey2)
+                        iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+                        inter = iw * ih
+                        e_area = (ex2 - ex1) * (ey2 - ey1)
+                        iou = inter / (p_area + e_area - inter + 1e-6)
+                        if iou > 0.30:
+                            # If overlapping detection was misclassified as phone, correct it to unauthorized paper/notes
+                            if existing.class_name in ("cell phone", "phone") or existing.class_id in (1, 67):
+                                existing.class_name = "unauthorized paper/notes"
+                                existing.class_id = 73
+                                existing.confidence = max(existing.confidence, pd.confidence)
+                            covered = True
+                            break
+                    if not covered:
+                        detections.append(pd)
                     px1, py1, px2, py2 = pd.box
                     p_area = (px2 - px1) * (py2 - py1)
                     covered = False
