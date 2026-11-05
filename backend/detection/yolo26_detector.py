@@ -22,21 +22,42 @@ from .base import BaseDetector, DetectionResult
 logger = logging.getLogger("EviGuard.Detector")
 
 
+def apply_clahe_preprocessing(frame: np.ndarray) -> np.ndarray:
+    """Converts incoming frames to LAB color space, applies cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8,8))
+
+    to the Luminance channel, and converts back to BGR for low-contrast paper chit capture.
+    """
+    if frame is None or frame.size == 0:
+        return frame
+    try:
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l_channel, a_channel, b_channel = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        cl = clahe.apply(l_channel)
+        merged = cv2.merge((cl, a_channel, b_channel))
+        return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
+    except Exception as e:
+        logger.debug(f"CLAHE pre-processing fallback: {e}")
+        return frame
+
+
 class YOLO26Detector(BaseDetector):
-    """Real-time object detector powered by Ultralytics YOLO26 with native NMS-free inference."""
+    """Real-time object detector powered by Ultralytics YOLOv8m with OpenCV CLAHE pre-processing."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__(config)
-        self.model_path = self.config.get("model_path", "backend/weights/best.pt")
+        self.model_path = self.config.get("model_path", "yolov8m.pt")
         self.iou_threshold = float(self.config.get("iou_threshold", 0.45))
         self.imgsz = int(self.config.get("imgsz", 640))
+        self.augment = bool(self.config.get("augment", True))
+        self.enable_clahe = bool(self.config.get("enable_clahe", True))
         self.nms_free = self.config.get("nms_free", True)
         
-        # Specific Confidence Thresholds per object class (calibrated for sensitivity and accuracy)
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.20))
-        self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.20))
-        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.20))
-        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.20))
+        # Specific Confidence Thresholds per object class (calibrated to 0.18 for low-contrast paper chit capture)
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.18))
+        self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.18))
+        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.18))
+        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.18))
 
         # Geometric Validation Parameters for Cell Phones (calibrated for far-range detection)
         self.phone_min_area = float(self.config.get("phone_min_area", 80.0))
@@ -45,30 +66,34 @@ class YOLO26Detector(BaseDetector):
         self.phone_min_aspect_ratio = float(self.config.get("phone_min_aspect_ratio", 1.0))
         self.phone_max_aspect_ratio = float(self.config.get("phone_max_aspect_ratio", 4.5))
 
-        # Paper detection disabled by default; pure deep learning detection only
-        self.enable_paper_heuristic = self.config.get("enable_paper_heuristic", False)
+        # Paper detection enabled for automated local detection pipeline
+        self.enable_paper_heuristic = self.config.get("enable_paper_heuristic", True)
 
         self.model = None
         self._fallback_mode = False
 
         self._load_model()
 
+    def apply_clahe(self, frame: np.ndarray) -> np.ndarray:
+        """Applies CLAHE pre-processing on the Luminance channel."""
+        return apply_clahe_preprocessing(frame)
+
     def _load_model(self):
-        """Attempts to load the YOLO26 model, falling back gracefully if unavailable."""
+        """Attempts to load the standard yolov8m.pt model, falling back gracefully if unavailable."""
         try:
             from ultralytics import YOLO
             target = self.model_path if os.path.exists(self.model_path) else (
-                "backend/weights/best.pt" if os.path.exists("backend/weights/best.pt") else (
-                    "yolo26n.pt" if os.path.exists("yolo26n.pt") else (
-                        "yolov8n.pt" if os.path.exists("yolov8n.pt") else self.model_path
+                "backend/weights/yolov8m.pt" if os.path.exists("backend/weights/yolov8m.pt") else (
+                    "yolov8m.pt" if os.path.exists("yolov8m.pt") else (
+                        "backend/weights/best.pt" if os.path.exists("backend/weights/best.pt") else "yolov8m.pt"
                     )
                 )
             )
-            logger.info(f"Loading YOLO26 model from {target}...")
+            logger.info(f"Loading YOLO detector model from {target}...")
             self.model = YOLO(target)
-            logger.info(f"YOLO26 model ({target}) loaded successfully via Ultralytics.")
+            logger.info(f"YOLO detector model ({target}) loaded successfully via Ultralytics.")
         except Exception as e:
-            logger.warning(f"Could not load YOLO26 model ({e}). Initializing simulated/heuristic detector fallback.")
+            logger.warning(f"Could not load YOLO model ({e}). Initializing simulated/heuristic detector fallback.")
             self._fallback_mode = True
 
     def _is_valid_phone_geometry(self, box: List[float]) -> bool:
@@ -103,18 +128,18 @@ class YOLO26Detector(BaseDetector):
             h, w = frame.shape[:2]
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            # Bright white/light region segmentation (calibrated for indoor desk paper: 145-255)
-            bright_mask = cv2.inRange(gray, 145, 255)
+            # Bright white/light region segmentation (calibrated for indoor desk paper: 130-255)
+            bright_mask = cv2.inRange(gray, 130, 255)
 
-            # 1. Reject ceiling/upper wall background (top 20% of frame)
-            bright_mask[0:int(h * 0.20), :] = 0
+            # 1. Reject ceiling/upper wall background (top 15% of frame)
+            bright_mask[0:int(h * 0.15), :] = 0
 
             # Exclude candidate upper head/face region if person boxes provided
             if person_boxes:
                 for pbox in person_boxes:
                     px1, py1, px2, py2 = [int(v) for v in pbox]
-                    # Exclude upper 45% of person box (face/hair/neck)
-                    face_y2 = min(h, py1 + int((py2 - py1) * 0.45))
+                    # Exclude upper 40% of person box (face/hair/eyes)
+                    face_y2 = min(h, py1 + int((py2 - py1) * 0.40))
                     bright_mask[max(0, py1):face_y2, max(0, px1):min(w, px2)] = 0
 
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
@@ -123,12 +148,12 @@ class YOLO26Detector(BaseDetector):
             contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                # Small paper chit bounds: 200px^2 to 16,000px^2 (reject huge background walls)
-                if area < 200.0 or area > 16000.0:
+                # Small paper chit bounds: 150px^2 to 16,000px^2 (reject huge background walls)
+                if area < 150.0 or area > 16000.0:
                     continue
 
                 x, y, bw, bh = cv2.boundingRect(cnt)
-                if bw < 14 or bh < 14 or bw > 220 or bh > 220:
+                if bw < 12 or bh < 12 or bw > 220 or bh > 220:
                     continue
 
                 # 2. Reject Frame Boundary Touching (Walls, ceiling, door borders)
@@ -136,20 +161,20 @@ class YOLO26Detector(BaseDetector):
                     continue
 
                 aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
-                if not (1.0 <= aspect_ratio <= 3.8):
+                if not (1.0 <= aspect_ratio <= 4.0):
                     continue
 
                 # 3. Geometric Shape Regularity (Quadrilateral & Convex Hull Solidity)
                 hull = cv2.convexHull(cnt)
                 hull_area = cv2.contourArea(hull)
                 solidity = area / (hull_area + 1e-6)
-                if solidity < 0.65:
+                if solidity < 0.60:
                     continue
 
                 peri = cv2.arcLength(cnt, True)
                 approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
-                # Real paper chits have rectangular / polygon structure (4 to 8 vertices)
-                if len(approx) > 8:
+                # Real paper chits have polygon / rectangular structure (4 to 10 vertices)
+                if len(approx) > 10:
                     continue
 
                 # 4. Spatial Proximity to Student Workspace
@@ -158,9 +183,9 @@ class YOLO26Detector(BaseDetector):
                     cx, cy = x + bw / 2.0, y + bh / 2.0
                     for pbox in person_boxes:
                         px1, py1, px2, py2 = pbox
-                        # Workspace around student (desk/lap/hands: 140px margin, below upper chest)
-                        chest_y = py1 + int((py2 - py1) * 0.30)
-                        if (px1 - 140 <= cx <= px2 + 140) and (chest_y <= cy <= min(h, py2 + 140)):
+                        # Workspace around student (desk/lap/hands/chest: 160px margin, below upper chest/chin)
+                        chest_y = py1 + int((py2 - py1) * 0.20)
+                        if (px1 - 160 <= cx <= px2 + 160) and (chest_y <= cy <= min(h, py2 + 160)):
                             in_workspace = True
                             break
                     if not in_workspace:
@@ -183,8 +208,8 @@ class YOLO26Detector(BaseDetector):
                     mean_outside = float(np.mean(surrounding_outer))
                     border_contrast = abs(mean_inside - mean_outside)
 
-                # Must have clear step contrast (>= 16px) against surrounding desk/hand/clothing
-                if border_contrast < 16.0:
+                # Must have clear step contrast (>= 12px) against surrounding desk/hand/clothing
+                if border_contrast < 12.0:
                     continue
 
                 # 6. Reject Plain Uniform Background Walls (Check interior variance & text/edges)
@@ -193,9 +218,9 @@ class YOLO26Detector(BaseDetector):
                 canny_edges = cv2.Canny(roi_gray, 50, 150)
                 edge_density = float(np.count_nonzero(canny_edges)) / float(roi_gray.size + 1e-6)
 
-                # A plain white background wall has std < 6.0 and laplacian_var < 8.0 and edge_density < 0.005
-                # A chit has handwriting/print texture or is a distinct small card with high contrast (>25px)
-                if border_contrast < 25.0 and (roi_std < 7.0 and laplacian_var < 10.0 and edge_density < 0.008):
+                # A plain white background wall has std < 5.0 and laplacian_var < 6.0 and edge_density < 0.005
+                # A chit has handwriting/print texture or is a distinct small card with high contrast (>22px)
+                if border_contrast < 22.0 and (roi_std < 5.0 and laplacian_var < 6.0 and edge_density < 0.005):
                     continue
 
                 paper_dets.append(
@@ -222,12 +247,16 @@ class YOLO26Detector(BaseDetector):
         try:
             h, w = frame.shape[:2]
 
-            # Single-pass high-speed YOLO26 inference
+            # Apply OpenCV CLAHE pre-processing on Luminance channel
+            proc_frame = self.apply_clahe(frame) if self.enable_clahe else frame
+
+            # Single-pass high-speed YOLO inference with yolov8m.pt, conf=0.18, iou=0.45, imgsz=640, augment=True
             results = self.model.predict(
-                source=frame,
+                source=proc_frame,
                 imgsz=640,
-                conf=0.20,
+                conf=0.18,
                 iou=0.45,
+                augment=True,
                 verbose=False
             )
 
@@ -257,66 +286,24 @@ class YOLO26Detector(BaseDetector):
                         if ("paper" in cls_name or "chit" in cls_name or "cheating" in cls_name) and (bw > 0.40 * w or bh > 0.40 * h):
                             continue
 
-                    # 1. Validation for Cell Phone (Class 67 in COCO, or Class 1 / Class 4 / 'cell phone' in best.pt)
+                    # 1. Validation for Cell Phone (Class 67 in COCO, or Class 1 / Class 4 / 'cell phone')
                     if "phone" in cls_name or cls_name in ("cell phone", "phone", "remote", "mobile-phone") or cls_id in (67, 65, 4, 1):
-                        # Prioritize class Phone / Mobile-phone (or class ID 1 or 4) with confidence >= 0.20 directly
-                        if (cls_id in (1, 4) or "phone" in cls_name) and conf >= 0.20:
-                            cls_name = "cell phone"
-                            cls_id = 1
-                        else:
-                            if conf < self.phone_conf_threshold:
-                                continue
-
-                            rx1, ry1, rx2, ry2 = [int(v) for v in box]
-                            rx1, ry1 = max(0, rx1), max(0, ry1)
-                            rx2, ry2 = min(w, rx2), min(h, ry2)
-                            is_paper_chit = False
-                            is_cloth_noise = False
-                            is_large_book = False
-
-                            # Large rectangular objects (bound textbooks/notebooks: area >= 15000 or dimension >= 150)
-                            if box_area >= 15000.0 or max(bw, bh) >= 150.0:
-                                is_large_book = True
-
-                            if rx2 > rx1 and ry2 > ry1:
-                                roi_bgr = frame[ry1:ry2, rx1:rx2]
-                                roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
-                                roi_hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
-                                mean_b = float(np.mean(roi_gray))
-                                mean_sat = float(np.mean(roi_hsv[:, :, 1]))
-
-                                if is_large_book:
-                                    pass  # Will be mapped to book
-                                # A. Small paper slip / exam chit: Neutral matte surface with low saturation and light reflectance
-                                elif mean_b >= 88.0 and mean_sat <= 62.0:
-                                    is_paper_chit = True
-                                # B. Highly saturated fabric / clothing noise mistakenly flagged as phone
-                                elif mean_sat > 75.0 and conf < 0.38:
-                                    is_cloth_noise = True
-
-                            if is_cloth_noise:
-                                continue
-                            elif is_large_book:
-                                cls_name = "book"
-                                cls_id = 73
-                            elif is_paper_chit:
-                                cls_name = "unauthorized paper/notes"
-                                cls_id = 73
-                            else:
-                                if not self._is_valid_phone_geometry(box):
-                                    continue
-                                cls_name = "cell phone"
-                                cls_id = 67
-
-                    # 2. Validation for Book / Paper / Notes (COCO Class 73)
-                    elif cls_name in ("book", "notebook", "paper") or cls_id == 73:
-                        if conf < self.book_conf_threshold:
+                        if conf < self.phone_conf_threshold:
                             continue
 
                         rx1, ry1, rx2, ry2 = [int(v) for v in box]
                         rx1, ry1 = max(0, rx1), max(0, ry1)
                         rx2, ry2 = min(w, rx2), min(h, ry2)
-                        is_valid_material = True
+
+                        # Disambiguation: A big book held in hand is NOT a cell phone!
+                        # Books/binders have large area (>=14000 px^2), large max dimension (>=145 px), or broad short dimension (min >= 95 px)
+                        is_large_book = False
+                        if box_area >= 14000.0 or max(bw, bh) >= 145.0 or (min(bw, bh) >= 95.0 and max(bw, bh) >= 120.0):
+                            is_large_book = True
+
+                        is_paper_chit = False
+                        is_cloth_noise = False
+
                         if rx2 > rx1 and ry2 > ry1:
                             roi_bgr = frame[ry1:ry2, rx1:rx2]
                             roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
@@ -324,15 +311,37 @@ class YOLO26Detector(BaseDetector):
                             mean_b = float(np.mean(roi_gray))
                             mean_sat = float(np.mean(roi_hsv[:, :, 1]))
 
-                            # Reject colored cloth / clothing / fabric / towels mistakenly detected as book:
-                            if mean_sat > 65.0 or mean_b < 78.0:
-                                is_valid_material = False
+                            # Open book / notebook pages
+                            if (mean_b >= 80.0 and mean_sat <= 65.0) and (box_area >= 12000.0 or max(bw, bh) >= 130.0):
+                                is_large_book = True
+                            # Small paper slip / exam chit: Light matte surface with low saturation, small area (<12000)
+                            elif (mean_b >= 80.0 and mean_sat <= 60.0) and aspect_ratio < 1.85 and not is_large_book and box_area < 12000.0:
+                                is_paper_chit = True
+                            # Highly saturated fabric / clothing noise mistakenly flagged as phone
+                            elif mean_sat > 75.0 and conf < 0.38:
+                                is_cloth_noise = True
 
-                        if not is_valid_material:
+                        if is_cloth_noise:
+                            continue
+                        elif is_large_book:
+                            cls_name = "book"
+                            cls_id = 73
+                        elif is_paper_chit:
+                            cls_name = "unauthorized paper/notes"
+                            cls_id = 73
+                        else:
+                            if not self._is_valid_phone_geometry(box):
+                                continue
+                            cls_name = "cell phone"
+                            cls_id = 67
+
+                    # 2. Validation for Book / Paper / Notes (COCO Class 73)
+                    elif cls_name in ("book", "notebook", "paper") or cls_id in (73, 0):
+                        if conf < self.book_conf_threshold:
                             continue
 
                         # Disambiguate small exam chits / paper notes from large bound books
-                        if box_area < 15000.0 or max(bw, bh) < 140.0:
+                        if box_area < 12000.0 and max(bw, bh) < 130.0:
                             cls_name = "unauthorized paper/notes"
                             cls_id = 73
                         else:
@@ -374,6 +383,7 @@ class YOLO26Detector(BaseDetector):
                         if conf < self.person_conf_threshold:
                             continue
                         cls_name = "person"
+                        cls_id = 0
                         person_boxes.append(box)
 
                     # 5. Custom Model Classes (best.pt)
@@ -417,9 +427,37 @@ class YOLO26Detector(BaseDetector):
                         )
                     )
 
-            # If YOLO detects class Phone (or class ID 1, 4, 67) with confidence >= 0.20, suppress any hand gesture / finger signalling flags on that frame
+            # Run specialized heuristic paper sheet / chit detection on CLAHE-enhanced frame
+            if self.enable_paper_heuristic:
+                paper_dets = self._detect_white_paper_sheets(proc_frame, person_boxes=person_boxes)
+                for pd in paper_dets:
+                    px1, py1, px2, py2 = pd.box
+                    p_area = (px2 - px1) * (py2 - py1)
+                    covered = False
+                    for existing in detections:
+                        ex1, ey1, ex2, ey2 = existing.box
+                        ix1, iy1 = max(px1, ex1), max(py1, ey1)
+                        ix2, iy2 = min(px2, ex2), min(py2, ey2)
+                        iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+                        inter = iw * ih
+                        e_area = (ex2 - ex1) * (ey2 - ey1)
+                        iou = inter / (p_area + e_area - inter + 1e-6)
+                        if iou > 0.30:
+                            # If overlapping detection was misclassified as phone, correct it to unauthorized paper/notes
+                            if existing.class_name in ("cell phone", "phone") or existing.class_id in (1, 67):
+                                existing.class_name = "unauthorized paper/notes"
+                                existing.class_id = 73
+                                existing.confidence = max(existing.confidence, pd.confidence)
+                            covered = True
+                            break
+                    if not covered:
+                        detections.append(pd)
+
+            # If YOLO detects class Phone (or class ID 1, 67) with confidence >= 0.18, suppress any hand gesture / finger signalling flags on that frame
             has_phone_detected = any(
-                (d.class_name in ("cell phone", "phone") or d.class_id in (1, 4, 67) or "phone" in d.class_name.lower()) and d.confidence >= 0.20
+                (d.class_name in ("cell phone", "phone") or d.class_id in (1, 67) or "phone" in d.class_name.lower())
+                and d.class_name not in ("book", "unauthorized paper/notes", "notes")
+                and d.confidence >= 0.18
                 for d in detections
             )
             if has_phone_detected:

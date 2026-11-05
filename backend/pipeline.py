@@ -130,14 +130,17 @@ class EviGuardPipeline:
 
         # Initialize Modules
         det_cfg = dict(self.config.get("detection", {}))
-        # Use backend/weights/best.pt with confidence threshold of 0.20, iou of 0.45, and imgsz 640
-        det_cfg["model_path"] = "backend/weights/best.pt"
+        # Use standard yolov8m.pt weights with CLAHE pre-processing, conf=0.18, iou=0.45, imgsz=640, augment=True
+        det_cfg["model_path"] = "yolov8m.pt"
         det_cfg["imgsz"] = 640
         det_cfg["iou_threshold"] = 0.45
-        det_cfg["confidence_threshold"] = 0.20
-        det_cfg["phone_confidence_threshold"] = 0.20
-        det_cfg["book_confidence_threshold"] = 0.20
-        det_cfg["person_confidence_threshold"] = 0.20
+        det_cfg["augment"] = True
+        det_cfg["enable_clahe"] = True
+        det_cfg["enable_paper_heuristic"] = True
+        det_cfg["confidence_threshold"] = 0.18
+        det_cfg["phone_confidence_threshold"] = 0.18
+        det_cfg["book_confidence_threshold"] = 0.18
+        det_cfg["person_confidence_threshold"] = 0.18
         model_type = det_cfg.get("model_type", "yolo26")
         self.detector = DetectorFactory.create_detector(model_type, det_cfg)
         
@@ -253,10 +256,11 @@ class EviGuardPipeline:
 
             pose_gaze_result = future_pose.result()
 
-            # Detection logic order: if Phone (or class ID 1, 4, 67) detected with conf >= 0.20, suppress hand gesture / finger signalling flags
+            # Detection logic order: if Phone (or class ID 1, 67) detected with conf >= 0.18, suppress hand gesture / finger signalling flags
             has_phone_detected = any(
-                (d.class_name.lower() in ("phone", "cell phone") or getattr(d, "class_id", -1) in (1, 4, 67) or "phone" in d.class_name.lower())
-                and d.confidence >= 0.20
+                (d.class_name.lower() in ("phone", "cell phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
+                and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
+                and d.confidence >= 0.18
                 for d in detections
             )
             if has_phone_detected:
@@ -297,11 +301,12 @@ class EviGuardPipeline:
 
             # 5.1 & 5.2: Update temporal voting buffers on each tracked student
             has_phone = any(
-                (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 4, 67) or "phone" in d.class_name.lower())
-                and d.confidence >= 0.20
+                (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
+                and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
+                and d.confidence >= 0.18
                 for d in tracked_detections
             )
-            has_notes = any(d.class_name in ("book", "unauthorized paper/notes", "notes", "cheating") for d in tracked_detections)
+            has_notes = any(d.class_name in ("book", "unauthorized paper/notes", "notes", "cheating", "paper") for d in tracked_detections)
             if has_phone:
                 has_gesture = False
                 if pose_gaze_result:
@@ -330,8 +335,9 @@ class EviGuardPipeline:
             person_count = self.last_person_count
 
             has_phone = any(
-                (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 4, 67) or "phone" in d.class_name.lower())
-                and d.confidence >= 0.20
+                (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
+                and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
+                and d.confidence >= 0.18
                 for d in tracked_detections
             )
             if has_phone:
@@ -357,8 +363,13 @@ class EviGuardPipeline:
 
         # Prioritize violation label as VIOLATION: MOBILE_PHONE_DETECTED and suppress hand gesture / finger signalling flags
         has_phone = any(
-            (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 4, 67) or "phone" in d.class_name.lower())
-            and d.confidence >= 0.20
+            (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
+            and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
+            and d.confidence >= 0.18
+            for d in tracked_detections
+        )
+        has_notes = any(
+            d.class_name in ("book", "unauthorized paper/notes", "notes", "cheating", "paper")
             for d in tracked_detections
         )
         if has_phone:
@@ -380,6 +391,13 @@ class EviGuardPipeline:
             risk_result.smoothed_score = max(risk_result.smoothed_score, 95.0)
             risk_result.violation_factors.pop("hand_signalling", None)
             risk_result.violation_factors["cell_phone"] = max(risk_result.violation_factors.get("cell_phone", 95.0), 95.0)
+        elif has_notes:
+            if "UNAUTHORIZED_NOTES" not in risk_result.active_violations:
+                risk_result.active_violations.insert(0, "UNAUTHORIZED_NOTES")
+            risk_result.primary_violation = "UNAUTHORIZED_NOTES"
+            risk_result.risk_level = "CRITICAL"
+            risk_result.smoothed_score = max(risk_result.smoothed_score, 90.0)
+            risk_result.violation_factors["unauthorized_notes"] = 90.0
 
         # 5. Database Telemetry Logging (throttled every 3 frames)
         if self.frame_index % 3 == 0:

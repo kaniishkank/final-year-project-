@@ -94,7 +94,9 @@ class RiskEngine:
         # 1. Phone Detection (score 70-95 range -> CRITICAL)
         phone_detections = [
             d for d in detections 
-            if (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (4, 67)) and d.confidence > 0.40
+            if (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 4, 67))
+            and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
+            and d.confidence >= 0.18
         ]
         if phone_detections:
             active_violations.append("VIOLATION: MOBILE_PHONE_DETECTED")
@@ -105,7 +107,7 @@ class RiskEngine:
         # 2. Smart Watch & Electronic Gadgets (score 70-95 range -> CRITICAL)
         watch_detections = [
             d for d in detections 
-            if d.class_name in ("smart watch", "smartwatch", "watch", "remote", "laptop", "headphone", "headphones", "tv") and d.confidence >= 0.40
+            if d.class_name in ("smart watch", "smartwatch", "watch", "remote", "laptop", "headphone", "headphones", "tv") and d.confidence >= 0.18
         ]
         if watch_detections:
             active_violations.append("ELECTRONIC_DEVICE_DETECTED")
@@ -115,7 +117,7 @@ class RiskEngine:
         # 3. Unauthorized Notes / Book Detection (score 70-95 range -> CRITICAL)
         notes_detections = [
             d for d in detections 
-            if d.class_name in ("book", "notes", "unauthorized paper/notes", "paper") and d.confidence >= 0.40
+            if d.class_name in ("book", "notes", "unauthorized paper/notes", "paper") and d.confidence >= 0.18
         ]
         if notes_detections:
             active_violations.append("UNAUTHORIZED_NOTES")
