@@ -42,7 +42,10 @@ def apply_clahe_preprocessing(frame: np.ndarray) -> np.ndarray:
 
 
 def apply_nms_suppression(detections: List[DetectionResult], iou_threshold: float = 0.28) -> List[DetectionResult]:
-    """Class-aware Non-Maximum Suppression to eliminate duplicate / redundant bounding boxes on identical items."""
+    """Class-aware Non-Maximum Suppression to eliminate duplicate / redundant bounding boxes on identical items,
+
+    and prioritize high-confidence cell phones over spurious overlapping book/notes reflections.
+    """
     if not detections or len(detections) <= 1:
         return detections
 
@@ -59,13 +62,6 @@ def apply_nms_suppression(detections: List[DetectionResult], iou_threshold: floa
 
         remaining = []
         for d in sorted_dets:
-            # Group compatible classes together (e.g. book & paper notes, phone variants)
-            is_same_category = (
-                d.class_name == best.class_name
-                or (d.class_name in ("book", "unauthorized paper/notes") and best.class_name in ("book", "unauthorized paper/notes"))
-                or (d.class_name in ("cell phone", "phone") and best.class_name in ("cell phone", "phone"))
-            )
-
             dx1, dy1, dx2, dy2 = d.box
             d_area = max(0.0, dx2 - dx1) * max(0.0, dy2 - dy1)
 
@@ -75,12 +71,32 @@ def apply_nms_suppression(detections: List[DetectionResult], iou_threshold: floa
             inter = iw * ih
             union = best_area + d_area - inter + 1e-6
             iou = inter / union
-
-            # Containment check (smaller box inside larger box of same category)
             containment = inter / (min(best_area, d_area) + 1e-6)
 
-            if is_same_category and (iou > iou_threshold or containment > 0.60):
+            # 1. Group compatible classes together (e.g. book & paper notes, phone variants, persons)
+            is_same_category = (
+                d.class_name == best.class_name
+                or (d.class_name in ("book", "unauthorized paper/notes") and best.class_name in ("book", "unauthorized paper/notes"))
+                or (d.class_name in ("cell phone", "phone") and best.class_name in ("cell phone", "phone"))
+                or (d.class_name == "person" and best.class_name == "person")
+            )
+
+            if is_same_category and (iou > iou_threshold or containment > 0.55):
                 continue
+
+            # 2. Cell Phone Precedence: A genuine cell phone suppresses overlapping or adjacent ghost book or paper notes
+            if best.class_name in ("cell phone", "phone") and best.confidence >= 0.35:
+                if d.class_name in ("book", "unauthorized paper/notes", "paper"):
+                    near_x = (dx2 >= bx1 - 70.0) and (dx1 <= bx2 + 70.0)
+                    near_y = (dy2 >= by1 - 70.0) and (dy1 <= by2 + 70.0)
+                    if (iou > 0.10 or containment > 0.20) or (near_x and near_y and d.area < 15000.0):
+                        continue
+
+            # 3. Book Precedence: A detected book suppresses small overlapping chit notes inside its bounds
+            if best.class_name == "book" and d.class_name in ("unauthorized paper/notes", "paper"):
+                if containment > 0.45 or iou > 0.25:
+                    continue
+
             remaining.append(d)
 
         sorted_dets = remaining
@@ -143,22 +159,28 @@ class YOLO26Detector(BaseDetector):
             logger.warning(f"Could not load YOLO model ({e}). Initializing simulated/heuristic detector fallback.")
             self._fallback_mode = True
 
-    def _is_valid_phone_geometry(self, box: List[float]) -> bool:
-        """Validates cell phone bounding box: accepts portrait, landscape, and diagonal tilt orientations."""
+    def _is_valid_phone_geometry(self, box: List[float], frame_shape: Optional[Tuple[int, ...]] = None) -> bool:
+        """Validates cell phone bounding box: accepts portrait, landscape, and tilted angles
+
+        both close-up to the camera and at proctored desk distance.
+        """
         x1, y1, x2, y2 = box
         bw = abs(x2 - x1)
         bh = abs(y2 - y1)
         area = bw * bh
 
-        # 1. Minimum Area Check
+        # 1. Minimum Dimensions Check
         if area < self.phone_min_area or bw < self.phone_min_w or bh < self.phone_min_h:
             return False
 
-        # 2. Maximum Area Check (a handheld phone is not larger than 32,000 px^2 or 220px in webcam view)
-        if area > 32000.0 or bw > 220.0 or bh > 220.0:
+        # 2. Maximum Dimensions Check (allows close-up phone shown to camera up to 75% of frame)
+        max_w = 460.0 if not frame_shape else (0.75 * frame_shape[1])
+        max_h = 440.0 if not frame_shape else (0.90 * frame_shape[0])
+        max_area = 120000.0 if not frame_shape else (0.45 * frame_shape[0] * frame_shape[1])
+        if area > max_area or bw > max_w or bh > max_h:
             return False
 
-        # 3. Aspect Ratio Check (supports vertical, horizontal, and diagonal angles)
+        # 3. Aspect Ratio Check (supports vertical, horizontal, and diagonal angles: 1.25 to 4.5)
         aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
         if aspect_ratio < self.phone_min_aspect_ratio or aspect_ratio > self.phone_max_aspect_ratio:
             return False
@@ -187,30 +209,30 @@ class YOLO26Detector(BaseDetector):
         area = bw * bh
 
         # 1. Tighten Chit Geometry Rules:
-        # Discard paper detections that have area under 25 x 25 pixels (area < 625 px^2) or dimension < 22 px
-        if bw < 22 or bh < 22 or area < 600:
+        # Accept small paper chits down to 12x12 px (area >= 140 px^2) in candidate workspace
+        if bw < 12 or bh < 12 or area < 140:
             return False
 
-        # Discard long, narrow handle ratios (width-to-height ratio > 3.5 or < 0.28)
+        # Discard long, narrow handle ratios (width-to-height ratio > 3.8 or < 0.25)
         wh_ratio = float(bw) / float(bh + 1e-6)
-        if wh_ratio > 3.5 or wh_ratio < 0.28:
+        if wh_ratio > 3.8 or wh_ratio < 0.25:
             return False
 
         # 2. Door Exclusion Zone & Background Perimeter Mask:
         # Filter out detections that occur in the upper/background perimeter regions of the video frame
         # where doors, door frames, and top latches reside, unless in active student workspace
         cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-        is_upper_door_zone = cy < (0.32 * h)
+        is_upper_door_zone = cy < (0.30 * h)
         is_side_door_perimeter = (cx < 0.10 * w or cx > 0.90 * w) and cy < (0.60 * h)
 
         if person_boxes:
             in_student_workspace = False
             for pbox in person_boxes:
                 px1, py1, px2, py2 = pbox
-                # Candidate workspace around student: lateral margin 160px, from chin down to desk
-                min_y = py1 + int((py2 - py1) * 0.20)
-                max_y = min(h, py2 + 160)
-                if (px1 - 160 <= cx <= px2 + 160) and (min_y <= cy <= max_y):
+                # Candidate workspace around student: lateral margin 180px, below chin/neck down to desk
+                min_y = py1 + int((py2 - py1) * 0.45)
+                max_y = min(h, py2 + 180)
+                if (px1 - 180 <= cx <= px2 + 180) and (min_y <= cy <= max_y):
                     in_student_workspace = True
                     break
 
@@ -233,34 +255,39 @@ class YOLO26Detector(BaseDetector):
         mean_v = float(np.mean(v_chan))
         mean_s = float(np.mean(s_chan))
         mean_gray = float(np.mean(roi_gray))
+        mean_b, mean_g, mean_r = np.mean(roi, axis=(0, 1))
 
         # A. Reject Metallic, Metallic-Gray, or Harsh Metallic Highlights (Door handles, latches, metal plates)
         # Metallic glint / specular reflection: harsh localized highlights (V > 242) + dark metal shadow (V < 75)
         specular_ratio = float(np.count_nonzero(v_chan > 242)) / float(roi.shape[0] * roi.shape[1] + 1e-6)
         dark_metal_ratio = float(np.count_nonzero(v_chan < 75)) / float(roi.shape[0] * roi.shape[1] + 1e-6)
-        if specular_ratio > 0.04 and dark_metal_ratio > 0.20:
+        if specular_ratio > 0.05 and dark_metal_ratio > 0.22:
             return False
 
         # Dull metallic gray (low saturation S < 25, mid-range metal gray 60 <= V <= 150)
         is_metallic_gray = (mean_s < 25.0) and (60.0 <= mean_v <= 150.0)
 
-        # B. Accept High Whiteness / Light-Yellow Paper Surface Tones
-        # Paper slips have light diffuse reflectance (mean_gray >= 105 or mean_v >= 105) and low saturation (S <= 68)
-        if mean_gray < 105.0 and mean_v < 105.0:
-            return False
-        if mean_s > 68.0:
+        # B. Reject Human Skin Tones (Red-dominant tone, R >> B)
+        if (mean_r - mean_b > 20.0 and mean_b < 165.0):
             return False
 
-        # C. Texture & Dark Text Edge Density (Handwriting / printed text lines vs blank metallic handle)
+        # C. Accept High Whiteness / Light Paper Surface Tones
+        # Paper slips have light diffuse reflectance (mean_gray >= 128 or mean_v >= 132) and low-to-moderate saturation (S <= 55)
+        if mean_gray < 128.0 and mean_v < 132.0:
+            return False
+        if mean_s > 55.0:
+            return False
+
+        # D. Texture & Dark Text Edge Density (Handwriting / printed text lines vs blank metallic handle)
         canny = cv2.Canny(roi_gray, 40, 130)
         edge_density = float(np.count_nonzero(canny)) / float(roi_gray.size + 1e-6)
         lap_var = float(cv2.Laplacian(roi_gray, cv2.CV_64F).var())
 
-        if is_metallic_gray and (edge_density < 0.012 or lap_var < 14.0):
+        if is_metallic_gray and (edge_density < 0.010 or lap_var < 12.0):
             return False
 
         # A real paper chit has fibrous edges, paper boundaries, or writing
-        if edge_density < 0.004 and lap_var < 7.0:
+        if edge_density < 0.003 and lap_var < 5.0:
             return False
 
         return True
@@ -274,36 +301,43 @@ class YOLO26Detector(BaseDetector):
         try:
             h, w = frame.shape[:2]
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             
-            # Bright white/light region segmentation (calibrated for indoor desk paper: 130-255)
-            bright_mask = cv2.inRange(gray, 130, 255)
+            # White paper characteristics: Low saturation (S <= 45) and high luminance/value (V >= 140)
+            # This isolates matte paper slips from high-saturation skin (face/hands) and colored clothing
+            paper_surface = ((hsv[:, :, 1] <= 45) & (hsv[:, :, 2] >= 140)).astype(np.uint8) * 255
 
             # 1. Reject ceiling/upper wall background (top 15% of frame)
-            bright_mask[0:int(h * 0.15), :] = 0
+            paper_surface[0:int(h * 0.15), :] = 0
 
-            # Exclude candidate upper head/face region if person boxes provided
+            # 2. Restrict to Active Student Workspace if Person Detected (below chin down to desk)
             if person_boxes:
+                workspace_mask = np.zeros((h, w), dtype=np.uint8)
                 for pbox in person_boxes:
                     px1, py1, px2, py2 = [int(v) for v in pbox]
-                    # Exclude upper 40% of person box (face/hair/eyes)
-                    face_y2 = min(h, py1 + int((py2 - py1) * 0.40))
-                    bright_mask[max(0, py1):face_y2, max(0, px1):min(w, px2)] = 0
+                    # Workspace: from below chin/neck down to desk/lap, and 180px laterally
+                    wy1 = max(0, py1 + int((py2 - py1) * 0.45))
+                    wy2 = min(h, py2 + 180)
+                    wx1 = max(0, px1 - 180)
+                    wx2 = min(w, px2 + 180)
+                    workspace_mask[wy1:wy2, wx1:wx2] = 255
+                paper_surface = cv2.bitwise_and(paper_surface, workspace_mask)
 
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-            closed = cv2.morphologyEx(bright_mask, cv2.MORPH_CLOSE, kernel)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            closed = cv2.morphologyEx(paper_surface, cv2.MORPH_CLOSE, kernel)
 
             contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                # Small paper chit bounds: 150px^2 to 16,000px^2 (reject huge background walls)
-                if area < 150.0 or area > 16000.0:
+                # Small paper chit bounds: 120px^2 to 18,000px^2 (reject huge background walls and tiny dust)
+                if area < 120.0 or area > 18000.0:
                     continue
 
                 x, y, bw, bh = cv2.boundingRect(cnt)
-                if bw < 12 or bh < 12 or bw > 220 or bh > 220:
+                if bw < 12 or bh < 12 or bw > 240 or bh > 240:
                     continue
 
-                # 2. Reject Frame Boundary Touching (Walls, ceiling, door borders)
+                # Reject Frame Boundary Touching (Walls, ceiling, door borders)
                 if x <= 4 or y <= 4 or (x + bw) >= (w - 4) or (y + bh) >= (h - 4):
                     continue
 
@@ -311,34 +345,20 @@ class YOLO26Detector(BaseDetector):
                 if not (1.0 <= aspect_ratio <= 4.0):
                     continue
 
-                # 3. Geometric Shape Regularity (Quadrilateral & Convex Hull Solidity)
+                # Geometric Shape Regularity (Quadrilateral & Convex Hull Solidity)
                 hull = cv2.convexHull(cnt)
                 hull_area = cv2.contourArea(hull)
                 solidity = area / (hull_area + 1e-6)
-                if solidity < 0.60:
+                if solidity < 0.55:
                     continue
 
                 peri = cv2.arcLength(cnt, True)
                 approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
-                # Real paper chits have polygon / rectangular structure (4 to 10 vertices)
-                if len(approx) > 10:
+                # Real paper chits have polygon / rectangular structure (4 to 12 vertices)
+                if len(approx) > 12:
                     continue
 
-                # 4. Spatial Proximity to Student Workspace
-                if person_boxes:
-                    in_workspace = False
-                    cx, cy = x + bw / 2.0, y + bh / 2.0
-                    for pbox in person_boxes:
-                        px1, py1, px2, py2 = pbox
-                        # Workspace around student (desk/lap/hands/chest: 160px margin, below upper chest/chin)
-                        chest_y = py1 + int((py2 - py1) * 0.20)
-                        if (px1 - 160 <= cx <= px2 + 160) and (chest_y <= cy <= min(h, py2 + 160)):
-                            in_workspace = True
-                            break
-                    if not in_workspace:
-                        continue
-
-                # 5. Local Border Step Contrast Check against Surrounding Surface (Desk / Lap / Skin)
+                # Local Border Step Contrast Check against Surrounding Surface (Desk / Lap / Skin)
                 roi_gray = gray[y:y+bh, x:x+bw]
                 my1 = max(0, y - 8)
                 my2 = min(h, y + bh + 8)
@@ -355,24 +375,32 @@ class YOLO26Detector(BaseDetector):
                     mean_outside = float(np.mean(surrounding_outer))
                     border_contrast = abs(mean_inside - mean_outside)
 
-                # Must have clear step contrast (>= 12px) against surrounding desk/hand/clothing
-                if border_contrast < 12.0:
+                # Must have clear step contrast (>= 10px) against surrounding desk/hand/clothing
+                if border_contrast < 10.0:
                     continue
 
-                # 6. Reject Plain Uniform Background Walls (Check interior variance & text/edges)
+                # Interior variance & text/edges check
                 roi_std = float(np.std(roi_gray))
                 laplacian_var = float(cv2.Laplacian(roi_gray, cv2.CV_64F).var())
                 canny_edges = cv2.Canny(roi_gray, 50, 150)
                 edge_density = float(np.count_nonzero(canny_edges)) / float(roi_gray.size + 1e-6)
 
                 # A plain white background wall has std < 5.0 and laplacian_var < 6.0 and edge_density < 0.005
-                # A chit has handwriting/print texture or is a distinct small card with high contrast (>22px)
-                if border_contrast < 22.0 and (roi_std < 5.0 and laplacian_var < 6.0 and edge_density < 0.005):
+                if border_contrast < 20.0 and (roi_std < 5.0 and laplacian_var < 5.0 and edge_density < 0.004):
                     continue
 
                 chit_box = [float(x), float(y), float(x + bw), float(y + bh)]
                 if not self._is_valid_exam_chit(frame, chit_box, person_boxes=person_boxes):
                     continue
+
+                paper_dets.append(
+                    DetectionResult(
+                        box=chit_box,
+                        confidence=0.85,
+                        class_id=73,
+                        class_name="unauthorized paper/notes"
+                    )
+                )
 
                 paper_dets.append(
                     DetectionResult(
@@ -401,11 +429,11 @@ class YOLO26Detector(BaseDetector):
             # Apply OpenCV CLAHE pre-processing on Luminance channel
             proc_frame = self.apply_clahe(frame) if self.enable_clahe else frame
 
-            # Single-pass high-speed YOLO inference with yolov8m.pt, conf=0.28, iou=0.28, imgsz=640, augment=False
+            # Single-pass high-speed YOLO inference with yolov8m.pt, conf=0.25, iou=0.28, imgsz=self.imgsz, augment=False
             results = self.model.predict(
                 source=proc_frame,
-                imgsz=640,
-                conf=0.28,
+                imgsz=self.imgsz,
+                conf=0.25,
                 iou=0.28,
                 augment=False,
                 verbose=False
@@ -423,7 +451,7 @@ class YOLO26Detector(BaseDetector):
                     c_id = int(boxes.cls[i].cpu().numpy())
                     c_name = r.names.get(c_id, str(c_id)).lower()
                     c_conf = float(boxes.conf[i].cpu().numpy())
-                    if (c_name == "person" or c_id == 0) and c_conf >= self.person_conf_threshold:
+                    if (c_name == "person" or "person" in c_name) and c_conf >= self.person_conf_threshold:
                         person_boxes.append(boxes.xyxy[i].cpu().numpy().tolist())
 
             for r in results:
@@ -442,30 +470,43 @@ class YOLO26Detector(BaseDetector):
                     box_area = bw * bh
                     aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
 
-                    # Filter out any bounding box taking up >40% of frame area or width/height (avoid false positive full-body paper chit triggers)
+                    # Filter out any bounding box taking up >55% of frame area or width/height (avoid false positive full-body paper chit triggers)
                     if cls_name != "person":
-                        if box_area > (0.40 * w * h) or (bw > 0.40 * w and bh > 0.40 * h):
+                        if box_area > (0.55 * w * h) or (bw > 0.55 * w and bh > 0.55 * h):
                             continue
-                        if ("paper" in cls_name or "chit" in cls_name or "cheating" in cls_name) and (bw > 0.40 * w or bh > 0.40 * h):
+                        if ("paper" in cls_name or "chit" in cls_name or "cheating" in cls_name) and (bw > 0.45 * w or bh > 0.45 * h):
                             continue
 
-                    # 1. Validation for Cell Phone (Class 67 in COCO, or Class 1 / Class 4 / 'cell phone')
-                    if "phone" in cls_name or cls_name in ("cell phone", "phone", "remote", "mobile-phone") or cls_id in (67, 65, 4, 1):
+                    # 1. Validation for Person (Class 0 in COCO, or Class 4 in custom model)
+                    if cls_name == "person" or (cls_name.startswith("person") and "non" not in cls_name):
+                        if conf < self.person_conf_threshold:
+                            continue
+                        cls_name = "person"
+                        cls_id = 0
+                        if box not in person_boxes:
+                            person_boxes.append(box)
+
+                    # 2. Validation for Cell Phone (Class 67 in COCO, or Class 1 in custom model)
+                    elif cls_name in ("cell phone", "phone", "mobile phone", "telephone") or (
+                        "phone" in cls_name and "head" not in cls_name and "ear" not in cls_name
+                    ):
                         if conf < self.phone_conf_threshold:
                             continue
+
+                        # Cell Phone vs Big Book Disambiguation:
+                        # - A high-confidence phone detection (conf >= 0.50) is ALWAYS a Cell Phone! Never convert to book!
+                        # - An actual big book/textbook is broad and squarish (aspect_ratio < 1.35, bw >= 140, bh >= 140, area >= 22000).
+                        #   Only in that specific low-confidence case (conf < 0.50), convert to book.
+                        is_big_book = False
+                        if conf < 0.50 and aspect_ratio < 1.35 and bw >= 140.0 and bh >= 140.0 and box_area >= 22000.0:
+                            is_big_book = True
+
+                        is_paper_chit = False
+                        is_cloth_noise = False
 
                         rx1, ry1, rx2, ry2 = [int(v) for v in box]
                         rx1, ry1 = max(0, rx1), max(0, ry1)
                         rx2, ry2 = min(w, rx2), min(h, ry2)
-
-                        # Disambiguation: A big book held in hand is NOT a cell phone!
-                        # Books/binders have large area (>=14000 px^2), large max dimension (>=145 px), or broad short dimension (min >= 95 px)
-                        is_large_book = False
-                        if box_area >= 14000.0 or max(bw, bh) >= 145.0 or (min(bw, bh) >= 95.0 and max(bw, bh) >= 120.0):
-                            is_large_book = True
-
-                        is_paper_chit = False
-                        is_cloth_noise = False
 
                         if rx2 > rx1 and ry2 > ry1:
                             roi_bgr = frame[ry1:ry2, rx1:rx2]
@@ -474,19 +515,16 @@ class YOLO26Detector(BaseDetector):
                             mean_b = float(np.mean(roi_gray))
                             mean_sat = float(np.mean(roi_hsv[:, :, 1]))
 
-                            # Open book / notebook pages
-                            if (mean_b >= 80.0 and mean_sat <= 65.0) and (box_area >= 12000.0 or max(bw, bh) >= 130.0):
-                                is_large_book = True
-                            # Small paper slip / exam chit: Light matte surface with low saturation, small area (<12000)
-                            elif (mean_b >= 80.0 and mean_sat <= 60.0) and aspect_ratio < 1.85 and not is_large_book and box_area < 12000.0:
+                            # Small paper slip: tiny light white matte surface with low saturation, squarish aspect ratio, small area, low conf
+                            if (mean_b >= 115.0 and mean_sat <= 35.0) and aspect_ratio < 1.50 and box_area < 5000.0 and conf < 0.38:
                                 is_paper_chit = True
                             # Highly saturated fabric / clothing noise mistakenly flagged as phone
-                            elif mean_sat > 75.0 and conf < 0.38:
+                            elif mean_sat > 80.0 and conf < 0.35:
                                 is_cloth_noise = True
 
                         if is_cloth_noise:
                             continue
-                        elif is_large_book:
+                        elif is_big_book:
                             cls_name = "book"
                             cls_id = 73
                         elif is_paper_chit:
@@ -495,28 +533,35 @@ class YOLO26Detector(BaseDetector):
                             cls_name = "unauthorized paper/notes"
                             cls_id = 73
                         else:
-                            if not self._is_valid_phone_geometry(box):
+                            if not self._is_valid_phone_geometry(box, (h, w)):
                                 continue
                             cls_name = "cell phone"
                             cls_id = 67
 
-                    # 2. Validation for Book / Paper / Notes (COCO Class 73)
-                    elif cls_name in ("book", "notebook", "paper") or cls_id in (73, 0):
+                    # 3. Validation for Book / Paper / Notes (COCO Class 73, or Class 0 in best.pt)
+                    elif cls_name in ("book", "notebook") or ("book" in cls_name):
                         if conf < self.book_conf_threshold:
                             continue
 
                         # Disambiguate small exam chits / paper notes from large bound books
                         if box_area < 12000.0 and max(bw, bh) < 130.0:
-                            if not self._is_valid_exam_chit(frame, box, person_boxes=person_boxes):
-                                continue
-                            cls_name = "unauthorized paper/notes"
-                            cls_id = 73
+                            if self._is_valid_exam_chit(frame, box, person_boxes=person_boxes):
+                                cls_name = "unauthorized paper/notes"
+                                cls_id = 73
+                            else:
+                                # Small pocket book / notebook with dark or colored cover
+                                cls_name = "book"
+                                cls_id = 73
                         else:
+                            # Large book / textbook: check door perimeter exclusion
+                            cx, cy = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
+                            if cy < (0.28 * h) and (cx < 0.12 * w or cx > 0.88 * w):
+                                continue  # Reject door top / background wall frames
                             cls_name = "book"
                             cls_id = 73
 
-                    # 3. Disambiguation for Large Book / Textbook mistakenly detected as Laptop (Class 63)
-                    elif cls_name in ("laptop",) or cls_id == 63:
+                    # 4. Disambiguation for Large Book / Textbook mistakenly detected as Laptop (Class 63)
+                    elif cls_name in ("laptop",):
                         if conf < self.default_conf_threshold:
                             continue
                         rx1, ry1, rx2, ry2 = [int(v) for v in box]
@@ -531,10 +576,6 @@ class YOLO26Detector(BaseDetector):
                             mean_sat = float(np.mean(roi_hsv[:, :, 1]))
                             
                             # A book, binder, or open textbook:
-                            # - Portrait or natural aspect ratio (aspect ratio < 1.65), OR
-                            # - Paper page reflection (mean_b >= 75.0 and mean_sat <= 70.0), OR
-                            # - Height >= 0.58 * width, OR
-                            # - Moderate confidence (< 0.65)
                             if aspect_ratio < 1.65 or (ry2 - ry1) >= 0.58 * (rx2 - rx1) or (mean_b >= 75.0 and mean_sat <= 70.0) or conf < 0.65:
                                 is_book = True
 
@@ -545,24 +586,28 @@ class YOLO26Detector(BaseDetector):
                             cls_name = "laptop"
                             cls_id = 63
 
-                    # 4. Validation for Person (Class 0 in COCO, or Class 4 in custom model)
-                    elif cls_name == "person" or (cls_id == 0 and cls_name not in ("cheating", "phone", "cell phone", "book")):
-                        if conf < self.person_conf_threshold:
-                            continue
-                        cls_name = "person"
-                        cls_id = 0
-                        if box not in person_boxes:
-                            person_boxes.append(box)
-
-                    # 5. Custom Model Classes (best.pt)
-                    elif cls_name in ("headphone", "headphones", "earphone", "earphones", "tv"):
+                    # 5. Audio / Visual Gadgets (headphones, tv, remote)
+                    elif cls_name in ("headphone", "headphones", "earphone", "earphones"):
                         if conf < self.default_conf_threshold:
                             continue
-                        cls_name = "headphone" if ("headphone" in cls_name or "earphone" in cls_name) else "tv"
-                        cls_id = 85 if cls_name == "headphone" else 62
+                        cls_name = "headphone"
+                        cls_id = 85
+
+                    elif cls_name in ("tv", "monitor"):
+                        if conf < self.default_conf_threshold:
+                            continue
+                        cls_name = "tv"
+                        cls_id = 62
+
+                    elif cls_name in ("remote", "remote control"):
+                        if conf < self.default_conf_threshold:
+                            continue
+                        cls_name = "remote"
+                        cls_id = 65
 
                     elif cls_name in ("non-cheating", "non_cheating"):
                         continue
+
                     elif cls_name in ("cheating-paper", "cheating_paper", "paper", "cheating"):
                         if conf < self.book_conf_threshold:
                             continue
@@ -570,6 +615,7 @@ class YOLO26Detector(BaseDetector):
                             continue
                         cls_name = "unauthorized paper/notes"
                         cls_id = 73
+
                     elif cls_name in ("hand-gestures", "hand_gestures"):
                         if conf < self.default_conf_threshold:
                             continue
@@ -600,45 +646,24 @@ class YOLO26Detector(BaseDetector):
                         continue
                     px1, py1, px2, py2 = pd.box
                     p_area = (px2 - px1) * (py2 - py1)
-                    covered = False
+
+                    # Ensure heuristic paper sheet NEVER overrides or pollutes a genuine cell phone
+                    overlaps_phone = False
                     for existing in detections:
-                        ex1, ey1, ex2, ey2 = existing.box
-                        ix1, iy1 = max(px1, ex1), max(py1, ey1)
-                        ix2, iy2 = min(px2, ex2), min(py2, ey2)
-                        iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
-                        inter = iw * ih
-                        e_area = (ex2 - ex1) * (ey2 - ey1)
-                        iou = inter / (p_area + e_area - inter + 1e-6)
-                        if iou > 0.30:
-                            # If overlapping detection was misclassified as phone, correct it to unauthorized paper/notes
-                            if existing.class_name in ("cell phone", "phone") or existing.class_id in (1, 67):
-                                existing.class_name = "unauthorized paper/notes"
-                                existing.class_id = 73
-                                existing.confidence = max(existing.confidence, pd.confidence)
-                            covered = True
-                            break
-                    if not covered:
-                        detections.append(pd)
-                    px1, py1, px2, py2 = pd.box
-                    p_area = (px2 - px1) * (py2 - py1)
-                    covered = False
-                    for existing in detections:
-                        ex1, ey1, ex2, ey2 = existing.box
-                        ix1, iy1 = max(px1, ex1), max(py1, ey1)
-                        ix2, iy2 = min(px2, ex2), min(py2, ey2)
-                        iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
-                        inter = iw * ih
-                        e_area = (ex2 - ex1) * (ey2 - ey1)
-                        iou = inter / (p_area + e_area - inter + 1e-6)
-                        if iou > 0.30:
-                            # If overlapping detection was misclassified as phone, correct it to unauthorized paper/notes
-                            if existing.class_name in ("cell phone", "phone") or existing.class_id in (1, 67):
-                                existing.class_name = "unauthorized paper/notes"
-                                existing.class_id = 73
-                                existing.confidence = max(existing.confidence, pd.confidence)
-                            covered = True
-                            break
-                    if not covered:
+                        if existing.class_name in ("cell phone", "phone"):
+                            ex1, ey1, ex2, ey2 = existing.box
+                            ix1, iy1 = max(px1, ex1), max(py1, ey1)
+                            ix2, iy2 = min(px2, ex2), min(py2, ey2)
+                            iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+                            inter = iw * ih
+                            e_area = (ex2 - ex1) * (ey2 - ey1)
+                            iou = inter / (p_area + e_area - inter + 1e-6)
+                            containment = inter / (min(p_area, e_area) + 1e-6)
+                            if iou > 0.15 or containment > 0.25:
+                                overlaps_phone = True
+                                break
+
+                    if not overlaps_phone:
                         detections.append(pd)
 
             # Apply Class-Aware Non-Maximum Suppression to eliminate duplicate / multi-scale bounding boxes
