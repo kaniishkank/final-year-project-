@@ -41,87 +41,168 @@ def apply_clahe_preprocessing(frame: np.ndarray) -> np.ndarray:
         return frame
 
 
-def detect_paper_chits(
-    frame: np.ndarray,
-    student_bbox: Optional[Union[List[float], Tuple[float, ...]]] = None
-) -> List[DetectionResult]:
-    """Refactored paper/chit/notes detection module strictly conforming to the 4 proctoring safeguards:
+class DocumentExamDetector:
+    """Scans for 4-point quadrilaterals with text-density verification.
 
-    1. Candidate Exclusion Masking: Face + 35% downward past chin masked to 0 (eliminates false positives on face, neck, collar, teeth).
-    2. Desk-Only ROI: Restricts contour search strictly to the lower frame portion (y >= 0.60 * frame_h).
-    3. Color & Saturation Thresholding (HSV): lower_white = [0, 0, 160], upper_white = [180, 45, 255] with (5, 5) closing + opening.
-    4. Contour Geometry Filters: 1500 < area < 35000 px^2, aspect ratio between 0.5 and 3.0, confidence=0.92, class_id=73.
+    Excludes candidate body and ignores plain non-document surfaces (walls, shirts, reflections).
+    Dual-mode support for both large textbooks and small chits.
     """
-    paper_dets: List[DetectionResult] = []
-    if frame is None or frame.size == 0:
-        return paper_dets
 
-    try:
+    def __init__(self, required_stable_frames: int = 8):
+        # Rolling temporal buffer to prevent 1-frame glitches
+        self.confirmed_detection_frames = 0
+        self.REQUIRED_STABLE_FRAMES = required_stable_frames
+
+    def is_text_dense(self, roi_bgr: np.ndarray) -> Tuple[bool, float]:
+        """Checks if the candidate polygon contains dense text strokes
+
+        (handwriting or print) rather than plain flat surfaces (walls/shirts).
+        """
+        if roi_bgr is None or roi_bgr.size == 0:
+            return False, 0.0
+
+        gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
+        # Gradient magnitude for handwriting/text line edges
+        grad_x = cv2.Sobel(gray, cv2.CV_16S, 1, 0, ksize=3)
+        grad_y = cv2.Sobel(gray, cv2.CV_16S, 0, 1, ksize=3)
+        abs_grad = cv2.convertScaleAbs(cv2.addWeighted(grad_x, 0.5, grad_y, 0.5, 0))
+
+        # Text creates sharp micro-contrast boundaries
+        _, text_thresh = cv2.threshold(
+            abs_grad, 40, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        edge_ratio = np.count_nonzero(text_thresh) / float(
+            roi_bgr.shape[0] * roi_bgr.shape[1]
+        )
+
+        # Books and handwritten notes exhibit high internal gradient density (4% - 40%)
+        # Flat blank objects, walls, and clothes have < 2.5%
+        return (edge_ratio >= 0.04), edge_ratio
+
+    def detect_papers_and_books(
+        self,
+        frame: np.ndarray,
+        student_bbox: Optional[Union[List[float], Tuple[float, ...]]] = None,
+        require_stability: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Scans for 4-point quadrilaterals with text-density verification.
+
+        Excludes candidate body and ignores plain non-document surfaces.
+        """
+        if frame is None or frame.size == 0:
+            return []
+
         h, w = frame.shape[:2]
-        desk_roi_y_min = int(h * 0.60)
+        detected_items = []
 
-        # 3. Color & Saturation Thresholding (HSV)
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        lower_white = np.array([0, 0, 160], dtype=np.uint8)
-        upper_white = np.array([180, 45, 255], dtype=np.uint8)
-        mask = cv2.inRange(hsv, lower_white, upper_white)
-
-        # 2. Desk-Only ROI: Restrict to lower portion of the frame (y >= desk_roi_y_min)
-        mask[0:desk_roi_y_min, :] = 0
-
-        # 1. Candidate Exclusion Masking
+        # 1. Mask Candidate upper torso and head completely
+        clean_frame = frame.copy()
         if student_bbox is not None and len(student_bbox) >= 4:
             sx1, sy1, sx2, sy2 = [int(v) for v in student_bbox[:4]]
             # If student_bbox is full person/body (>45% frame height), estimate chin around upper 40%
             if (sy2 - sy1) > int(h * 0.45):
-                chin_y = sy1 + int((sy2 - sy1) * 0.40)
-                face_h = chin_y - sy1
-                exclusion_y2 = min(h, int(chin_y + face_h * 0.35))
+                face_h = int((sy2 - sy1) * 0.40)
+                exclusion_y2 = min(h, int(sy1 + face_h * 1.45))
             else:
-                exclusion_y2 = min(h, int(sy2 + (sy2 - sy1) * 0.35))
+                exclusion_y2 = min(h, int(sy2 + (sy2 - sy1) * 0.45))
+            clean_frame[max(0, sy1) : exclusion_y2, max(0, sx1) : min(w, sx2)] = 0
 
-            ex1 = max(0, sx1)
-            ex2 = min(w, sx2)
-            ey1 = max(0, sy1)
-            ey2 = min(h, exclusion_y2)
-            if ex2 > ex1 and ey2 > ey1:
-                mask[ey1:ey2, ex1:ex2] = 0
+        # 2. Focus on Desk & Lower Hand Workspace (bottom 55% of the camera)
+        desk_y_start = int(h * 0.45)
+        desk_roi = clean_frame[desk_y_start:h, 0:w]
 
-        # Morphological closing followed by opening with a (5, 5) rectangular kernel
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        # 3. Morphological Edge Detection for Document Borders
+        gray = cv2.cvtColor(desk_roi, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blurred, 50, 150)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        dilated = cv2.dilate(edges, kernel, iterations=2)
 
-        # 4. Contour Geometry Filters
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(
+            dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            if not (1500.0 < area < 35000.0):
+            # Area filter: small chits (1,800 px) to big open textbooks (140,000 px)
+            if area < 1800 or area > 140000:
                 continue
 
-            x, y, bw, bh = cv2.boundingRect(cnt)
-            if bw < 8 or bh < 8:
-                continue
+            # 4. Check for 4-Corner Quadrilateral Geometry (Document/Book boundary)
+            peri = cv2.arcLength(cnt, True)
+            approx = cv2.approxPolyDP(cnt, 0.03 * peri, True)
 
-            # Reject Frame Boundary Touching (Walls, ceiling, window/door borders)
-            if x <= 4 or y <= 4 or (x + bw) >= (w - 4) or (y + bh) >= (h - 4):
-                continue
+            if len(approx) == 4 and cv2.isContourConvex(approx):
+                x, y, bw, bh = cv2.boundingRect(approx)
+                # Map coordinates back to full-frame space
+                real_y = y + desk_y_start
+                aspect_ratio = float(bw) / float(bh) if bh > 0 else 0
 
-            aspect_ratio = float(bw) / float(bh + 1e-6)
-            if not (0.5 <= aspect_ratio <= 3.0):
-                continue
+                # Books & papers typically match standard aspect ratios (0.5 to 2.2)
+                if 0.5 <= aspect_ratio <= 2.2:
+                    # 5. Text-Density Check on the bounded object
+                    target_roi = frame[real_y : real_y + bh, x : x + bw]
+                    has_text, density = self.is_text_dense(target_roi)
 
-            paper_dets.append(
-                DetectionResult(
-                    box=[float(x), float(y), float(x + bw), float(y + bh)],
-                    confidence=0.92,
-                    class_id=73,
-                    class_name="unauthorized paper/notes"
-                )
+                    if has_text:
+                        item_type = (
+                            "Big Book / Notebook"
+                            if area > 18000
+                            else "Exam Chit / Notes"
+                        )
+                        detected_items.append(
+                            {
+                                "box": [x, real_y, x + bw, real_y + bh],
+                                "label": f"ALERT: {item_type} (94%)",
+                                "conf": 0.94,
+                                "type": item_type,
+                            }
+                        )
+
+        # 6. Apply temporal buffer (must persist across 8 consecutive frames to avoid flicker)
+        if len(detected_items) > 0:
+            self.confirmed_detection_frames += 1
+        else:
+            self.confirmed_detection_frames = max(
+                0, self.confirmed_detection_frames - 2
             )
-    except Exception as e:
-        logger.debug(f"Paper chit detection exception: {e}")
 
+        if (
+            not require_stability
+            or self.confirmed_detection_frames >= self.REQUIRED_STABLE_FRAMES
+        ):
+            return detected_items
+        return []
+
+
+_global_doc_detector = DocumentExamDetector()
+
+
+def detect_paper_chits(
+    frame: np.ndarray,
+    student_bbox: Optional[Union[List[float], Tuple[float, ...]]] = None,
+    require_stability: bool = False
+) -> List[DetectionResult]:
+    """Scans for 4-point quadrilaterals with text-density verification via DocumentExamDetector."""
+    items = _global_doc_detector.detect_papers_and_books(
+        frame=frame,
+        student_bbox=student_bbox,
+        require_stability=require_stability
+    )
+    paper_dets: List[DetectionResult] = []
+    for item in items:
+        box = [float(v) for v in item["box"]]
+        item_type = item.get("type", "")
+        conf = float(item.get("conf", 0.94))
+        cls_name = "book" if "book" in item_type.lower() else "unauthorized paper/notes"
+        paper_dets.append(
+            DetectionResult(
+                box=box,
+                confidence=conf,
+                class_id=73,
+                class_name=cls_name
+            )
+        )
     return paper_dets
 
 
@@ -380,9 +461,10 @@ class YOLO26Detector(BaseDetector):
         self,
         frame: np.ndarray,
         student_bbox: Optional[Union[List[float], Tuple[float, ...]]] = None,
-        person_boxes: Optional[List[List[float]]] = None
+        person_boxes: Optional[List[List[float]]] = None,
+        require_stability: bool = False
     ) -> List[DetectionResult]:
-        """Detects physical small exam chits and paper slips using candidate exclusion and desk ROI."""
+        """Detects physical small exam chits and paper slips using candidate exclusion, 4-point quadrilateral, and text density."""
         if not self.enable_paper_heuristic or frame is None or frame.size == 0:
             return []
 
@@ -390,7 +472,7 @@ class YOLO26Detector(BaseDetector):
         if target_bbox is None and person_boxes:
             target_bbox = person_boxes[0]
 
-        return detect_paper_chits(frame, student_bbox=target_bbox)
+        return detect_paper_chits(frame, student_bbox=target_bbox, require_stability=require_stability)
 
     def detect(
         self,
@@ -592,7 +674,13 @@ class YOLO26Detector(BaseDetector):
             # Run specialized heuristic paper sheet / chit detection on CLAHE-enhanced frame
             if self.enable_paper_heuristic:
                 target_student_box = student_bbox or (person_boxes[0] if person_boxes else None)
-                paper_dets = self._detect_white_paper_sheets(proc_frame, student_bbox=target_student_box, person_boxes=person_boxes)
+                require_stab = bool(self.config.get("require_paper_stability", True))
+                paper_dets = self._detect_white_paper_sheets(
+                    proc_frame,
+                    student_bbox=target_student_box,
+                    person_boxes=person_boxes,
+                    require_stability=require_stab
+                )
                 for pd in paper_dets:
                     px1, py1, px2, py2 = pd.box
                     p_area = (px2 - px1) * (py2 - py1)

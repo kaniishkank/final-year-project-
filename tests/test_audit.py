@@ -51,12 +51,14 @@ def test_phone_heuristic_and_area_filtering():
 
 
 def test_white_paper_sheet_heuristic_detector():
-    """Verify that a high-contrast rectangular white paper sheet is flagged as unauthorized paper/notes."""
+    """Verify that a high-contrast rectangular white paper sheet with text notes is flagged as unauthorized paper/notes."""
     detector = YOLO26Detector({"enable_paper_heuristic": True})
 
-    # Create synthetic frame with a dark background and a white rectangular paper sheet (100x140 px, area 14000 px^2)
+    # Create synthetic frame with a dark background and a white rectangular paper sheet with notes (80x110 px, in workspace)
     frame = np.full((480, 640, 3), 40, dtype=np.uint8)
-    cv2.rectangle(frame, (200, 200), (300, 340), (245, 245, 245), -1)
+    cv2.rectangle(frame, (220, 260), (300, 370), (245, 245, 245), -1)
+    for y in range(275, 360, 20):
+        cv2.line(frame, (230, y), (290, y), (30, 30, 30), 2)
 
     paper_dets = detector._detect_white_paper_sheets(frame)
     assert len(paper_dets) >= 1
