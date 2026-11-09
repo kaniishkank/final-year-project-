@@ -79,6 +79,10 @@ class RiskEngine:
         self.last_incident_time: float = 0.0
         self.incident_cooldown_seconds: float = 8.0
 
+        # Temporal Confirmation Buffer (2-Frame Persistence for Critical Dossier Logging)
+        self.phone_consecutive_frames: int = 0
+        self.notes_consecutive_frames: int = 0
+
     def evaluate(
         self,
         detections: List[DetectionResult],
@@ -91,38 +95,66 @@ class RiskEngine:
         factors: Dict[str, float] = {}
         is_critical_direct_trigger = False
 
-        # 1. Phone Detection (score 70-95 range -> CRITICAL)
-        phone_detections = [
+        # 1. Phone Detection (score 70-95 range -> CRITICAL, requiring 2-frame persistence)
+        raw_phone_detections = [
             d for d in detections 
             if (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 4, 67))
-            and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
-            and d.confidence >= 0.28
+            and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper", "exam chit in hand")
+            and d.confidence >= 0.42
         ]
+        # Validate phone aspect ratio (between 1.3 and 2.6)
+        phone_detections = []
+        for pd in raw_phone_detections:
+            bx1, by1, bx2, by2 = pd.box
+            bw = abs(bx2 - bx1)
+            bh = abs(by2 - by1)
+            ar = max(bw, bh) / (min(bw, bh) + 1e-6)
+            if 1.3 <= ar <= 2.6:
+                phone_detections.append(pd)
+
         if phone_detections:
-            active_violations.append("VIOLATION: MOBILE_PHONE_DETECTED")
-            active_violations.append("PHONE_DETECTED")
-            factors["cell_phone"] = max(self.w_phone, 95.0)
-            is_critical_direct_trigger = True
+            self.phone_consecutive_frames += 1
+        else:
+            self.phone_consecutive_frames = 0
+
+        if phone_detections:
+            if self.phone_consecutive_frames >= 2:
+                active_violations.append("VIOLATION: MOBILE_PHONE_DETECTED")
+                active_violations.append("PHONE_DETECTED")
+                factors["cell_phone"] = max(self.w_phone, 95.0)
+                is_critical_direct_trigger = True
+            else:
+                active_violations.append("MONITOR: Verifying Mobile Phone")
+                factors["cell_phone"] = 35.0
 
         # 2. Smart Watch & Electronic Gadgets (score 70-95 range -> CRITICAL)
         watch_detections = [
             d for d in detections 
-            if d.class_name in ("smart watch", "smartwatch", "watch", "remote", "laptop", "headphone", "headphones", "tv") and d.confidence >= 0.28
+            if d.class_name in ("smart watch", "smartwatch", "watch", "remote", "laptop", "headphone", "headphones", "tv") and d.confidence >= 0.35
         ]
         if watch_detections:
             active_violations.append("ELECTRONIC_DEVICE_DETECTED")
             factors["smart_watch"] = self.w_watch
             is_critical_direct_trigger = True
 
-        # 3. Unauthorized Notes / Book Detection (score 70-95 range -> CRITICAL)
+        # 3. Unauthorized Notes / Book Detection (score 70-95 range -> CRITICAL, requiring 2-frame persistence)
         notes_detections = [
             d for d in detections 
-            if d.class_name in ("book", "notes", "unauthorized paper/notes", "paper") and d.confidence >= 0.28
+            if d.class_name in ("book", "notes", "unauthorized paper/notes", "paper", "exam chit in hand") and d.confidence >= 0.28
         ]
         if notes_detections:
-            active_violations.append("UNAUTHORIZED_NOTES")
-            factors["unauthorized_notes"] = self.w_notes
-            is_critical_direct_trigger = True
+            self.notes_consecutive_frames += 1
+        else:
+            self.notes_consecutive_frames = 0
+
+        if notes_detections:
+            if self.notes_consecutive_frames >= 2:
+                active_violations.append("UNAUTHORIZED_NOTES")
+                factors["unauthorized_notes"] = self.w_notes
+                is_critical_direct_trigger = True
+            else:
+                active_violations.append("MONITOR: Verifying Notes / Paper")
+                factors["unauthorized_notes"] = 35.0
 
         # 4. Secondary Person Detection (Intruder -> CRITICAL)
         if person_count > 1 or getattr(pose_gaze, "face_count", 1) > 1:

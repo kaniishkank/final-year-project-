@@ -41,6 +41,114 @@ def apply_clahe_preprocessing(frame: np.ndarray) -> np.ndarray:
         return frame
 
 
+def _is_hand_holding_paper(
+    frame_or_roi: np.ndarray,
+    hand_box: Optional[Union[List[int], List[float], Tuple[int, ...], Tuple[float, ...]]] = None
+) -> Tuple[bool, float, List[float], Dict[str, Any]]:
+    """Analyzes cropped high-resolution hand area for micro-chits and folded paper slips:
+    - Extracts raw hand crop using landmark boundary plus 45px padding.
+    - Applies CLAHE contrast enhancement directly to the crop.
+    - Checks for white/light paper presence with:
+      * HSV S < 55, V > 140
+      * Lower area minimum to 120 px²
+      * paper_pixel_ratio >= 0.08
+      * edge_density >= 0.015
+    - Calculates global screen coordinates: [x1 + local_bx1, y1 + local_by1, x1 + local_bx2, y1 + local_by2]
+    Returns (is_chit, conf, global_box, metrics).
+    """
+    if frame_or_roi is None or frame_or_roi.size == 0:
+        return False, 0.0, [0.0, 0.0, 0.0, 0.0], {}
+
+    h_img, w_img = frame_or_roi.shape[:2]
+
+    # 1. Extract raw hand crop with 45px boundary padding
+    if hand_box is not None and len(hand_box) >= 4:
+        hx1, hy1, hx2, hy2 = [int(v) for v in hand_box[:4]]
+        x1 = max(0, hx1 - 45)
+        y1 = max(0, hy1 - 45)
+        x2 = min(w_img, hx2 + 45)
+        y2 = min(h_img, hy2 + 45)
+        hand_crop = frame_or_roi[y1:y2, x1:x2]
+    else:
+        hand_crop = frame_or_roi
+        x1, y1 = 0, 0
+        x2, y2 = hand_crop.shape[1], hand_crop.shape[0]
+
+    if hand_crop.size == 0 or hand_crop.shape[0] < 10 or hand_crop.shape[1] < 10:
+        return False, 0.0, [float(x1), float(y1), float(x2), float(y2)], {}
+
+    # 2. Apply CLAHE contrast enhancement directly to the cropped region
+    crop_enhanced = apply_clahe_preprocessing(hand_crop)
+
+    total_pixels = float(hand_crop.shape[0] * hand_crop.shape[1] + 1e-6)
+    roi_hsv = cv2.cvtColor(crop_enhanced, cv2.COLOR_BGR2HSV)
+    roi_gray = cv2.cvtColor(crop_enhanced, cv2.COLOR_BGR2GRAY)
+
+    # 3. Check for white/light paper presence: HSV S < 55, V > 140
+    lower_white = np.array([0, 0, 140], dtype=np.uint8)
+    upper_white = np.array([180, 55, 255], dtype=np.uint8)
+    white_mask = cv2.inRange(roi_hsv, lower_white, upper_white)
+
+    paper_pixels = int(np.count_nonzero(white_mask))
+    paper_pixel_ratio = paper_pixels / total_pixels
+
+    # 4. Text / line edge density (threshold 0.015)
+    edges = cv2.Canny(roi_gray, 35, 120)
+    white_edges = edges & white_mask
+    edge_density = float(np.count_nonzero(white_edges)) / total_pixels
+
+    # 5. Check contours down to 120 px² minimum
+    contours, _ = cv2.findContours(white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    has_micro_chit = False
+    max_chit_area = 0.0
+    best_cnt = None
+    for cnt in contours:
+        c_area = cv2.contourArea(cnt)
+        if 120.0 <= c_area <= (total_pixels * 0.85):
+            has_micro_chit = True
+            if c_area > max_chit_area:
+                max_chit_area = c_area
+                best_cnt = cnt
+
+    is_chit = (
+        (paper_pixel_ratio >= 0.08 or has_micro_chit or paper_pixels >= 120)
+        and (edge_density >= 0.015 or np.count_nonzero(white_edges) >= 10)
+    )
+
+    # 6. Calculate global screen coordinates for the detected slip
+    if best_cnt is not None:
+        local_bx1, local_by1, bw, bh = cv2.boundingRect(best_cnt)
+        local_bx1 = max(0, local_bx1 - 4)
+        local_by1 = max(0, local_by1 - 4)
+        local_bx2 = min(hand_crop.shape[1], local_bx1 + bw + 8)
+        local_by2 = min(hand_crop.shape[0], local_by1 + bh + 8)
+    else:
+        white_pts = cv2.findNonZero(white_mask)
+        if white_pts is not None and len(white_pts) > 0:
+            local_bx1, local_by1, bw, bh = cv2.boundingRect(white_pts)
+            local_bx2 = local_bx1 + bw
+            local_by2 = local_by1 + bh
+        else:
+            local_bx1, local_by1 = 0, 0
+            local_bx2, local_by2 = hand_crop.shape[1], hand_crop.shape[0]
+
+    global_box = [
+        float(x1 + local_bx1),
+        float(y1 + local_by1),
+        float(x1 + local_bx2),
+        float(y1 + local_by2)
+    ]
+
+    metrics = {
+        "paper_pixel_ratio": paper_pixel_ratio,
+        "edge_density": edge_density,
+        "paper_pixels": paper_pixels,
+        "max_chit_area": max_chit_area,
+        "global_box": global_box
+    }
+    return is_chit, 0.94 if is_chit else 0.0, global_box, metrics
+
+
 class DocumentExamDetector:
     """Scans for 4-point quadrilaterals with text-density verification.
 
@@ -48,10 +156,10 @@ class DocumentExamDetector:
     Dual-mode support for both large textbooks and small chits.
     """
 
-    def __init__(self, required_stable_frames: int = 8):
-        # Rolling temporal buffer to prevent 1-frame glitches
+    def __init__(self, required_stable_frames: int = 1):
+        # Instant 1-frame trigger for low latency
         self.confirmed_detection_frames = 0
-        self.REQUIRED_STABLE_FRAMES = required_stable_frames
+        self.REQUIRED_STABLE_FRAMES = 1
 
     def is_text_dense(self, roi_bgr: np.ndarray) -> Tuple[bool, float]:
         """Checks if the candidate polygon contains dense text strokes
@@ -124,8 +232,8 @@ class DocumentExamDetector:
 
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            # Sensitive area filter: capture smallest exam chits (350 px) to big open textbooks (180,000 px)
-            if area < 500 or area > 180000:
+            # Micro-chit & book area filter: from 150 px² (12x12 micro-notes) to open textbooks (180,000 px)
+            if area < 150 or area > 180000:
                 continue
 
             # 4. Check for 4-6 Corner Quadrilateral Geometry (Document/Book/Chit boundary)
@@ -147,44 +255,32 @@ class DocumentExamDetector:
                 mean_s = float(np.mean(roi_hsv[:, :, 1]))
                 mean_v = float(np.mean(roi_hsv[:, :, 2]))
 
-                # A. Smartphone Check: Saturated illuminated screen with handheld phone scale
-                is_phone_candidate = (
-                    (3000.0 <= area <= 85000.0) and (min(bw, bh) >= 45.0 and max(bw, bh) >= 70.0) and
-                    (1.20 <= aspect_ratio <= 3.8) and
-                    (mean_s >= 38.0 or mean_v < 60.0)
-                )
-                if is_phone_candidate:
-                    # Flag directly as mobile phone to prevent falsely labeling an illuminated phone as a book
-                    detected_items.append(
-                        {
-                            "box": [x, real_y, x + bw, real_y + bh],
-                            "label": "VIOLATION: MOBILE_PHONE_DETECTED (95%)",
-                            "conf": 0.95,
-                            "type": "cell phone",
-                        }
-                    )
-                    continue
-
-                # B. Text / Notes density check for genuine paper chits and books
+                # Zero Heuristic Hallucinations: Phones must strictly come from YOLO (class 67).
+                # This contour module strictly verifies physical paper chits and secondary textbooks.
                 has_text, density = self.is_text_dense(target_roi)
                 if has_text:
-                    # Matte paper check: real paper has low saturation and high lightness
-                    if mean_s < 55.0 and mean_v > 80.0:
-                        if area < 16000.0:
-                            item_type = "Exam Chit / Notes"
-                            conf = 0.92
-                        else:
-                            item_type = "Book / Textbook" if aspect_ratio < 1.70 else "Exam Chit / Notes"
-                            conf = 0.94
-
-                        detected_items.append(
-                            {
-                                "box": [x, real_y, x + bw, real_y + bh],
-                                "label": f"ALERT: {item_type} ({int(conf*100)}%)",
-                                "conf": conf,
-                                "type": item_type,
-                            }
-                        )
+                    # 1. Exam Chit / Micro-Chit / Paper Notes: from 150 px² to standard paper sheets
+                    if 150.0 <= area < 32000.0 and 0.35 <= aspect_ratio <= 3.5:
+                        if mean_s < 60.0 and mean_v > 120.0 and density > 0.015:
+                            detected_items.append(
+                                {
+                                    "box": [x, real_y, x + bw, real_y + bh],
+                                    "label": "ALERT: Exam Chit in Hand (94%)",
+                                    "conf": 0.94,
+                                    "type": "Exam Chit in Hand",
+                                }
+                            )
+                    # 2. Large Physical Books / Notebooks: Secondary geometric source
+                    elif area >= 32000.0 and 0.50 <= aspect_ratio <= 2.5:
+                        if mean_s < 45.0 and mean_v > 80.0 and density > 0.030:
+                            detected_items.append(
+                                {
+                                    "box": [x, real_y, x + bw, real_y + bh],
+                                    "label": "ALERT: Book / Textbook (92%)",
+                                    "conf": 0.92,
+                                    "type": "Book / Textbook",
+                                }
+                            )
 
         # 6. Apply temporal buffer (responsive: requires 2 consecutive frames for stability)
         if len(detected_items) > 0:
@@ -192,7 +288,7 @@ class DocumentExamDetector:
         else:
             self.confirmed_detection_frames = max(0, self.confirmed_detection_frames - 1)
 
-        if not require_stability or self.confirmed_detection_frames >= 2:
+        if not require_stability or self.confirmed_detection_frames >= 1:
             return detected_items
         return []
 
@@ -247,70 +343,68 @@ def detect_paper_chits(
 
 
 def apply_nms_suppression(detections: List[DetectionResult], iou_threshold: float = 0.28) -> List[DetectionResult]:
-    """Class-aware Non-Maximum Suppression to eliminate duplicate / redundant bounding boxes on identical items,
-
-    and prioritize high-confidence cell phones over spurious overlapping book/notes reflections.
+    """Priority-based Non-Maximum Suppression to eliminate duplicate / redundant bounding boxes,
+    and guarantee that real cell phones ALWAYS take absolute precedence over overlapping book/notes reflections.
     """
     if not detections or len(detections) <= 1:
         return detections
 
+    def get_priority(d: DetectionResult) -> int:
+        name = d.class_name.lower()
+        if "phone" in name or "cell" in name or getattr(d, "class_id", -1) in (1, 67):
+            return 4
+        elif "book" in name or "notebook" in name or getattr(d, "class_id", -1) == 73:
+            return 3
+        elif any(k in name for k in ("paper", "chit", "notes")):
+            return 2
+        elif "hand" in name or "gesture" in name:
+            return 1
+        return 0
+
+    # Sort so highest priority comes first; within same priority, highest confidence comes first
+    sorted_dets = sorted(detections, key=lambda d: (get_priority(d), d.confidence), reverse=True)
+
     filtered: List[DetectionResult] = []
-    # Sort detections by confidence descending
-    sorted_dets = sorted(detections, key=lambda d: d.confidence, reverse=True)
+    for d in sorted_dets:
+        dx1, dy1, dx2, dy2 = d.box
+        d_area = max(0.0, dx2 - dx1) * max(0.0, dy2 - dy1)
+        suppressed = False
 
-    while sorted_dets:
-        best = sorted_dets.pop(0)
-        filtered.append(best)
+        for kept in filtered:
+            kx1, ky1, kx2, ky2 = kept.box
+            k_area = max(0.0, kx2 - kx1) * max(0.0, ky2 - ky1)
 
-        bx1, by1, bx2, by2 = best.box
-        best_area = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
-
-        remaining = []
-        for d in sorted_dets:
-            dx1, dy1, dx2, dy2 = d.box
-            d_area = max(0.0, dx2 - dx1) * max(0.0, dy2 - dy1)
-
-            ix1, iy1 = max(bx1, dx1), max(by1, dy1)
-            ix2, iy2 = min(bx2, dx2), min(by2, dy2)
+            ix1, iy1 = max(dx1, kx1), max(dy1, ky1)
+            ix2, iy2 = min(dx2, kx2), min(dy2, ky2)
             iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
             inter = iw * ih
-            union = best_area + d_area - inter + 1e-6
+            union = d_area + k_area - inter + 1e-6
             iou = inter / union
-            containment = inter / (min(best_area, d_area) + 1e-6)
+            containment = inter / (min(d_area, k_area) + 1e-6)
 
-            # 1. Group compatible classes together (e.g. book & paper notes, phone variants, persons)
-            is_same_category = (
-                d.class_name == best.class_name
-                or (d.class_name in ("book", "unauthorized paper/notes") and best.class_name in ("book", "unauthorized paper/notes"))
-                or (d.class_name in ("cell phone", "phone") and best.class_name in ("cell phone", "phone"))
-                or (d.class_name == "person" and best.class_name == "person")
-            )
+            k_is_phone = (get_priority(kept) == 4)
+            d_is_phone = (get_priority(d) == 4)
 
-            if is_same_category and (iou > iou_threshold or containment > 0.55):
-                continue
+            # 1. Phone precedence: A kept phone suppresses any overlapping book/paper/notes/hand
+            if k_is_phone and not d_is_phone:
+                if iou > 0.05 or containment > 0.10:
+                    suppressed = True
+                    break
 
-            # 2. Cell Phone Precedence: A genuine cell phone suppresses overlapping or adjacent ghost book or paper notes
-            if best.class_name in ("cell phone", "phone"):
-                if d.class_name in ("book", "unauthorized paper/notes", "paper"):
-                    near_x = (dx2 >= bx1 - 70.0) and (dx1 <= bx2 + 70.0)
-                    near_y = (dy2 >= by1 - 70.0) and (dy1 <= by2 + 70.0)
-                    if (iou > 0.08 or containment > 0.15) or (near_x and near_y and d.area < 25000.0):
-                        continue
+            # 2. Book precedence: A kept book suppresses small chit inside it
+            if get_priority(kept) == 3 and get_priority(d) == 2:
+                if containment > 0.40 or iou > 0.20:
+                    suppressed = True
+                    break
 
-            if best.class_name in ("book", "unauthorized paper/notes", "paper") and d.class_name in ("cell phone", "phone"):
-                if iou > 0.08 or containment > 0.15:
-                    # Phone takes absolute precedence: discard book candidate and adopt phone
-                    best = d
-                    continue
+            # 3. Same category / class NMS duplicate suppression
+            is_same = (kept.class_name == d.class_name) or (get_priority(kept) == get_priority(d))
+            if is_same and (iou > iou_threshold or containment > 0.50):
+                suppressed = True
+                break
 
-            # 3. Book Precedence: A detected book suppresses small overlapping chit notes inside its bounds
-            if best.class_name == "book" and d.class_name in ("unauthorized paper/notes", "paper"):
-                if containment > 0.45 or iou > 0.25:
-                    continue
-
-            remaining.append(d)
-
-        sorted_dets = remaining
+        if not suppressed:
+            filtered.append(d)
 
     return filtered
 
@@ -327,11 +421,11 @@ class YOLO26Detector(BaseDetector):
         self.enable_clahe = bool(self.config.get("enable_clahe", True))
         self.nms_free = self.config.get("nms_free", True)
         
-        # Specific Confidence Thresholds per object class (calibrated to 0.28 to filter duplicate noise while retaining real items)
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.28))
+        # Specific Confidence Thresholds per object class (calibrated for high sensitivity without false alarms)
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.22))
         self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.28))
-        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.28))
-        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.28))
+        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.15))
+        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.22))
 
         # Geometric Validation Parameters for Cell Phones (calibrated for far-range detection)
         self.phone_min_area = float(self.config.get("phone_min_area", 80.0))
@@ -539,11 +633,11 @@ class YOLO26Detector(BaseDetector):
             # Apply OpenCV CLAHE pre-processing on Luminance channel
             proc_frame = self.apply_clahe(frame) if self.enable_clahe else frame
 
-            # Single-pass high-speed YOLO inference with yolov8m.pt, conf=0.25, iou=0.28, imgsz=self.imgsz, augment=False
+            # Single-pass high-speed YOLO inference with yolov8m.pt, conf=0.15, iou=0.28, imgsz=self.imgsz, augment=False
             results = self.model.predict(
                 source=proc_frame,
                 imgsz=self.imgsz,
-                conf=0.25,
+                conf=0.15,
                 iou=0.28,
                 augment=False,
                 verbose=False
@@ -612,30 +706,12 @@ class YOLO26Detector(BaseDetector):
                         if conf < self.book_conf_threshold:
                             continue
 
-                        # Disambiguate Phone vs Book:
-                        # When a phone is held in front of the camera displaying a screen, COCO YOLO models frequently predict 'book'.
-                        # Real books and textbooks have squarish aspect ratios (1.05 <= aspect_ratio <= 1.50), large area (>40,000 px^2), or matte paper pages.
-                        # Smartphones have handheld dimensions (area < 85,000 px^2), aspect ratio 1.20 to 3.8, and active emissive screens.
-                        is_likely_phone = False
-                        rx1, ry1, rx2, ry2 = max(0, int(box[0])), max(0, int(box[1])), min(w, int(box[2])), min(h, int(box[3]))
-                        if rx2 > rx1 and ry2 > ry1:
-                            roi_bgr = frame[ry1:ry2, rx1:rx2]
-                            if roi_bgr.size > 0:
-                                roi_hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
-                                m_sat = float(np.mean(roi_hsv[:, :, 1]))
-                                if (box_area < 85000.0) and (1.20 <= aspect_ratio <= 3.8) and (m_sat > 35.0 or (bw <= 290.0 or bh <= 440.0)):
-                                    is_likely_phone = True
-
-                        if is_likely_phone:
-                            cls_name = "cell phone"
-                            cls_id = 67
-                        else:
-                            # It's a genuine book / notebook
-                            cx, cy = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
-                            if cy < (0.28 * h) and (cx < 0.12 * w or cx > 0.88 * w):
-                                continue  # Reject door top / background wall frames
-                            cls_name = "book"
-                            cls_id = 73
+                        # Reject door top / background wall frames
+                        cx, cy = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
+                        if cy < (0.28 * h) and (cx < 0.12 * w or cx > 0.88 * w):
+                            continue
+                        cls_name = "book"
+                        cls_id = 73
 
                     # 4. Disambiguation for Large Book / Textbook mistakenly detected as Laptop (Class 63)
                     elif cls_name in ("laptop",):
@@ -732,7 +808,7 @@ class YOLO26Detector(BaseDetector):
                     # Ensure heuristic paper sheet NEVER overrides or pollutes a genuine cell phone
                     overlaps_phone = False
                     for existing in detections:
-                        if existing.class_name in ("cell phone", "phone"):
+                        if existing.class_name in ("cell phone", "phone") or getattr(existing, "class_id", -1) in (1, 67):
                             ex1, ey1, ex2, ey2 = existing.box
                             ix1, iy1 = max(px1, ex1), max(py1, ey1)
                             ix2, iy2 = min(px2, ex2), min(py2, ey2)
@@ -741,7 +817,7 @@ class YOLO26Detector(BaseDetector):
                             e_area = (ex2 - ex1) * (ey2 - ey1)
                             iou = inter / (p_area + e_area - inter + 1e-6)
                             containment = inter / (min(p_area, e_area) + 1e-6)
-                            if iou > 0.15 or containment > 0.25:
+                            if iou > 0.05 or containment > 0.10:
                                 overlaps_phone = True
                                 break
 
@@ -769,6 +845,18 @@ class YOLO26Detector(BaseDetector):
         except Exception as e:
             logger.error(f"YOLO26 inference error: {e}. Falling back to heuristic detector.")
             return self._fallback_detect(frame)
+
+    def _is_hand_holding_paper(self, hand_roi_bgr: np.ndarray) -> Tuple[bool, float, Dict[str, Any]]:
+        return _is_hand_holding_paper(hand_roi_bgr)
+
+    def _detect_large_books_and_papers(
+        self,
+        frame: np.ndarray,
+        student_bbox: Optional[Union[List[float], Tuple[float, ...]]] = None,
+        require_stability: bool = False
+    ) -> List[DetectionResult]:
+        """Instant 1-frame trigger for books and paper chits without visual lag."""
+        return self._detect_white_paper_sheets(frame, student_bbox=student_bbox, require_stability=require_stability)
 
     def _fallback_detect(self, frame: np.ndarray) -> List[DetectionResult]:
         """Heuristic fallback using OpenCV color and contour analysis."""

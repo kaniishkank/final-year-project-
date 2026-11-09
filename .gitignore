@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.cache
 
 # Pytest & IDE
 .pytest_cache/
@@ -11,6 +12,12 @@ __pycache__/
 # Large model weights (auto-downloaded by ultralytics)
 *.pt
 *.onnx
+
+# YOLO training runs
+runs/
+
+# Scratch & temporary verification files
+scratch/
 
 # Database and local temp media (keep directory structure)
 data/*.db

@@ -137,10 +137,12 @@ class EviGuardPipeline:
         det_cfg["augment"] = False
         det_cfg["enable_clahe"] = True
         det_cfg["enable_paper_heuristic"] = True
-        det_cfg["confidence_threshold"] = 0.28
-        det_cfg["phone_confidence_threshold"] = 0.28
-        det_cfg["book_confidence_threshold"] = 0.28
-        det_cfg["person_confidence_threshold"] = 0.28
+        det_cfg["confidence_threshold"] = float(self.config.get("detection", {}).get("confidence_threshold", 0.22))
+        det_cfg["phone_confidence_threshold"] = float(self.config.get("detection", {}).get("phone_confidence_threshold", 0.42))
+        det_cfg["book_confidence_threshold"] = float(self.config.get("detection", {}).get("book_confidence_threshold", 0.15))
+        det_cfg["person_confidence_threshold"] = float(self.config.get("detection", {}).get("person_confidence_threshold", 0.28))
+        self.phone_conf_threshold = det_cfg["phone_confidence_threshold"]
+        self.book_conf_threshold = det_cfg["book_confidence_threshold"]
         model_type = det_cfg.get("model_type", "yolo26")
         self.detector = DetectorFactory.create_detector(model_type, det_cfg)
         
@@ -222,6 +224,10 @@ class EviGuardPipeline:
         if dt > 0:
             self.current_fps = 0.9 * self.current_fps + 0.1 * (1.0 / dt)
 
+        # Preserve raw full-resolution input frame before any downscaling
+        orig_h, orig_w = frame.shape[:2]
+        raw_full_res_frame = frame.copy()
+
         # 1. Downscale frame to target resolution if needed
         h, w = frame.shape[:2]
         if w != self.target_w or h != self.target_h:
@@ -257,14 +263,128 @@ class EviGuardPipeline:
 
             pose_gaze_result = future_pose.result()
 
-            # Detection logic order: if Phone (or class ID 1, 67) detected with conf >= 0.28, suppress hand gesture / finger signalling flags
+            # STRICT HAND-PRESENCE GATE & PHONE VERIFICATION:
+            h_boxes = getattr(pose_gaze_result, "hand_boxes", []) if pose_gaze_result else []
+            s_bbox = getattr(pose_gaze_result, "face_box", None) if pose_gaze_result else None
+
+            # 1. Strict Hand-Presence Gate for Notes / Chits / Books:
+            # If NO hands detected, immediately purge all paper/notes/chit detections
+            gated_detections = []
+            for d in detections:
+                c_lower = d.class_name.lower()
+                is_paper_or_book = c_lower in ("unauthorized paper/notes", "notes", "paper", "book", "cheating") or "chit" in c_lower
+                if is_paper_or_book:
+                    # Gate 1: Must have active hands detected
+                    if not h_boxes or len(h_boxes) == 0:
+                        continue
+                    # Gate 2: Completely ignore top 40% of camera frame (doors, walls, switchboards, ceiling)
+                    if d.box[1] < 0.40 * h or (d.box[1] + d.box[3]) / 2.0 < 0.40 * h:
+                        continue
+                    # Gate 3: Must intersect active hand box by >= 10% overlap or within 40px
+                    is_hand_anchored = False
+                    for hb in h_boxes:
+                        # Simple overlap / proximity check
+                        ix1, iy1 = max(d.box[0], hb[0]), max(d.box[1], hb[1])
+                        ix2, iy2 = min(d.box[2], hb[2]), min(d.box[3], hb[3])
+                        inter_w, inter_h = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+                        inter_a = inter_w * inter_h
+                        d_area = max(1.0, (d.box[2] - d.box[0]) * (d.box[3] - d.box[1]))
+                        hb_area = max(1.0, (hb[2] - hb[0]) * (hb[3] - hb[1]))
+                        iou = inter_a / (d_area + hb_area - inter_a + 1e-6)
+                        containment = inter_a / min(d_area, hb_area)
+                        dx = max(0.0, max(float(hb[0]) - d.box[2], d.box[0] - float(hb[2])))
+                        dy = max(0.0, max(float(hb[1]) - d.box[3], d.box[1] - float(hb[3])))
+                        if iou >= 0.10 or containment >= 0.10 or (dx <= 40.0 and dy <= 40.0):
+                            is_hand_anchored = True
+                            break
+                    if not is_hand_anchored:
+                        continue
+
+                # 2. Strict Phone Verification:
+                is_phone = c_lower in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67)
+                if is_phone:
+                    # Minimum confidence 0.42
+                    if d.confidence < 0.42:
+                        continue
+                    # Aspect ratio between 1.3 and 2.6
+                    bw = abs(d.box[2] - d.box[0])
+                    bh = abs(d.box[3] - d.box[1])
+                    ar = max(bw, bh) / (min(bw, bh) + 1e-6)
+                    if not (1.3 <= ar <= 2.6):
+                        continue
+                    # Torso/neck shadow exclusion
+                    if s_bbox and len(s_bbox) >= 4:
+                        fx1, fy1, fx2, fy2 = s_bbox[:4]
+                        fw, fh = fx2 - fx1, fy2 - fy1
+                        torso_b = [fx1 - 0.35 * fw, fy2, fx2 + 0.35 * fw, fy2 + 2.2 * fh]
+                        ix1, iy1 = max(d.box[0], torso_b[0]), max(d.box[1], torso_b[1])
+                        ix2, iy2 = min(d.box[2], torso_b[2]), min(d.box[3], torso_b[3])
+                        inter_a = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+                        b_area = max(1.0, bw * bh)
+                        if (inter_a / b_area) > 0.50:
+                            # Shadow on dark clothing/shoulder -> check if active hand overlaps
+                            hand_on_phone = False
+                            for hb in h_boxes:
+                                h_ix1, h_iy1 = max(d.box[0], hb[0]), max(d.box[1], hb[1])
+                                h_ix2, h_iy2 = min(d.box[2], hb[2]), min(d.box[3], hb[3])
+                                h_inter = max(0.0, h_ix2 - h_ix1) * max(0.0, h_iy2 - h_iy1)
+                                if (h_inter / b_area) > 0.08:
+                                    hand_on_phone = True
+                                    break
+                            if not hand_on_phone:
+                                continue
+
+                gated_detections.append(d)
+            detections = gated_detections
+
+            # Detection logic order:
+            # A. High-Resolution Hand-Crop Micro-Chit Inspection:
+            has_micro_chit_in_hand = False
+            if pose_gaze_result and getattr(pose_gaze_result, "hand_boxes", None):
+                scale_x = orig_w / float(w)
+                scale_y = orig_h / float(h)
+                from backend.detection.yolo26_detector import _is_hand_holding_paper
+
+                for h_box in pose_gaze_result.hand_boxes[:2]:
+                    # Map canvas hand box coordinates to full-resolution raw frame coordinates
+                    raw_h_box = [
+                        h_box[0] * scale_x,
+                        h_box[1] * scale_y,
+                        h_box[2] * scale_x,
+                        h_box[3] * scale_y
+                    ]
+                    # Extract high-resolution crop with 45px padding and analyze
+                    res = _is_hand_holding_paper(raw_full_res_frame, raw_h_box)
+                    is_chit = res[0]
+                    c_conf = res[1]
+                    raw_global_box = res[2] if len(res) == 4 else None
+
+                    if is_chit and raw_global_box:
+                        has_micro_chit_in_hand = True
+                        # Map detected slip box back to canvas coordinates
+                        canvas_box = [
+                            float(raw_global_box[0] / scale_x),
+                            float(raw_global_box[1] / scale_y),
+                            float(raw_global_box[2] / scale_x),
+                            float(raw_global_box[3] / scale_y)
+                        ]
+                        detections.append(
+                            DetectionResult(
+                                box=canvas_box,
+                                confidence=0.94,
+                                class_id=73,
+                                class_name="exam chit in hand"
+                            )
+                        )
+
+            # Instantly suppress FINGER_SIGNALLING whenever micro-chit or phone triggers
             has_phone_detected = any(
                 (d.class_name.lower() in ("phone", "cell phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
-                and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
-                and d.confidence >= 0.28
+                and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper", "exam chit in hand")
+                and d.confidence >= self.phone_conf_threshold
                 for d in detections
             )
-            if has_phone_detected:
+            if has_phone_detected or has_micro_chit_in_hand:
                 detections = [
                     d for d in detections
                     if d.class_name.lower() not in ("hand_signalling", "hand-gestures", "hand_gestures")
@@ -304,11 +424,11 @@ class EviGuardPipeline:
             has_phone = any(
                 (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
                 and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
-                and d.confidence >= 0.28
+                and d.confidence >= self.phone_conf_threshold
                 for d in tracked_detections
             )
-            has_notes = any(d.class_name in ("book", "unauthorized paper/notes", "notes", "cheating", "paper") for d in tracked_detections)
-            if has_phone:
+            has_notes = any(d.class_name in ("book", "unauthorized paper/notes", "notes", "cheating", "paper", "exam chit in hand") or "chit" in d.class_name.lower() for d in tracked_detections)
+            if has_phone or has_notes or has_micro_chit_in_hand:
                 has_gesture = False
                 if pose_gaze_result:
                     pose_gaze_result.hand_signalling = False
@@ -338,7 +458,7 @@ class EviGuardPipeline:
             has_phone = any(
                 (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
                 and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
-                and d.confidence >= 0.28
+                and d.confidence >= self.phone_conf_threshold
                 for d in tracked_detections
             )
             if has_phone:
@@ -389,10 +509,10 @@ class EviGuardPipeline:
             risk_result.active_violations = clean_violations
             risk_result.primary_violation = "VIOLATION: MOBILE_PHONE_DETECTED"
             risk_result.risk_level = "CRITICAL"
-            risk_result.smoothed_score = max(risk_result.smoothed_score, 95.0)
+            risk_result.smoothed_score = max(risk_result.smoothed_score, 96.0)
             risk_result.violation_factors.pop("hand_signalling", None)
             risk_result.violation_factors.pop("unauthorized_notes", None)
-            risk_result.violation_factors["cell_phone"] = max(risk_result.violation_factors.get("cell_phone", 95.0), 95.0)
+            risk_result.violation_factors["cell_phone"] = max(risk_result.violation_factors.get("cell_phone", 96.0), 96.0)
         elif has_notes:
             if "UNAUTHORIZED_NOTES" not in risk_result.active_violations:
                 risk_result.active_violations.insert(0, "UNAUTHORIZED_NOTES")
@@ -556,8 +676,11 @@ class EviGuardPipeline:
             if "phone" in cls_name or "cell" in cls_name or getattr(det, "class_id", -1) in (4, 67):
                 color = (0, 0, 255)
                 label = f"VIOLATION: MOBILE_PHONE_DETECTED ({det.confidence*100:.0f}%)"
+            elif "chit in hand" in cls_name:
+                color = (0, 215, 255)
+                label = f"ALERT: Exam Chit in Hand ({det.confidence*100:.0f}%)"
             elif "paper" in cls_name or "chit" in cls_name or "notes" in cls_name or cls_name == "unauthorized paper/notes":
-                color = (0, 140, 255)
+                color = (0, 215, 255)
                 label = f"ALERT: Exam Chit / Notes ({det.confidence*100:.0f}%)"
             elif "book" in cls_name or "notebook" in cls_name:
                 color = (0, 165, 255)
@@ -619,12 +742,12 @@ class EviGuardPipeline:
             cv2.putText(frame, label, (bx1 + 4, max(0, by1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
 
         # 2. Draw Hand Signalling Bounding Boxes (suppressed when phone detected)
-        phone_in_frame = any(
-            ("phone" in d.class_name.lower() or "cell" in d.class_name.lower() or getattr(d, "class_id", -1) in (4, 67))
-            and d.confidence > 0.40
+        phone_or_chit_in_frame = any(
+            (("phone" in d.class_name.lower() or "cell" in d.class_name.lower() or getattr(d, "class_id", -1) in (4, 67)) and d.confidence >= self.phone_conf_threshold)
+            or ("chit in hand" in d.class_name.lower())
             for d in detections
         )
-        if getattr(pose_gaze, "hand_boxes", None) and not phone_in_frame:
+        if getattr(pose_gaze, "hand_boxes", None) and not phone_or_chit_in_frame:
             for h_box in pose_gaze.hand_boxes:
                 hx1, hy1, hx2, hy2 = [int(v) for v in h_box]
                 is_signalling = getattr(pose_gaze, "hand_signalling", False)

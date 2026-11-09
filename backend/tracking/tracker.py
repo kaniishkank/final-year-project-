@@ -46,7 +46,12 @@ class TrackedObject:
     def update(self, detection: DetectionResult, is_primary: bool = False):
         """Updates the track state with a new matching detection."""
         old_center = self.center
-        self.box = list(detection.box)
+        # Apply EMA temporal box smoothing (alpha=0.72) to eliminate jitter across frames
+        alpha = 0.72
+        self.box = [
+            float(alpha * new_c + (1.0 - alpha) * old_c)
+            for new_c, old_c in zip(detection.box, self.box)
+        ]
         new_center = self.center
         self.velocity = [new_center[0] - old_center[0], new_center[1] - old_center[1]]
         self.confidence = detection.confidence
@@ -70,8 +75,8 @@ class TrackedObject:
 
     @property
     def has_notes_temporal_escalation(self) -> bool:
-        """If notes detected in any 2 of the last 5 frames -> Escalate to CRITICAL."""
-        return sum(self.notes_buffer) >= 2
+        """Section 5.1: If notes/book detected in any 1 of the last 5 frames -> Escalate to CRITICAL immediately."""
+        return sum(self.notes_buffer) >= 1
 
     @property
     def has_gesture_temporal_escalation(self) -> bool:

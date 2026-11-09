@@ -1,111 +1,96 @@
-# EviGuard Configuration File - Strict Zero-Tolerance High-Security Profile
-
-system:
-  app_name: "EviGuard AI Proctoring System"
-  version: "1.0.0"
-  log_level: "INFO"
-  inference_stride: 3 # Run heavy deep models every 3 frames for smooth 30+ FPS
-
-video:
-  source: 0 # 0 for default webcam, or path to video file e.g., "data/sample_exam.mp4"
-  width: 640
-  height: 480
-  fps: 30
-  mock_mode: false
-
+database:
+  db_url: sqlite:///data/eviguard.db
 detection:
-  model_type: "yolo26"
-  model_path: "yolov8m.pt"
-  imgsz: 640 # High-resolution tensor size for far-range (1.5-2m) object detection
-  confidence_threshold: 0.28 # Calibrated detector baseline (0.28 to suppress duplicate noise boxes)
-  phone_confidence_threshold: 0.28 # Calibrated phone detection threshold (0.28)
-  person_confidence_threshold: 0.28 # Ensures candidate and secondary entities are caught
-  book_confidence_threshold: 0.28 # Calibrated threshold for books/notebooks/notes
-  enable_paper_heuristic: true # Specialized paper sheet and chit detection enabled
-  enable_clahe: true # OpenCV CLAHE pre-processing enabled
-  augment: false # Disabled TTA to prevent multi-scale duplicate box spamming
-  phone_min_area: 80.0 # Responsive area check for distant/small objects
-  phone_min_w: 8.0
-  phone_min_h: 8.0
-  phone_min_aspect_ratio: 1.0
-  phone_max_aspect_ratio: 4.5 # Handles vertical, horizontal, and diagonal orientations
-  iou_threshold: 0.28 # Tightened NMS overlap to merge duplicate boxes over identical items
-  target_classes:
-    - "person"
-    - "cell phone"
-    - "book"
-    - "laptop"
-    - "headphone"
-    - "remote"
+  augment: false
+  book_confidence_threshold: 0.15
+  confidence_threshold: 0.42
   device_classes:
-    - "cell phone"
-    - "laptop"
-    - "headphone"
-    - "remote"
+  - cell phone
+  - laptop
+  - headphone
+  - remote
+  enable_clahe: true
+  enable_paper_heuristic: true
+  imgsz: 640
+  iou_threshold: 0.28
   material_classes:
-    - "book"
-    - "unauthorized paper/notes"
-
-tracking:
-  max_disappeared_frames: 30
-  iou_distance_threshold: 0.35
-  person_conf_threshold: 0.50 # Ensures secondary entities in background/periphery are caught
-  person_nms_iou: 0.45 # Strict NMS overlap suppression to prevent double-counting a single student
-  min_person_area: 6000.0
-  min_person_distance: 150.0 # Require >150px centroid separation before flagging secondary person
-
+  - book
+  - unauthorized paper/notes
+  model_path: yolov8m.pt
+  model_type: yolo26
+  person_confidence_threshold: 0.28
+  phone_confidence_threshold: 0.42
+  phone_max_aspect_ratio: 4.5
+  phone_min_area: 80.0
+  phone_min_aspect_ratio: 1.0
+  phone_min_h: 8.0
+  phone_min_w: 8.0
+  target_classes:
+  - person
+  - cell phone
+  - book
+  - laptop
+  - headphone
+  - remote
+evidence_recorder:
+  codec: mp4v
+  cooldown_seconds: 3
+  output_dir: data/evidence_clips
+  post_roll_seconds: 3
+  pre_roll_seconds: 3
 pose_gaze:
-  enable_pose: true
   enable_gaze: true
-  head_pose:
-    # Calibrated limits (in degrees) allowing natural screen focus without false lookaway triggers
-    max_yaw_angle: 25.0
-    max_pitch_angle: 24.0
-    yaw_limit_left: -25.0
-    yaw_limit_right: 25.0
-    pitch_limit_down: 24.0 # Allows natural screen and desk viewing
-    pitch_limit_up: 22.0
-    roll_limit: 25.0
+  enable_pose: true
+  face_absence:
+    absence_frames_threshold: 15
   gaze:
     look_away_continuous_frames: 15
     prolonged_gaze_threshold_frames: 60
   hand_signalling:
     enable: true
-    hand_signalling_frames: 35 # >1.2s - 1.5s continuous finger gesture triggers hand_signalling
-  face_absence:
-    absence_frames_threshold: 15 # ~0.5s rapid response on missing face
-
+    hand_signalling_frames: 35
+  head_pose:
+    max_pitch_angle: 24.0
+    max_yaw_angle: 25.0
+    pitch_limit_down: 24.0
+    pitch_limit_up: 22.0
+    roll_limit: 25.0
+    yaw_limit_left: -25.0
+    yaw_limit_right: 25.0
 risk_engine:
-  # Score additions per active violation (0 to 100 base scale)
-  weights:
-    cell_phone: 95.0 # Instant critical alert on phone detection (70-95 range)
-    smart_watch: 85.0 # Instant critical alert on electronic gadget
-    unauthorized_notes: 90.0 # Instant critical alert on books/notes
-    multiple_persons: 90.0 # Instant critical intruder alert
-    face_absent: 85.0 # Immediate seat abandonment flag (>15 frames)
-    hand_signalling: 65.0 # Suspicious finger gesture / answer signalling (60-70 range)
-    suspicious_downward_gaze: 65.0 # Looking down with suspicious hand movements
-    gaze_deviation: 35.0 # Lateral gaze diversion (strictly below 40)
-    head_pose_deviation: 35.0
-
-  # Temporal aggregation parameters
-  decay_rate: 0.88
   accumulation_rate: 0.55
-  
-  # Alert Classification Thresholds
+  decay_rate: 0.88
   thresholds:
-    normal_max: 25.0
-    monitor_max: 50.0
-    suspicious_max: 75.0
     critical_min: 75.0
-    high_threshold: 70.0 # Triggers evidence recording and critical alert
-
-evidence_recorder:
-  output_dir: "data/evidence_clips"
-  pre_roll_seconds: 3
-  post_roll_seconds: 3
-  codec: "mp4v"
-  cooldown_seconds: 3
-
-database:
-  db_url: "sqlite:///data/eviguard.db"
+    high_threshold: 70.0
+    monitor_max: 50.0
+    normal_max: 25.0
+    suspicious_max: 75.0
+  weights:
+    cell_phone: 95.0
+    face_absent: 85.0
+    gaze_deviation: 35.0
+    hand_signalling: 65.0
+    head_pose_deviation: 35.0
+    multiple_persons: 90.0
+    smart_watch: 85.0
+    suspicious_downward_gaze: 65.0
+    unauthorized_notes: 90.0
+system:
+  app_name: EviGuard AI Proctoring System
+  inference_stride: 3
+  log_level: INFO
+  version: 1.0.0
+tracking:
+  iou_distance_threshold: 0.35
+  max_disappeared_frames: 30
+  min_person_area: 6000.0
+  min_person_distance: 150.0
+  person_conf_threshold: 0.5
+  person_nms_iou: 0.45
+video:
+  fps: 30
+  height: 480
+  mock_mode: false
+  source: 0
+  width: 640
