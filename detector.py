@@ -8,7 +8,7 @@ import math
 import os
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 import cv2
 import numpy as np
 
@@ -195,57 +195,83 @@ class ProctoredInferenceEngine:
                     return True
         return False
 
-    def _detect_loose_paper_workspace(self, frame: np.ndarray) -> List[DetectedObject]:
-        """Adaptive thresholding + contour detection on desk workspace polygon for paper cheat notes."""
+    def _detect_loose_paper_workspace(
+        self,
+        frame: np.ndarray,
+        student_bbox: Optional[Union[List[float], Tuple[float, ...]]] = None
+    ) -> List[DetectedObject]:
+        """Contour detection with candidate exclusion mask and desk-only ROI for paper cheat notes.
+
+        Safeguards:
+        1. Candidate Exclusion Masking (face + 35% downward past chin set to 0).
+        2. Desk-Only ROI (desk_roi_y_min = int(h * 0.60)).
+        3. Color & Saturation Thresholding (HSV lower_white = [0, 0, 160], upper_white = [180, 45, 255] with (5, 5) kernel).
+        4. Contour Geometry Filters (1500 < area < 35000, 0.5 <= aspect_ratio <= 3.0, confidence=0.92).
+        """
         paper_objects: List[DetectedObject] = []
         if not self.mod_a.get("paper_heuristic_enable", True) or frame is None or frame.size == 0:
             return paper_objects
 
         h, w = frame.shape[:2]
         try:
-            # Analyze lower 60% of frame (desk workspace area)
-            desk_y_start = int(h * 0.40)
-            desk_roi = frame[desk_y_start:h, 0:w]
-            gray = cv2.cvtColor(desk_roi, cv2.COLOR_BGR2GRAY)
+            desk_roi_y_min = int(h * 0.60)
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            lower_white = np.array([0, 0, 160], dtype=np.uint8)
+            upper_white = np.array([180, 45, 255], dtype=np.uint8)
+            mask = cv2.inRange(hsv, lower_white, upper_white)
 
-            # Adaptive thresholding
-            thresh = cv2.adaptiveThreshold(
-                gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, 4
-            )
+            # Desk-Only ROI: Restrict to lower portion of the frame
+            mask[0:desk_roi_y_min, :] = 0
 
-            # Morphological filter
+            # Candidate Exclusion Masking
+            if student_bbox is not None and len(student_bbox) >= 4:
+                sx1, sy1, sx2, sy2 = [int(v) for v in student_bbox[:4]]
+                if (sy2 - sy1) > int(h * 0.45):
+                    chin_y = sy1 + int((sy2 - sy1) * 0.40)
+                    face_h = chin_y - sy1
+                    exclusion_y2 = min(h, int(chin_y + face_h * 0.35))
+                else:
+                    exclusion_y2 = min(h, int(sy2 + (sy2 - sy1) * 0.35))
+
+                ex1 = max(0, sx1)
+                ex2 = min(w, sx2)
+                ey1 = max(0, sy1)
+                ey2 = min(h, exclusion_y2)
+                if ex2 > ex1 and ey2 > ey1:
+                    mask[ey1:ey2, ex1:ex2] = 0
+
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-            cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
-            contours, _ = cv2.findContours(cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                min_area = float(self.mod_a.get("paper_min_area", 2200.0))
-                if area < min_area or area > (h * w * 0.35):
+                if not (1500.0 < area < 35000.0):
                     continue
 
-                peri = cv2.arcLength(cnt, True)
-                approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
+                x, y, bw, bh = cv2.boundingRect(cnt)
+                if bw < 8 or bh < 8:
+                    continue
 
-                # Quadrilateral check
-                if len(approx) in (4, 5):
-                    x, y, bw, bh = cv2.boundingRect(approx)
-                    aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
-                    min_ar = float(self.mod_a.get("paper_aspect_ratio_min", 1.10))
-                    max_ar = float(self.mod_a.get("paper_aspect_ratio_max", 1.85))
+                if x <= 4 or y <= 4 or (x + bw) >= (w - 4) or (y + bh) >= (h - 4):
+                    continue
 
-                    if min_ar <= aspect_ratio <= max_ar:
-                        box = [float(x), float(y + desk_y_start), float(x + bw), float(y + desk_y_start + bh)]
-                        paper_objects.append(
-                            DetectedObject(
-                                class_id=73,
-                                class_name="unauthorized paper/notes",
-                                confidence=0.88,
-                                box=box,
-                                is_malpractice=True,
-                                malpractice_type="UNAUTHORIZED_MATERIAL"
-                            )
-                        )
+                aspect_ratio = float(bw) / float(bh + 1e-6)
+                if not (0.5 <= aspect_ratio <= 3.0):
+                    continue
+
+                box = [float(x), float(y), float(x + bw), float(y + bh)]
+                paper_objects.append(
+                    DetectedObject(
+                        class_id=73,
+                        class_name="unauthorized paper/notes",
+                        confidence=0.92,
+                        box=box,
+                        is_malpractice=True,
+                        malpractice_type="UNAUTHORIZED_MATERIAL"
+                    )
+                )
         except Exception as e:
             logger.debug(f"Paper detection exception: {e}")
 
@@ -347,7 +373,9 @@ class ProctoredInferenceEngine:
                 logger.error(f"YOLO26 inference error: {e}")
 
         # 2. Add Paper Workspace Heuristic
-        paper_dets = self._detect_loose_paper_workspace(frame)
+        student_boxes = [d.box for d in detected_objects if d.class_name == "person"]
+        student_bbox = student_boxes[0] if student_boxes else None
+        paper_dets = self._detect_loose_paper_workspace(frame, student_bbox=student_bbox)
         for pd in paper_dets:
             # Overlap check
             duplicate = False

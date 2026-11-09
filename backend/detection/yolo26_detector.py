@@ -7,7 +7,7 @@ native NMS-free high-speed inference, and sub-30ms CPU execution.
 
 import logging
 import os
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple, Union
 import cv2
 import numpy as np
 
@@ -39,6 +39,90 @@ def apply_clahe_preprocessing(frame: np.ndarray) -> np.ndarray:
     except Exception as e:
         logger.debug(f"CLAHE pre-processing fallback: {e}")
         return frame
+
+
+def detect_paper_chits(
+    frame: np.ndarray,
+    student_bbox: Optional[Union[List[float], Tuple[float, ...]]] = None
+) -> List[DetectionResult]:
+    """Refactored paper/chit/notes detection module strictly conforming to the 4 proctoring safeguards:
+
+    1. Candidate Exclusion Masking: Face + 35% downward past chin masked to 0 (eliminates false positives on face, neck, collar, teeth).
+    2. Desk-Only ROI: Restricts contour search strictly to the lower frame portion (y >= 0.60 * frame_h).
+    3. Color & Saturation Thresholding (HSV): lower_white = [0, 0, 160], upper_white = [180, 45, 255] with (5, 5) closing + opening.
+    4. Contour Geometry Filters: 1500 < area < 35000 px^2, aspect ratio between 0.5 and 3.0, confidence=0.92, class_id=73.
+    """
+    paper_dets: List[DetectionResult] = []
+    if frame is None or frame.size == 0:
+        return paper_dets
+
+    try:
+        h, w = frame.shape[:2]
+        desk_roi_y_min = int(h * 0.60)
+
+        # 3. Color & Saturation Thresholding (HSV)
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        lower_white = np.array([0, 0, 160], dtype=np.uint8)
+        upper_white = np.array([180, 45, 255], dtype=np.uint8)
+        mask = cv2.inRange(hsv, lower_white, upper_white)
+
+        # 2. Desk-Only ROI: Restrict to lower portion of the frame (y >= desk_roi_y_min)
+        mask[0:desk_roi_y_min, :] = 0
+
+        # 1. Candidate Exclusion Masking
+        if student_bbox is not None and len(student_bbox) >= 4:
+            sx1, sy1, sx2, sy2 = [int(v) for v in student_bbox[:4]]
+            # If student_bbox is full person/body (>45% frame height), estimate chin around upper 40%
+            if (sy2 - sy1) > int(h * 0.45):
+                chin_y = sy1 + int((sy2 - sy1) * 0.40)
+                face_h = chin_y - sy1
+                exclusion_y2 = min(h, int(chin_y + face_h * 0.35))
+            else:
+                exclusion_y2 = min(h, int(sy2 + (sy2 - sy1) * 0.35))
+
+            ex1 = max(0, sx1)
+            ex2 = min(w, sx2)
+            ey1 = max(0, sy1)
+            ey2 = min(h, exclusion_y2)
+            if ex2 > ex1 and ey2 > ey1:
+                mask[ey1:ey2, ex1:ex2] = 0
+
+        # Morphological closing followed by opening with a (5, 5) rectangular kernel
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+        # 4. Contour Geometry Filters
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if not (1500.0 < area < 35000.0):
+                continue
+
+            x, y, bw, bh = cv2.boundingRect(cnt)
+            if bw < 8 or bh < 8:
+                continue
+
+            # Reject Frame Boundary Touching (Walls, ceiling, window/door borders)
+            if x <= 4 or y <= 4 or (x + bw) >= (w - 4) or (y + bh) >= (h - 4):
+                continue
+
+            aspect_ratio = float(bw) / float(bh + 1e-6)
+            if not (0.5 <= aspect_ratio <= 3.0):
+                continue
+
+            paper_dets.append(
+                DetectionResult(
+                    box=[float(x), float(y), float(x + bw), float(y + bh)],
+                    confidence=0.92,
+                    class_id=73,
+                    class_name="unauthorized paper/notes"
+                )
+            )
+    except Exception as e:
+        logger.debug(f"Paper chit detection exception: {e}")
+
+    return paper_dets
 
 
 def apply_nms_suppression(detections: List[DetectionResult], iou_threshold: float = 0.28) -> List[DetectionResult]:
@@ -292,130 +376,28 @@ class YOLO26Detector(BaseDetector):
 
         return True
 
-    def _detect_white_paper_sheets(self, frame: np.ndarray, person_boxes: Optional[List[List[float]]] = None) -> List[DetectionResult]:
-        """Detects physical small exam chits and paper slips using multi-characteristic isolation (rejecting background walls and ceilings)."""
-        paper_dets: List[DetectionResult] = []
+    def _detect_white_paper_sheets(
+        self,
+        frame: np.ndarray,
+        student_bbox: Optional[Union[List[float], Tuple[float, ...]]] = None,
+        person_boxes: Optional[List[List[float]]] = None
+    ) -> List[DetectionResult]:
+        """Detects physical small exam chits and paper slips using candidate exclusion and desk ROI."""
         if not self.enable_paper_heuristic or frame is None or frame.size == 0:
-            return paper_dets
+            return []
 
-        try:
-            h, w = frame.shape[:2]
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            
-            # White paper characteristics: Low saturation (S <= 45) and high luminance/value (V >= 140)
-            # This isolates matte paper slips from high-saturation skin (face/hands) and colored clothing
-            paper_surface = ((hsv[:, :, 1] <= 45) & (hsv[:, :, 2] >= 140)).astype(np.uint8) * 255
+        target_bbox = student_bbox
+        if target_bbox is None and person_boxes:
+            target_bbox = person_boxes[0]
 
-            # 1. Reject ceiling/upper wall background (top 15% of frame)
-            paper_surface[0:int(h * 0.15), :] = 0
+        return detect_paper_chits(frame, student_bbox=target_bbox)
 
-            # 2. Restrict to Active Student Workspace if Person Detected (below chin down to desk)
-            if person_boxes:
-                workspace_mask = np.zeros((h, w), dtype=np.uint8)
-                for pbox in person_boxes:
-                    px1, py1, px2, py2 = [int(v) for v in pbox]
-                    # Workspace: from below chin/neck down to desk/lap, and 180px laterally
-                    wy1 = max(0, py1 + int((py2 - py1) * 0.45))
-                    wy2 = min(h, py2 + 180)
-                    wx1 = max(0, px1 - 180)
-                    wx2 = min(w, px2 + 180)
-                    workspace_mask[wy1:wy2, wx1:wx2] = 255
-                paper_surface = cv2.bitwise_and(paper_surface, workspace_mask)
-
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-            closed = cv2.morphologyEx(paper_surface, cv2.MORPH_CLOSE, kernel)
-
-            contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            for cnt in contours:
-                area = cv2.contourArea(cnt)
-                # Small paper chit bounds: 120px^2 to 18,000px^2 (reject huge background walls and tiny dust)
-                if area < 120.0 or area > 18000.0:
-                    continue
-
-                x, y, bw, bh = cv2.boundingRect(cnt)
-                if bw < 12 or bh < 12 or bw > 240 or bh > 240:
-                    continue
-
-                # Reject Frame Boundary Touching (Walls, ceiling, door borders)
-                if x <= 4 or y <= 4 or (x + bw) >= (w - 4) or (y + bh) >= (h - 4):
-                    continue
-
-                aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
-                if not (1.0 <= aspect_ratio <= 4.0):
-                    continue
-
-                # Geometric Shape Regularity (Quadrilateral & Convex Hull Solidity)
-                hull = cv2.convexHull(cnt)
-                hull_area = cv2.contourArea(hull)
-                solidity = area / (hull_area + 1e-6)
-                if solidity < 0.55:
-                    continue
-
-                peri = cv2.arcLength(cnt, True)
-                approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
-                # Real paper chits have polygon / rectangular structure (4 to 12 vertices)
-                if len(approx) > 12:
-                    continue
-
-                # Local Border Step Contrast Check against Surrounding Surface (Desk / Lap / Skin)
-                roi_gray = gray[y:y+bh, x:x+bw]
-                my1 = max(0, y - 8)
-                my2 = min(h, y + bh + 8)
-                mx1 = max(0, x - 8)
-                mx2 = min(w, x + bw + 8)
-                surrounding_box = gray[my1:my2, mx1:mx2]
-                mask_inner = np.zeros((my2 - my1, mx2 - mx1), dtype=bool)
-                mask_inner[y - my1 : y + bh - my1, x - mx1 : x + bw - mx1] = True
-                surrounding_outer = surrounding_box[~mask_inner]
-
-                border_contrast = 0.0
-                if surrounding_outer.size > 0:
-                    mean_inside = float(np.mean(roi_gray))
-                    mean_outside = float(np.mean(surrounding_outer))
-                    border_contrast = abs(mean_inside - mean_outside)
-
-                # Must have clear step contrast (>= 10px) against surrounding desk/hand/clothing
-                if border_contrast < 10.0:
-                    continue
-
-                # Interior variance & text/edges check
-                roi_std = float(np.std(roi_gray))
-                laplacian_var = float(cv2.Laplacian(roi_gray, cv2.CV_64F).var())
-                canny_edges = cv2.Canny(roi_gray, 50, 150)
-                edge_density = float(np.count_nonzero(canny_edges)) / float(roi_gray.size + 1e-6)
-
-                # A plain white background wall has std < 5.0 and laplacian_var < 6.0 and edge_density < 0.005
-                if border_contrast < 20.0 and (roi_std < 5.0 and laplacian_var < 5.0 and edge_density < 0.004):
-                    continue
-
-                chit_box = [float(x), float(y), float(x + bw), float(y + bh)]
-                if not self._is_valid_exam_chit(frame, chit_box, person_boxes=person_boxes):
-                    continue
-
-                paper_dets.append(
-                    DetectionResult(
-                        box=chit_box,
-                        confidence=0.85,
-                        class_id=73,
-                        class_name="unauthorized paper/notes"
-                    )
-                )
-
-                paper_dets.append(
-                    DetectionResult(
-                        box=chit_box,
-                        confidence=0.85,
-                        class_id=73,
-                        class_name="unauthorized paper/notes"
-                    )
-                )
-        except Exception as e:
-            logger.debug(f"Paper sheet detection exception: {e}")
-
-        return paper_dets
-
-    def detect(self, frame: np.ndarray, crop_boxes: Optional[List[List[float]]] = None) -> List[DetectionResult]:
+    def detect(
+        self,
+        frame: np.ndarray,
+        crop_boxes: Optional[List[List[float]]] = None,
+        student_bbox: Optional[Union[List[float], Tuple[float, ...]]] = None
+    ) -> List[DetectionResult]:
         """Detects target objects with native NMS-free mode and high-speed single-pass inference."""
         if frame is None or frame.size == 0:
             return []
@@ -494,43 +476,14 @@ class YOLO26Detector(BaseDetector):
                             continue
 
                         # Cell Phone vs Big Book Disambiguation:
-                        # - A high-confidence phone detection (conf >= 0.50) is ALWAYS a Cell Phone! Never convert to book!
-                        # - An actual big book/textbook is broad and squarish (aspect_ratio < 1.35, bw >= 140, bh >= 140, area >= 22000).
-                        #   Only in that specific low-confidence case (conf < 0.50), convert to book.
+                        # If candidate object is broad and squarish (aspect_ratio < 1.40, bw >= 150, bh >= 150, area >= 22000),
+                        # and not elongated like a phone, it is a big book / textbook.
                         is_big_book = False
-                        if conf < 0.50 and aspect_ratio < 1.35 and bw >= 140.0 and bh >= 140.0 and box_area >= 22000.0:
+                        if conf < 0.65 and aspect_ratio < 1.40 and bw >= 150.0 and bh >= 150.0 and box_area >= 22000.0:
                             is_big_book = True
 
-                        is_paper_chit = False
-                        is_cloth_noise = False
-
-                        rx1, ry1, rx2, ry2 = [int(v) for v in box]
-                        rx1, ry1 = max(0, rx1), max(0, ry1)
-                        rx2, ry2 = min(w, rx2), min(h, ry2)
-
-                        if rx2 > rx1 and ry2 > ry1:
-                            roi_bgr = frame[ry1:ry2, rx1:rx2]
-                            roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
-                            roi_hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
-                            mean_b = float(np.mean(roi_gray))
-                            mean_sat = float(np.mean(roi_hsv[:, :, 1]))
-
-                            # Small paper slip: tiny light white matte surface with low saturation, squarish aspect ratio, small area, low conf
-                            if (mean_b >= 115.0 and mean_sat <= 35.0) and aspect_ratio < 1.50 and box_area < 5000.0 and conf < 0.38:
-                                is_paper_chit = True
-                            # Highly saturated fabric / clothing noise mistakenly flagged as phone
-                            elif mean_sat > 80.0 and conf < 0.35:
-                                is_cloth_noise = True
-
-                        if is_cloth_noise:
-                            continue
-                        elif is_big_book:
+                        if is_big_book:
                             cls_name = "book"
-                            cls_id = 73
-                        elif is_paper_chit:
-                            if not self._is_valid_exam_chit(frame, box, person_boxes=person_boxes):
-                                continue
-                            cls_name = "unauthorized paper/notes"
                             cls_id = 73
                         else:
                             if not self._is_valid_phone_geometry(box, (h, w)):
@@ -543,17 +496,15 @@ class YOLO26Detector(BaseDetector):
                         if conf < self.book_conf_threshold:
                             continue
 
-                        # Disambiguate small exam chits / paper notes from large bound books
-                        if box_area < 12000.0 and max(bw, bh) < 130.0:
-                            if self._is_valid_exam_chit(frame, box, person_boxes=person_boxes):
-                                cls_name = "unauthorized paper/notes"
-                                cls_id = 73
-                            else:
-                                # Small pocket book / notebook with dark or colored cover
-                                cls_name = "book"
-                                cls_id = 73
+                        # Disambiguate Phone vs Book:
+                        # When a phone is held in front of the camera, COCO YOLO frequently predicts 'book' due to screen content.
+                        # Real books and textbooks have squarish aspect ratios (1.10 <= aspect_ratio <= 1.50).
+                        # Smartphones have elongated aspect ratio (1.55 <= aspect_ratio <= 3.5) with handheld dimensions.
+                        if (1.55 <= aspect_ratio <= 3.5) and (bw <= 280.0 or bh <= 450.0) and self._is_valid_phone_geometry(box, (h, w)):
+                            cls_name = "cell phone"
+                            cls_id = 67
                         else:
-                            # Large book / textbook: check door perimeter exclusion
+                            # It's a genuine book / notebook
                             cx, cy = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
                             if cy < (0.28 * h) and (cx < 0.12 * w or cx > 0.88 * w):
                                 continue  # Reject door top / background wall frames
@@ -640,10 +591,9 @@ class YOLO26Detector(BaseDetector):
 
             # Run specialized heuristic paper sheet / chit detection on CLAHE-enhanced frame
             if self.enable_paper_heuristic:
-                paper_dets = self._detect_white_paper_sheets(proc_frame, person_boxes=person_boxes)
+                target_student_box = student_bbox or (person_boxes[0] if person_boxes else None)
+                paper_dets = self._detect_white_paper_sheets(proc_frame, student_bbox=target_student_box, person_boxes=person_boxes)
                 for pd in paper_dets:
-                    if not self._is_valid_exam_chit(frame, pd.box, person_boxes=person_boxes):
-                        continue
                     px1, py1, px2, py2 = pd.box
                     p_area = (px2 - px1) * (py2 - py1)
 
