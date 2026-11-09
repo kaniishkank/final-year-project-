@@ -124,53 +124,75 @@ class DocumentExamDetector:
 
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            # Area filter: small chits (1,800 px) to big open textbooks (140,000 px)
-            if area < 1800 or area > 140000:
+            # Sensitive area filter: capture smallest exam chits (350 px) to big open textbooks (180,000 px)
+            if area < 500 or area > 180000:
                 continue
 
-            # 4. Check for 4-Corner Quadrilateral Geometry (Document/Book boundary)
+            # 4. Check for 4-6 Corner Quadrilateral Geometry (Document/Book/Chit boundary)
             peri = cv2.arcLength(cnt, True)
-            approx = cv2.approxPolyDP(cnt, 0.03 * peri, True)
+            approx = cv2.approxPolyDP(cnt, 0.035 * peri, True)
 
-            if len(approx) == 4 and cv2.isContourConvex(approx):
+            if len(approx) in (4, 5, 6) and cv2.isContourConvex(approx):
                 x, y, bw, bh = cv2.boundingRect(approx)
                 # Map coordinates back to full-frame space
                 real_y = y + desk_y_start
-                aspect_ratio = float(bw) / float(bh) if bh > 0 else 0
+                aspect_ratio = max(bw, bh) / (min(bw, bh) + 1e-6)
 
-                # Books & papers typically match standard aspect ratios (0.5 to 2.2)
-                if 0.5 <= aspect_ratio <= 2.2:
-                    # 5. Text-Density Check on the bounded object
-                    target_roi = frame[real_y : real_y + bh, x : x + bw]
-                    has_text, density = self.is_text_dense(target_roi)
+                target_roi = frame[real_y : real_y + bh, x : x + bw]
+                if target_roi.size == 0:
+                    continue
 
-                    if has_text:
-                        item_type = (
-                            "Big Book / Notebook"
-                            if area > 18000
-                            else "Exam Chit / Notes"
-                        )
+                # Inspect HSV color properties
+                roi_hsv = cv2.cvtColor(target_roi, cv2.COLOR_BGR2HSV)
+                mean_s = float(np.mean(roi_hsv[:, :, 1]))
+                mean_v = float(np.mean(roi_hsv[:, :, 2]))
+
+                # A. Smartphone Check: Saturated illuminated screen with handheld phone scale
+                is_phone_candidate = (
+                    (3000.0 <= area <= 85000.0) and (min(bw, bh) >= 45.0 and max(bw, bh) >= 70.0) and
+                    (1.20 <= aspect_ratio <= 3.8) and
+                    (mean_s >= 38.0 or mean_v < 60.0)
+                )
+                if is_phone_candidate:
+                    # Flag directly as mobile phone to prevent falsely labeling an illuminated phone as a book
+                    detected_items.append(
+                        {
+                            "box": [x, real_y, x + bw, real_y + bh],
+                            "label": "VIOLATION: MOBILE_PHONE_DETECTED (95%)",
+                            "conf": 0.95,
+                            "type": "cell phone",
+                        }
+                    )
+                    continue
+
+                # B. Text / Notes density check for genuine paper chits and books
+                has_text, density = self.is_text_dense(target_roi)
+                if has_text:
+                    # Matte paper check: real paper has low saturation and high lightness
+                    if mean_s < 55.0 and mean_v > 80.0:
+                        if area < 16000.0:
+                            item_type = "Exam Chit / Notes"
+                            conf = 0.92
+                        else:
+                            item_type = "Book / Textbook" if aspect_ratio < 1.70 else "Exam Chit / Notes"
+                            conf = 0.94
+
                         detected_items.append(
                             {
                                 "box": [x, real_y, x + bw, real_y + bh],
-                                "label": f"ALERT: {item_type} (94%)",
-                                "conf": 0.94,
+                                "label": f"ALERT: {item_type} ({int(conf*100)}%)",
+                                "conf": conf,
                                 "type": item_type,
                             }
                         )
 
-        # 6. Apply temporal buffer (must persist across 8 consecutive frames to avoid flicker)
+        # 6. Apply temporal buffer (responsive: requires 2 consecutive frames for stability)
         if len(detected_items) > 0:
             self.confirmed_detection_frames += 1
         else:
-            self.confirmed_detection_frames = max(
-                0, self.confirmed_detection_frames - 2
-            )
+            self.confirmed_detection_frames = max(0, self.confirmed_detection_frames - 1)
 
-        if (
-            not require_stability
-            or self.confirmed_detection_frames >= self.REQUIRED_STABLE_FRAMES
-        ):
+        if not require_stability or self.confirmed_detection_frames >= 2:
             return detected_items
         return []
 
@@ -193,16 +215,34 @@ def detect_paper_chits(
     for item in items:
         box = [float(v) for v in item["box"]]
         item_type = item.get("type", "")
-        conf = float(item.get("conf", 0.94))
-        cls_name = "book" if "book" in item_type.lower() else "unauthorized paper/notes"
-        paper_dets.append(
-            DetectionResult(
-                box=box,
-                confidence=conf,
-                class_id=73,
-                class_name=cls_name
+        conf = float(item.get("conf", 0.92))
+        if "phone" in item_type.lower():
+            paper_dets.append(
+                DetectionResult(
+                    box=box,
+                    confidence=conf,
+                    class_id=67,
+                    class_name="cell phone"
+                )
             )
-        )
+        elif "book" in item_type.lower():
+            paper_dets.append(
+                DetectionResult(
+                    box=box,
+                    confidence=conf,
+                    class_id=73,
+                    class_name="book"
+                )
+            )
+        else:
+            paper_dets.append(
+                DetectionResult(
+                    box=box,
+                    confidence=conf,
+                    class_id=73,
+                    class_name="unauthorized paper/notes"
+                )
+            )
     return paper_dets
 
 
@@ -250,12 +290,18 @@ def apply_nms_suppression(detections: List[DetectionResult], iou_threshold: floa
                 continue
 
             # 2. Cell Phone Precedence: A genuine cell phone suppresses overlapping or adjacent ghost book or paper notes
-            if best.class_name in ("cell phone", "phone") and best.confidence >= 0.35:
+            if best.class_name in ("cell phone", "phone"):
                 if d.class_name in ("book", "unauthorized paper/notes", "paper"):
                     near_x = (dx2 >= bx1 - 70.0) and (dx1 <= bx2 + 70.0)
                     near_y = (dy2 >= by1 - 70.0) and (dy1 <= by2 + 70.0)
-                    if (iou > 0.10 or containment > 0.20) or (near_x and near_y and d.area < 15000.0):
+                    if (iou > 0.08 or containment > 0.15) or (near_x and near_y and d.area < 25000.0):
                         continue
+
+            if best.class_name in ("book", "unauthorized paper/notes", "paper") and d.class_name in ("cell phone", "phone"):
+                if iou > 0.08 or containment > 0.15:
+                    # Phone takes absolute precedence: discard book candidate and adopt phone
+                    best = d
+                    continue
 
             # 3. Book Precedence: A detected book suppresses small overlapping chit notes inside its bounds
             if best.class_name == "book" and d.class_name in ("unauthorized paper/notes", "paper"):
@@ -557,21 +603,9 @@ class YOLO26Detector(BaseDetector):
                         if conf < self.phone_conf_threshold:
                             continue
 
-                        # Cell Phone vs Big Book Disambiguation:
-                        # If candidate object is broad and squarish (aspect_ratio < 1.40, bw >= 150, bh >= 150, area >= 22000),
-                        # and not elongated like a phone, it is a big book / textbook.
-                        is_big_book = False
-                        if conf < 0.65 and aspect_ratio < 1.40 and bw >= 150.0 and bh >= 150.0 and box_area >= 22000.0:
-                            is_big_book = True
-
-                        if is_big_book:
-                            cls_name = "book"
-                            cls_id = 73
-                        else:
-                            if not self._is_valid_phone_geometry(box, (h, w)):
-                                continue
-                            cls_name = "cell phone"
-                            cls_id = 67
+                        # Strict priority: A detected phone is ALWAYS kept as a cell phone (never downgraded to a book)
+                        cls_name = "cell phone"
+                        cls_id = 67
 
                     # 3. Validation for Book / Paper / Notes (COCO Class 73, or Class 0 in best.pt)
                     elif cls_name in ("book", "notebook") or ("book" in cls_name):
@@ -579,10 +613,20 @@ class YOLO26Detector(BaseDetector):
                             continue
 
                         # Disambiguate Phone vs Book:
-                        # When a phone is held in front of the camera, COCO YOLO frequently predicts 'book' due to screen content.
-                        # Real books and textbooks have squarish aspect ratios (1.10 <= aspect_ratio <= 1.50).
-                        # Smartphones have elongated aspect ratio (1.55 <= aspect_ratio <= 3.5) with handheld dimensions.
-                        if (1.55 <= aspect_ratio <= 3.5) and (bw <= 280.0 or bh <= 450.0) and self._is_valid_phone_geometry(box, (h, w)):
+                        # When a phone is held in front of the camera displaying a screen, COCO YOLO models frequently predict 'book'.
+                        # Real books and textbooks have squarish aspect ratios (1.05 <= aspect_ratio <= 1.50), large area (>40,000 px^2), or matte paper pages.
+                        # Smartphones have handheld dimensions (area < 85,000 px^2), aspect ratio 1.20 to 3.8, and active emissive screens.
+                        is_likely_phone = False
+                        rx1, ry1, rx2, ry2 = max(0, int(box[0])), max(0, int(box[1])), min(w, int(box[2])), min(h, int(box[3]))
+                        if rx2 > rx1 and ry2 > ry1:
+                            roi_bgr = frame[ry1:ry2, rx1:rx2]
+                            if roi_bgr.size > 0:
+                                roi_hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
+                                m_sat = float(np.mean(roi_hsv[:, :, 1]))
+                                if (box_area < 85000.0) and (1.20 <= aspect_ratio <= 3.8) and (m_sat > 35.0 or (bw <= 290.0 or bh <= 440.0)):
+                                    is_likely_phone = True
+
+                        if is_likely_phone:
                             cls_name = "cell phone"
                             cls_id = 67
                         else:

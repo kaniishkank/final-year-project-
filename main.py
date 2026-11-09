@@ -14,10 +14,18 @@ from typing import Deque, Optional
 import cv2
 import numpy as np
 
+# Support direct launch via streamlit run main.py
+if "streamlit" in sys.modules or (len(sys.argv) > 0 and "streamlit" in os.path.basename(sys.argv[0])):
+    import runpy
+    dashboard_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dashboard.py")
+    runpy.run_path(dashboard_script, run_name="__main__")
+    sys.exit(0)
+
 from config import CONFIG
 from detector import ProctoredInferenceEngine, DetectionBundle
 from head_pose import HeadPoseEstimator
 from telemetry import TelemetryEngine, TelemetryState
+from robust_detector import EviGuardRobustEngine
 
 
 class VideoCircularBuffer:
@@ -178,6 +186,7 @@ def main():
 
     # 1. Initialize Engines
     engine = ProctoredInferenceEngine(CONFIG)
+    robust_engine = EviGuardRobustEngine()
     telemetry_tracker = TelemetryEngine(CONFIG)
     ring_buffer = VideoCircularBuffer(capacity=180, output_dir=CONFIG.get("video", {}).get("evidence_dir", "data/evidence_clips"))
 
@@ -221,8 +230,13 @@ def main():
             if telemetry.trigger_mp4_dump:
                 ring_buffer.dump_clip_async(telemetry.mp4_dump_reason, fps=telemetry.fps)
 
+            # Process frame with EviGuardRobustEngine
+            student_face_box = bundle.head_pose.nose_2d if hasattr(bundle.head_pose, "nose_2d") else None
+            violations = robust_engine.process(frame, student_face_box)
+
             # Render Visual HUD
             display_frame = draw_hud(frame, bundle, telemetry)
+            display_frame = robust_engine.draw_violations(display_frame, violations)
 
             # Display Window
             cv2.imshow("EviGuard AI Proctoring Studio", display_frame)

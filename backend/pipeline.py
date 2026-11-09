@@ -226,6 +226,7 @@ class EviGuardPipeline:
         h, w = frame.shape[:2]
         if w != self.target_w or h != self.target_h:
             frame = cv2.resize(frame, (self.target_w, self.target_h), interpolation=cv2.INTER_LINEAR)
+            h, w = frame.shape[:2]
 
         raw_frame = frame.copy()
         
@@ -241,15 +242,15 @@ class EviGuardPipeline:
             future_pose = self.executor.submit(self.pose_gaze.estimate, frame)
 
             detections = future_det.result()
-            # Filter out any bounding box whose area or dimensions exceed 40% of the entire frame to avoid false positive full-body paper chit triggers
+            # Filter out extreme oversized bounding boxes while allowing close-up phones and books
             filtered_detections = []
             for d in detections:
                 if d.class_name != "person":
                     bw = abs(d.box[2] - d.box[0])
                     bh = abs(d.box[3] - d.box[1])
-                    if (bw * bh > 0.40 * w * h) or (bw > 0.40 * w and bh > 0.40 * h):
+                    if (bw * bh > 0.65 * w * h) or (bw > 0.75 * w and bh > 0.75 * h):
                         continue
-                    if any(k in d.class_name.lower() for k in ("paper", "chit", "cheating")) and (bw > 0.40 * w or bh > 0.40 * h):
+                    if any(k in d.class_name.lower() for k in ("paper", "chit", "cheating")) and (bw > 0.50 * w or bh > 0.50 * h):
                         continue
                 filtered_detections.append(d)
             detections = filtered_detections
@@ -375,7 +376,7 @@ class EviGuardPipeline:
         if has_phone:
             clean_violations = [
                 v for v in risk_result.active_violations 
-                if not any(kw in v.upper() for kw in ("FINGER", "SIGNALLING", "HAND", "GESTURE"))
+                if not any(kw in v.upper() for kw in ("FINGER", "SIGNALLING", "HAND", "GESTURE", "NOTES"))
             ]
             if "VIOLATION: MOBILE_PHONE_DETECTED" not in clean_violations:
                 clean_violations.insert(0, "VIOLATION: MOBILE_PHONE_DETECTED")
@@ -390,6 +391,7 @@ class EviGuardPipeline:
             risk_result.risk_level = "CRITICAL"
             risk_result.smoothed_score = max(risk_result.smoothed_score, 95.0)
             risk_result.violation_factors.pop("hand_signalling", None)
+            risk_result.violation_factors.pop("unauthorized_notes", None)
             risk_result.violation_factors["cell_phone"] = max(risk_result.violation_factors.get("cell_phone", 95.0), 95.0)
         elif has_notes:
             if "UNAUTHORIZED_NOTES" not in risk_result.active_violations:
