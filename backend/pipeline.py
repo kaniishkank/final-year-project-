@@ -8,6 +8,7 @@ from collections import deque
 import concurrent.futures
 from dataclasses import dataclass
 from datetime import datetime
+import json
 import math
 import os
 import queue
@@ -19,24 +20,19 @@ import cv2
 import numpy as np
 import yaml
 
-try:
-    from backend.db.models import DatabaseManager, Incident
-    from backend.detection.base import DetectionResult
-    from backend.detection.factory import DetectorFactory
-    from backend.detection.yolo26_detector import _is_hand_holding_paper
-    from backend.explainability.reason_generator import ReasonGenerator, IncidentExplanation
-    from backend.pose.pose_gaze import PoseGazeEstimator, PoseGazeResult
-    from backend.scoring.risk_engine import RiskEngine, RiskAssessment
-    from backend.tracking.tracker import CustomTracker, PersonTracker, TrackedObject
-except Exception:
-    from .db.models import DatabaseManager, Incident
-    from .detection.base import DetectionResult
-    from .detection.factory import DetectorFactory
-    from .detection.yolo26_detector import _is_hand_holding_paper
-    from .explainability.reason_generator import ReasonGenerator, IncidentExplanation
-    from .pose.pose_gaze import PoseGazeEstimator, PoseGazeResult
-    from .scoring.risk_engine import RiskEngine, RiskAssessment
-    from .tracking.tracker import CustomTracker, PersonTracker, TrackedObject
+# Ensure project root is present on sys.path
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+from backend.db.models import DatabaseManager, Incident
+from backend.detection.base import DetectionResult
+from backend.detection.factory import DetectorFactory
+from backend.explainability.reason_generator import ReasonGenerator, IncidentExplanation
+from backend.pose.pose_gaze import PoseGazeEstimator, PoseGazeResult
+from backend.scoring.risk_engine import RiskEngine, RiskAssessment
+from backend.tracking.tracker import CustomTracker, PersonTracker, TrackedObject
+from robust_detector import EviGuardRobustEngine
 
 
 @dataclass
@@ -139,23 +135,17 @@ class EviGuardPipeline:
         self.config_path = config_path
         self.config = self._load_config(config_path)
 
-        # Initialize Modules
+        # Initialize Modules - Clean Production Architecture (Rhaman44 / AaravMehta Standard)
         det_cfg = dict(self.config.get("detection", {}))
-        # Use standard yolov8m.pt weights with CLAHE pre-processing, conf=0.28, iou=0.28, imgsz=640, augment=False
-        if os.path.exists("best.pt"):
-            det_cfg["model_path"] = "best.pt"
-        elif os.path.exists("backend/weights/best.pt"):
-            det_cfg["model_path"] = "backend/weights/best.pt"
-        else:
-            det_cfg["model_path"] = "yolov8n.pt"
-        det_cfg["imgsz"] = 640
+        det_cfg["model_path"] = "yolov8n.pt"
+        det_cfg["imgsz"] = 416
         det_cfg["iou_threshold"] = 0.28
         det_cfg["augment"] = False
-        det_cfg["enable_clahe"] = True
-        det_cfg["enable_paper_heuristic"] = True
-        det_cfg["confidence_threshold"] = float(self.config.get("detection", {}).get("confidence_threshold", 0.22))
-        det_cfg["phone_confidence_threshold"] = float(self.config.get("detection", {}).get("phone_confidence_threshold", 0.18))
-        det_cfg["book_confidence_threshold"] = float(self.config.get("detection", {}).get("book_confidence_threshold", 0.15))
+        det_cfg["enable_clahe"] = False
+        det_cfg["enable_paper_heuristic"] = False
+        det_cfg["confidence_threshold"] = float(self.config.get("detection", {}).get("confidence_threshold", 0.28))
+        det_cfg["phone_confidence_threshold"] = float(self.config.get("detection", {}).get("phone_confidence_threshold", 0.28))
+        det_cfg["book_confidence_threshold"] = float(self.config.get("detection", {}).get("book_confidence_threshold", 0.28))
         det_cfg["person_confidence_threshold"] = float(self.config.get("detection", {}).get("person_confidence_threshold", 0.28))
         self.phone_conf_threshold = det_cfg["phone_confidence_threshold"]
         self.book_conf_threshold = det_cfg["book_confidence_threshold"]
@@ -163,6 +153,7 @@ class EviGuardPipeline:
         self.detector = DetectorFactory.create_detector(model_type, det_cfg)
         
         self.tracker = CustomTracker(self.config.get("tracking", {}))
+        self.robust_engine = EviGuardRobustEngine()
         self.pose_gaze = PoseGazeEstimator(self.config.get("pose_gaze", {}))
         self.risk_engine = RiskEngine(self.config.get("risk_engine", {}))
         self.reason_gen = ReasonGenerator(self.config.get("explainability", {}))
@@ -189,6 +180,7 @@ class EviGuardPipeline:
         self.frame_index = 0
         self.last_time = time.time()
         self.current_fps = 30.0
+        self.last_forensic_log_time: float = 0.0
         
         # Multi-Student Round-Robin State
         self.active_student_ids: List[int] = [1]
@@ -216,6 +208,44 @@ class EviGuardPipeline:
         except Exception:
             pass
 
+    def _log_forensic_entry(self, secondary_tag: str, box: List[float], pose_gaze: Any):
+        """Append lightweight forensic audit log to violations_log.json."""
+        now = time.time()
+        if (now - self.last_forensic_log_time) < 1.0:
+            return
+        self.last_forensic_log_time = now
+
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "head_pose": {
+                "yaw": round(float(pose_gaze.yaw), 2) if (pose_gaze and pose_gaze.face_detected) else 0.0,
+                "pitch": round(float(pose_gaze.pitch), 2) if (pose_gaze and pose_gaze.face_detected) else 0.0
+            },
+            "gaze": str(pose_gaze.gaze_direction) if (pose_gaze and pose_gaze.face_detected) else "UNKNOWN",
+            "secondary_tag": str(secondary_tag),
+            "box": [round(float(c), 1) for c in box],
+            "threat_score": 95.0
+        }
+
+        try:
+            log_file = os.path.join(_PROJECT_ROOT, "violations_log.json")
+            entries = []
+            if os.path.exists(log_file):
+                try:
+                    with open(log_file, "r", encoding="utf-8") as f:
+                        entries = json.load(f)
+                        if not isinstance(entries, list):
+                            entries = []
+                except Exception:
+                    entries = []
+            entries.append(entry)
+            if len(entries) > 500:
+                entries = entries[-500:]
+            with open(log_file, "w", encoding="utf-8") as f:
+                json.dump(entries, f, indent=2)
+        except Exception:
+            pass
+
     def _load_config(self, config_path: str) -> Dict[str, Any]:
         """Loads configuration from YAML file or provides robust defaults."""
         if os.path.exists(config_path):
@@ -226,78 +256,14 @@ class EviGuardPipeline:
                 pass
         return {}
 
-    def _inspect_hand_for_phone(self, frame: np.ndarray, hand_box: List[float]) -> Optional[DetectionResult]:
-        """Inspects raw high-resolution hand crop specifically for handheld cell phones."""
-        if frame is None or frame.size == 0 or not hand_box or len(hand_box) < 4:
-            return None
-        h_img, w_img = frame.shape[:2]
-        hx1, hy1, hx2, hy2 = [int(v) for v in hand_box[:4]]
-        x1 = max(0, hx1 - 35)
-        y1 = max(0, hy1 - 35)
-        x2 = min(w_img, hx2 + 35)
-        y2 = min(h_img, hy2 + 35)
-        hand_crop = frame[y1:y2, x1:x2]
-        if hand_crop.size == 0 or hand_crop.shape[0] < 15 or hand_crop.shape[1] < 15:
-            return None
-
-        # 1. Fast YOLO inference on hand crop targeting cell phone (conf >= 0.15)
-        try:
-            if hasattr(self.detector, "model") and self.detector.model is not None:
-                model_names = getattr(self.detector.model, "names", {})
-                crop_res = self.detector.model.predict(
-                    source=hand_crop,
-                    conf=0.15,
-                    iou=0.25,
-                    verbose=False
-                )
-                for cr in crop_res:
-                    if cr.boxes is not None and len(cr.boxes) > 0:
-                        for i in range(len(cr.boxes)):
-                            c_conf = float(cr.boxes.conf[i].cpu().numpy())
-                            c_id = int(cr.boxes.cls[i].cpu().numpy())
-                            c_name = str(model_names.get(c_id, "")).lower()
-                            is_p = ("phone" in c_name) or c_id in (1, 67)
-                            if is_p and c_conf >= 0.15:
-                                l_box = cr.boxes.xyxy[i].cpu().numpy().tolist()
-                                g_box = [
-                                    float(x1 + l_box[0]),
-                                    float(y1 + l_box[1]),
-                                    float(x1 + l_box[2]),
-                                    float(y1 + l_box[3])
-                                ]
-                                return DetectionResult(
-                                    box=g_box,
-                                    confidence=max(c_conf, 0.88),
-                                    class_id=67,
-                                    class_name="cell phone"
-                                )
-        except Exception:
-            pass
-
-        # 2. Geometric smartphone rectangle in hand (aspect ratio 1.4 - 2.8, area 1800 - 25000 px²)
-        try:
-            crop_gray = cv2.cvtColor(hand_crop, cv2.COLOR_BGR2GRAY)
-            blurred = cv2.GaussianBlur(crop_gray, (5, 5), 0)
-            edges = cv2.Canny(blurred, 40, 130)
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-            closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
-            contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            for cnt in contours:
-                c_area = float(cv2.contourArea(cnt))
-                if 1800.0 <= c_area <= 25000.0:
-                    cbx, cby, cbw, cbh = cv2.boundingRect(cnt)
-                    ar = max(cbw, cbh) / max(min(cbw, cbh), 1.0)
-                    if 1.4 <= ar <= 2.8 and max(cbw, cbh) >= 60 and min(cbw, cbh) >= 22:
-                        g_box = [float(x1 + cbx), float(y1 + cby), float(x1 + cbx + cbw), float(y1 + cby + cbh)]
-                        return DetectionResult(
-                            box=g_box,
-                            confidence=0.88,
-                            class_id=67,
-                            class_name="cell phone"
-                        )
-        except Exception:
-            pass
-        return None
+    @staticmethod
+    def is_invalid_head_overlap(
+        phone_box: List[float],
+        face_box: Union[List[float], Tuple[float, ...]],
+        hand_boxes: Optional[List[Any]] = None
+    ) -> bool:
+        """Determines if a candidate phone bounding box falsely covers candidate's head, face, or hair."""
+        return EviGuardRobustEngine.is_invalid_head_overlap(phone_box, face_box, hand_boxes)
 
     def process_frame(
         self,
@@ -336,211 +302,52 @@ class EviGuardPipeline:
             future_det = self.executor.submit(self.detector.detect, frame)
             future_pose = self.executor.submit(self.pose_gaze.estimate, frame)
 
-            detections = future_det.result()
-            # Filter out extreme oversized bounding boxes while allowing close-up phones and books
-            filtered_detections = []
-            for d in detections:
-                if d.class_name != "person":
-                    bw = abs(d.box[2] - d.box[0])
-                    bh = abs(d.box[3] - d.box[1])
-                    if (bw * bh > 0.65 * w * h) or (bw > 0.75 * w and bh > 0.75 * h):
-                        continue
-                    if any(k in d.class_name.lower() for k in ("paper", "chit", "cheating")) and (bw > 0.50 * w or bh > 0.50 * h):
-                        continue
-                filtered_detections.append(d)
-            detections = filtered_detections
-
+            raw_detections = future_det.result()
             pose_gaze_result = future_pose.result()
 
-            # STRICT HAND-PRESENCE GATE & PHONE VERIFICATION:
-            h_boxes = getattr(pose_gaze_result, "hand_boxes", []) if pose_gaze_result else []
-            s_bbox = getattr(pose_gaze_result, "face_box", None) if pose_gaze_result else None
-
-            # 1. Strict Hand-Presence Gate for Notes / Chits / Books:
-            # If NO hands detected, immediately purge all paper/notes/chit detections
-            gated_detections = []
-            for d in detections:
+            # Filter generic detections: keep person, laptop, headphone, etc.
+            # Raw unverified phones, papers, and books are purged from the generic detector;
+            # Malpractice materials (phone, book) are strictly delegated to EviGuardRobustEngine.
+            detections = []
+            for d in raw_detections:
                 c_lower = d.class_name.lower()
-                is_paper_or_book = c_lower in ("unauthorized paper/notes", "notes", "paper", "book", "cheating") or "chit" in c_lower
-                if is_paper_or_book:
-                    # Gate 1: Must have active hands detected
-                    if not h_boxes or len(h_boxes) == 0:
-                        continue
-                    # Gate 2: Completely ignore top 40% of camera frame (doors, walls, switchboards, ceiling)
-                    if d.box[1] < 0.40 * h or (d.box[1] + d.box[3]) / 2.0 < 0.40 * h:
-                        continue
-                    # Gate 3: Must intersect active hand box by >= 10% overlap or within 40px
-                    is_hand_anchored = False
-                    for hb in h_boxes:
-                        # Simple overlap / proximity check
-                        ix1, iy1 = max(d.box[0], hb[0]), max(d.box[1], hb[1])
-                        ix2, iy2 = min(d.box[2], hb[2]), min(d.box[3], hb[3])
-                        inter_w, inter_h = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
-                        inter_a = inter_w * inter_h
-                        d_area = max(1.0, (d.box[2] - d.box[0]) * (d.box[3] - d.box[1]))
-                        hb_area = max(1.0, (hb[2] - hb[0]) * (hb[3] - hb[1]))
-                        iou = inter_a / (d_area + hb_area - inter_a + 1e-6)
-                        containment = inter_a / min(d_area, hb_area)
-                        dx = max(0.0, max(float(hb[0]) - d.box[2], d.box[0] - float(hb[2])))
-                        dy = max(0.0, max(float(hb[1]) - d.box[3], d.box[1] - float(hb[3])))
-                        if iou >= 0.10 or containment >= 0.10 or (dx <= 40.0 and dy <= 40.0):
-                            is_hand_anchored = True
-                            break
-                    if not is_hand_anchored:
-                        continue
+                if c_lower in ("cell phone", "phone", "cell_phone", "book", "unauthorized paper/notes", "notes", "paper", "exam chit in hand") or "chit" in c_lower:
+                    continue
+                bw = abs(d.box[2] - d.box[0])
+                bh = abs(d.box[3] - d.box[1])
+                if (bw * bh > 0.65 * w * h) or (bw > 0.75 * w and bh > 0.75 * h):
+                    continue
+                detections.append(d)
 
-                # 1b. Minimum Size Gate for Books: area >= 28,000 px² and width >= 150 px
-                if "book" in c_lower:
-                    bw = abs(d.box[2] - d.box[0])
-                    bh = abs(d.box[3] - d.box[1])
-                    if (bw * bh < 28000.0) or (bw < 150.0):
-                        continue
+            # High-FPS Unified Malpractice Verification via EviGuardRobustEngine
+            s_bbox = getattr(pose_gaze_result, "face_box", None) if pose_gaze_result else None
+            h_boxes = getattr(pose_gaze_result, "hand_boxes", None) if pose_gaze_result else None
+            verified_viols, _ = self.robust_engine.process(frame, student_face_box=s_bbox, hand_boxes=h_boxes)
+            for v in verified_viols:
+                sec_tag = v.get("secondary_tag", v.get("category", "material"))
+                c_id = 67 if sec_tag == "phone" else (2 if sec_tag == "headphone" else (63 if sec_tag == "device" else 73))
+                c_name = "unauthorized_exam_material"
+                v_box = [float(x) for x in v["box"]]
+                det_res = DetectionResult(
+                    box=v_box,
+                    confidence=float(v.get("conf", 0.95)),
+                    class_id=c_id,
+                    class_name=c_name
+                )
+                setattr(det_res, "secondary_tag", sec_tag)
+                detections.append(det_res)
 
-                # 2. Strict Phone Verification:
-                is_phone = c_lower in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67)
-                if is_phone:
-                    # Minimum confidence 0.18
-                    if d.confidence < 0.18:
-                        continue
-                    # Aspect ratio allow tilted phones: 1.0 to 3.2
-                    bw = abs(d.box[2] - d.box[0])
-                    bh = abs(d.box[3] - d.box[1])
-                    ar = max(bw, bh) / (min(bw, bh) + 1e-6)
-                    if not (1.0 <= ar <= 3.2):
-                        continue
-                    # Torso/neck shadow exclusion
-                    if s_bbox and len(s_bbox) >= 4:
-                        fx1, fy1, fx2, fy2 = s_bbox[:4]
-                        fw, fh = fx2 - fx1, fy2 - fy1
-                        torso_b = [fx1 - 0.35 * fw, fy2, fx2 + 0.35 * fw, fy2 + 2.2 * fh]
-                        ix1, iy1 = max(d.box[0], torso_b[0]), max(d.box[1], torso_b[1])
-                        ix2, iy2 = min(d.box[2], torso_b[2]), min(d.box[3], torso_b[3])
-                        inter_a = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
-                        b_area = max(1.0, bw * bh)
-                        if (inter_a / b_area) > 0.50:
-                            # Shadow on dark clothing/shoulder -> check if active hand overlaps
-                            hand_on_phone = False
-                            for hb in h_boxes:
-                                h_ix1, h_iy1 = max(d.box[0], hb[0]), max(d.box[1], hb[1])
-                                h_ix2, h_iy2 = min(d.box[2], hb[2]), min(d.box[3], hb[3])
-                                h_inter = max(0.0, h_ix2 - h_ix1) * max(0.0, h_iy2 - h_iy1)
-                                if (h_inter / b_area) > 0.08:
-                                    hand_on_phone = True
-                                    break
-                            if not hand_on_phone:
-                                continue
+                # Forensic Logging (throttled to 1s)
+                self._log_forensic_entry(sec_tag, v_box, pose_gaze_result)
 
-                gated_detections.append(d)
-            detections = gated_detections
-
-            # Check if any phone is already detected
-            phone_boxes_in_frame = [
-                d.box for d in detections
-                if d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67)
-            ]
-
-            # Detection logic order:
-            # A. High-Resolution Hand-Crop Micro-Chit Inspection:
-            has_micro_chit_in_hand = False
-            if pose_gaze_result and getattr(pose_gaze_result, "hand_boxes", None):
-                scale_x = orig_w / float(w)
-                scale_y = orig_h / float(h)
-
-                for h_idx, h_box in enumerate(pose_gaze_result.hand_boxes[:2]):
-                    # Map canvas hand box coordinates to full-resolution raw frame coordinates
-                    raw_h_box = [
-                        h_box[0] * scale_x,
-                        h_box[1] * scale_y,
-                        h_box[2] * scale_x,
-                        h_box[3] * scale_y
-                    ]
-
-                    # Priority 1: Inspect hand specifically for a handheld cell phone FIRST
-                    p_det = self._inspect_hand_for_phone(raw_full_res_frame, raw_h_box)
-                    if p_det:
-                        canvas_pbox = [
-                            float(p_det.box[0] / scale_x),
-                            float(p_det.box[1] / scale_y),
-                            float(p_det.box[2] / scale_x),
-                            float(p_det.box[3] / scale_y)
-                        ]
-                        p_det.box = canvas_pbox
-                        detections.append(p_det)
-                        phone_boxes_in_frame.append(canvas_pbox)
-                        continue # Completely bypass chit inspection for this hand!
-
-                    # If this hand overlaps or is near any detected phone, completely bypass chit inspection
-                    hand_has_phone = False
-                    for pb in phone_boxes_in_frame:
-                        near_x = (h_box[2] >= pb[0] - 120.0) and (h_box[0] <= pb[2] + 120.0)
-                        near_y = (h_box[3] >= pb[1] - 120.0) and (h_box[1] <= pb[3] + 120.0)
-                        if near_x and near_y:
-                            hand_has_phone = True
-                            break
-                    if hand_has_phone:
-                        continue
-
-                    raw_lms = None
-                    if getattr(pose_gaze_result, "hand_landmarks", None) and h_idx < len(pose_gaze_result.hand_landmarks):
-                        raw_lms = [(p[0] * scale_x, p[1] * scale_y) for p in pose_gaze_result.hand_landmarks[h_idx]]
-                    # Extract high-resolution crop with 45px padding and analyze
-                    res = _is_hand_holding_paper(raw_full_res_frame, raw_h_box, landmarks=raw_lms)
-                    is_chit = res[0]
-                    c_conf = res[1]
-                    raw_global_box = res[2] if len(res) == 4 else None
-
-                    if is_chit and raw_global_box:
-                        canvas_box = [
-                            float(raw_global_box[0] / scale_x),
-                            float(raw_global_box[1] / scale_y),
-                            float(raw_global_box[2] / scale_x),
-                            float(raw_global_box[3] / scale_y)
-                        ]
-                        # Discard if within 120px of any phone
-                        near_phone = False
-                        for pb in phone_boxes_in_frame:
-                            near_x = (canvas_box[2] >= pb[0] - 120.0) and (canvas_box[0] <= pb[2] + 120.0)
-                            near_y = (canvas_box[3] >= pb[1] - 120.0) and (canvas_box[1] <= pb[3] + 120.0)
-                            if near_x and near_y:
-                                near_phone = True
-                                break
-                        if not near_phone:
-                            has_micro_chit_in_hand = True
-                            detections.append(
-                                DetectionResult(
-                                    box=canvas_box,
-                                    confidence=0.94,
-                                    class_id=73,
-                                    class_name="exam chit in hand"
-                                )
-                            )
-
-            # Purge any book or chit within 120px of a detected phone
-            if phone_boxes_in_frame:
-                purged_dets = []
-                for d in detections:
-                    if d.class_name.lower() in ("book", "unauthorized paper/notes", "notes", "paper", "exam chit in hand"):
-                        near_phone = False
-                        for pb in phone_boxes_in_frame:
-                            near_x = (d.box[2] >= pb[0] - 120.0) and (d.box[0] <= pb[2] + 120.0)
-                            near_y = (d.box[3] >= pb[1] - 120.0) and (d.box[1] <= pb[3] + 120.0)
-                            if near_x and near_y:
-                                near_phone = True
-                                break
-                        if not near_phone:
-                            purged_dets.append(d)
-                    else:
-                        purged_dets.append(d)
-                detections = purged_dets
-
-            # Instantly suppress FINGER_SIGNALLING whenever micro-chit or phone triggers
-            has_phone_detected = any(
-                (d.class_name.lower() in ("phone", "cell phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
-                and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper", "exam chit in hand")
-                and d.confidence >= self.phone_conf_threshold
+            # Suppress hand gesture signalling flags whenever unauthorized exam material is active
+            has_unauthorized_material = len(verified_viols) > 0 or any(
+                (d.class_name.lower() in ("unauthorized_exam_material", "cell phone", "phone", "book", "notes", "unauthorized notes")
+                 or "unauthorized" in d.class_name.lower())
+                and d.confidence >= 0.35
                 for d in detections
             )
-            if has_phone_detected or has_micro_chit_in_hand:
+            if has_unauthorized_material:
                 detections = [
                     d for d in detections
                     if d.class_name.lower() not in ("hand_signalling", "hand-gestures", "hand_gestures")
@@ -577,14 +384,19 @@ class EviGuardPipeline:
                 self.active_student_ids = [1]
 
             # 5.1 & 5.2: Update temporal voting buffers on each tracked student
+            has_unauth_material = any(
+                d.class_name.lower() in ("unauthorized_exam_material", "cell phone", "phone", "book", "notes", "unauthorized notes", "secondary device", "headphone")
+                or "unauthorized" in d.class_name.lower()
+                for d in tracked_detections
+            )
             has_phone = any(
                 (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
                 and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
                 and d.confidence >= self.phone_conf_threshold
                 for d in tracked_detections
             )
-            has_notes = any(d.class_name in ("book", "unauthorized paper/notes", "notes", "cheating", "paper", "exam chit in hand") or "chit" in d.class_name.lower() for d in tracked_detections)
-            if has_phone or has_notes or has_micro_chit_in_hand:
+            has_notes = any(d.class_name in ("book", "unauthorized paper/notes", "notes", "cheating", "paper", "unauthorized_exam_material") for d in tracked_detections)
+            if has_unauth_material or has_phone or has_notes:
                 has_gesture = False
                 if pose_gaze_result:
                     pose_gaze_result.hand_signalling = False
@@ -599,7 +411,7 @@ class EviGuardPipeline:
             for t_id in self.active_student_ids:
                 track = self.tracker.get_track(t_id)
                 if track:
-                    track.record_evidence_frame(has_phone=has_phone, has_notes=has_notes, has_gesture=has_gesture)
+                    track.record_evidence_frame(has_phone=has_phone or has_unauth_material, has_notes=has_notes, has_gesture=has_gesture)
 
             # Cache results for intervening frames
             self.last_tracked_detections = tracked_detections
@@ -611,13 +423,12 @@ class EviGuardPipeline:
             pose_gaze_result = self.last_pose_gaze_result or self.pose_gaze.estimate(frame)
             person_count = self.last_person_count
 
-            has_phone = any(
-                (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
-                and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
-                and d.confidence >= self.phone_conf_threshold
+            has_unauth_material = any(
+                d.class_name.lower() in ("unauthorized_exam_material", "cell phone", "phone", "book", "notes", "unauthorized notes", "secondary device", "headphone")
+                or "unauthorized" in d.class_name.lower()
                 for d in tracked_detections
             )
-            if has_phone:
+            if has_unauth_material:
                 tracked_detections = [
                     d for d in tracked_detections
                     if d.class_name.lower() not in ("hand_signalling", "hand-gestures", "hand_gestures")
@@ -638,44 +449,31 @@ class EviGuardPipeline:
             student_id=primary_student_id
         )
 
-        # Prioritize violation label as VIOLATION: MOBILE_PHONE_DETECTED and suppress hand gesture / finger signalling flags
-        has_phone = any(
-            (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
-            and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
-            and d.confidence >= 0.18
+        # Unified Malpractice Priority & Zero-Threat Clearance Guarantee
+        has_unauthorized = any(
+            d.class_name.lower() in ("unauthorized_exam_material", "cell phone", "phone", "book", "notes", "unauthorized notes", "secondary device", "headphone")
+            or "unauthorized" in d.class_name.lower()
             for d in tracked_detections
-        )
-        has_notes = any(
-            d.class_name in ("book", "unauthorized paper/notes", "notes", "cheating", "paper")
-            for d in tracked_detections
-        )
-        if has_phone:
-            clean_violations = [
-                v for v in risk_result.active_violations 
-                if not any(kw in v.upper() for kw in ("FINGER", "SIGNALLING", "HAND", "GESTURE", "NOTES", "PAPER", "CHIT", "BOOK"))
-            ]
-            if "VIOLATION: MOBILE_PHONE_DETECTED" not in clean_violations:
-                clean_violations.insert(0, "VIOLATION: MOBILE_PHONE_DETECTED")
-            else:
-                clean_violations.remove("VIOLATION: MOBILE_PHONE_DETECTED")
-                clean_violations.insert(0, "VIOLATION: MOBILE_PHONE_DETECTED")
-            if "PHONE_DETECTED" not in clean_violations:
-                clean_violations.append("PHONE_DETECTED")
+        ) or len(verified_viols) > 0
 
-            risk_result.active_violations = clean_violations
-            risk_result.primary_violation = "VIOLATION: MOBILE_PHONE_DETECTED"
+        if has_unauthorized:
+            risk_result.primary_violation = "VIOLATION: UNAUTHORIZED EXAM MATERIAL DETECTED"
             risk_result.risk_level = "CRITICAL"
-            risk_result.smoothed_score = max(risk_result.smoothed_score, 96.0)
-            risk_result.violation_factors.pop("hand_signalling", None)
-            risk_result.violation_factors.pop("unauthorized_notes", None)
-            risk_result.violation_factors["cell_phone"] = max(risk_result.violation_factors.get("cell_phone", 96.0), 96.0)
-        elif has_notes:
-            if "UNAUTHORIZED_NOTES" not in risk_result.active_violations:
-                risk_result.active_violations.insert(0, "UNAUTHORIZED_NOTES")
-            risk_result.primary_violation = "UNAUTHORIZED_NOTES"
-            risk_result.risk_level = "CRITICAL"
-            risk_result.smoothed_score = max(risk_result.smoothed_score, 90.0)
-            risk_result.violation_factors["unauthorized_notes"] = 90.0
+            risk_result.smoothed_score = 95.0
+            risk_result.active_violations = ["VIOLATION: UNAUTHORIZED EXAM MATERIAL DETECTED"]
+            risk_result.violation_factors = {"unauthorized_exam_material": 95.0}
+            risk_result.is_incident_triggered = True
+        else:
+            has_other_violations = bool(
+                person_count > 1 or 
+                (pose_gaze_result and (pose_gaze_result.is_absent or getattr(pose_gaze_result, "is_prolonged_lookaway", False)))
+            )
+            if not has_other_violations:
+                risk_result.smoothed_score = 0.0
+                risk_result.risk_level = "NORMAL"
+                risk_result.primary_violation = "NORMAL"
+                risk_result.active_violations = []
+                risk_result.violation_factors = {}
 
         # 5. Database Telemetry Logging (throttled every 3 frames)
         if self.frame_index % 3 == 0:
@@ -829,33 +627,35 @@ class EviGuardPipeline:
             x1, y1, x2, y2 = [int(v) for v in det.box]
             cls_name = det.class_name.lower()
 
-            if "phone" in cls_name or "cell" in cls_name or getattr(det, "class_id", -1) in (4, 67):
+            if cls_name in ("unauthorized_exam_material", "unauthorized exam material") or "unauthorized" in cls_name:
                 color = (0, 0, 255)
-                label = f"VIOLATION: MOBILE_PHONE_DETECTED ({det.confidence*100:.0f}%)"
-            elif "chit in hand" in cls_name:
-                color = (0, 215, 255)
-                label = f"ALERT: Exam Chit in Hand ({det.confidence*100:.0f}%)"
-            elif "paper" in cls_name or "chit" in cls_name or "notes" in cls_name or cls_name == "unauthorized paper/notes":
-                color = (0, 215, 255)
-                label = f"ALERT: Exam Chit / Notes ({det.confidence*100:.0f}%)"
+                sec_tag = getattr(det, "secondary_tag", "").upper()
+                tag_str = f" [{sec_tag}]" if sec_tag else ""
+                label = f"VIOLATION: UNAUTHORIZED_EXAM_MATERIAL{tag_str} ({det.confidence*100:.0f}%)"
+            elif "phone" in cls_name or "cell" in cls_name or getattr(det, "class_id", -1) in (4, 67):
+                color = (0, 0, 255)
+                label = f"VIOLATION: UNAUTHORIZED_EXAM_MATERIAL [PHONE] ({det.confidence*100:.0f}%)"
+            elif "chit in hand" in cls_name or "paper" in cls_name or "chit" in cls_name or "notes" in cls_name or cls_name == "unauthorized paper/notes":
+                color = (0, 0, 255)
+                label = f"VIOLATION: UNAUTHORIZED_EXAM_MATERIAL [NOTES] ({det.confidence*100:.0f}%)"
             elif "book" in cls_name or "notebook" in cls_name:
-                color = (0, 165, 255)
-                label = f"ALERT: Book / Textbook ({det.confidence*100:.0f}%)"
+                color = (0, 0, 255)
+                label = f"VIOLATION: UNAUTHORIZED_EXAM_MATERIAL [BOOK] ({det.confidence*100:.0f}%)"
             elif "laptop" in cls_name:
-                color = (255, 0, 255)
-                label = f"ALERT: Laptop ({det.confidence*100:.0f}%)"
+                color = (0, 0, 255)
+                label = f"VIOLATION: UNAUTHORIZED_EXAM_MATERIAL [LAPTOP] ({det.confidence*100:.0f}%)"
             elif "cheating" in cls_name:
                 color = (0, 0, 255)
-                label = f"ALERT: Cheating ({det.confidence*100:.0f}%)"
+                label = f"VIOLATION: UNAUTHORIZED_EXAM_MATERIAL ({det.confidence*100:.0f}%)"
             elif "hand_signalling" in cls_name:
                 color = (0, 165, 255)
                 label = f"ALERT: Hand Gesture ({det.confidence*100:.0f}%)"
             elif "headphone" in cls_name or "earphone" in cls_name:
                 color = (0, 0, 255)
-                label = f"ALERT: Headphone / Earphone ({det.confidence*100:.0f}%)"
+                label = f"VIOLATION: UNAUTHORIZED_EXAM_MATERIAL [HEADPHONE] ({det.confidence*100:.0f}%)"
             elif "tv" in cls_name or "monitor" in cls_name:
-                color = (255, 0, 255)
-                label = f"ALERT: Secondary Display ({det.confidence*100:.0f}%)"
+                color = (0, 0, 255)
+                label = f"VIOLATION: UNAUTHORIZED_EXAM_MATERIAL [DISPLAY] ({det.confidence*100:.0f}%)"
             elif "person" in cls_name:
                 t_id_str = f" [ID:{det.track_id}]" if det.track_id is not None else ""
                 if det is primary_person or len(person_dets) == 1:
@@ -966,7 +766,15 @@ class EviGuardPipeline:
             banner_overlay = frame.copy()
             cv2.rectangle(banner_overlay, (0, h - 35), (w, h), (0, 0, 180), -1)
             cv2.addWeighted(banner_overlay, 0.8, frame, 0.2, 0, frame)
-            warning_text = f"VIOLATION: {' | '.join(risk.active_violations)}"
+            has_unauth_active = any(
+                "UNAUTHORIZED" in v.upper() or "PHONE" in v.upper() or "BOOK" in v.upper() or "NOTES" in v.upper() or "CHIT" in v.upper() or "PAPER" in v.upper()
+                for v in risk.active_violations
+            )
+            if has_unauth_active:
+                warning_text = "VIOLATION: UNAUTHORIZED EXAM MATERIAL DETECTED"
+            else:
+                clean_v = [v[11:] if v.startswith("VIOLATION: ") else (v[7:] if v.startswith("ALERT: ") else v) for v in risk.active_violations]
+                warning_text = f"VIOLATION: {' | '.join(clean_v)}"
             cv2.putText(frame, warning_text, (12, h - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
 
         return frame

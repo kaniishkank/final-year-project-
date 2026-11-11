@@ -1146,6 +1146,10 @@ with tab_vision:
 
         try:
             while True:
+                # Buffer Flush: Drop buffered stale frames if the processing loop falls behind
+                if camera.cap is not None and hasattr(camera.cap, "grab"):
+                    camera.cap.grab()
+
                 frame = camera.read()
                 if frame is None:
                     init_attempts += 1
@@ -1170,12 +1174,8 @@ with tab_vision:
                     time.sleep(0.01)
                     continue
 
-                # 1. Update Video Frame with high-speed JPEG compression
-                ret_enc, encoded_jpeg = cv2.imencode('.jpg', output.annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
-                if ret_enc:
-                    video_placeholder.image(encoded_jpeg.tobytes(), width="stretch")
-                else:
-                    video_placeholder.image(output.annotated_frame, channels="BGR", width="stretch")
+                # 1. Fast Canvas Rendering directly on NumPy arrays (channels="BGR", use_container_width=True)
+                video_placeholder.image(output.annotated_frame, channels="BGR", use_container_width=True)
 
                 # 2. Extract metrics
                 risk_score = float(output.risk.smoothed_score)
@@ -1196,7 +1196,15 @@ with tab_vision:
                     last_risk_bin = current_risk_bin
 
                     if is_flagged or active_violations:
-                        alert_str = ' • '.join(active_violations) if active_violations else "ELEVATED RISK DETECTED"
+                        has_unauth_banner = any(
+                            "UNAUTHORIZED" in v.upper() or "PHONE" in v.upper() or "BOOK" in v.upper() or "NOTES" in v.upper() or "CHIT" in v.upper() or "PAPER" in v.upper()
+                            for v in active_violations
+                        )
+                        if has_unauth_banner:
+                            alert_str = "UNAUTHORIZED EXAM MATERIAL DETECTED"
+                        else:
+                            clean_v = [v[11:] if v.startswith("VIOLATION: ") else (v[7:] if v.startswith("ALERT: ") else v) for v in active_violations]
+                            alert_str = ' • '.join(clean_v) if clean_v else "ELEVATED RISK DETECTED"
                         vision_banner_holder.markdown(f"""
                         <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 14px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 20px rgba(239, 68, 68, 0.2); backdrop-filter: blur(14px);">
                             <span style="font-size: 1.3rem;">🚨</span>

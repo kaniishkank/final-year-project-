@@ -95,6 +95,17 @@ class RiskEngine:
         factors: Dict[str, float] = {}
         is_critical_direct_trigger = False
 
+        # 0. Unified Malpractice Detection (score 95 -> CRITICAL)
+        unauth_material_dets = [
+            d for d in detections
+            if d.class_name in ("unauthorized_exam_material", "unauthorized exam material")
+            or getattr(d, "class_name", "").lower() == "unauthorized_exam_material"
+        ]
+        if unauth_material_dets:
+            active_violations.append("VIOLATION: UNAUTHORIZED EXAM MATERIAL DETECTED")
+            factors["unauthorized_exam_material"] = 95.0
+            is_critical_direct_trigger = True
+
         # 1. Phone Detection (score 70-95 range -> CRITICAL, requiring 2-frame persistence)
         raw_phone_detections = [
             d for d in detections 
@@ -234,6 +245,9 @@ class RiskEngine:
                 if student_smoothed < 1.0:
                     student_smoothed = 0.0
 
+        if not active_violations:
+            student_smoothed = 0.0
+
         self.student_histories[student_id] = student_smoothed
         self.current_smoothed_score = student_smoothed
         smoothed_score = round(student_smoothed, 1)
@@ -255,7 +269,9 @@ class RiskEngine:
         primary_violation = None
 
         if active_violations:
-            if phone_detections:
+            if unauth_material_dets:
+                primary_violation = "VIOLATION: UNAUTHORIZED EXAM MATERIAL DETECTED"
+            elif phone_detections:
                 primary_violation = "VIOLATION: MOBILE_PHONE_DETECTED"
             else:
                 primary_violation = max(factors.keys(), key=lambda k: factors[k], default=active_violations[0])
@@ -264,6 +280,10 @@ class RiskEngine:
                 is_incident_triggered = True
                 self.student_last_incidents[student_id] = now
                 self.last_incident_time = now
+        else:
+            primary_violation = "NORMAL"
+            smoothed_score = 0.0
+            risk_level = "NORMAL"
 
         return RiskAssessment(
             raw_score=raw_score,

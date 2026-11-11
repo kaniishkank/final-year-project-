@@ -19,6 +19,10 @@ runs/
 # Scratch & temporary verification files
 scratch/
 
+# Datasets & Runtime Logs
+datasets/
+violations_log.json
+
 # Database and local temp media (keep directory structure)
 data/*.db
 data/evidence_clips/*.mp4

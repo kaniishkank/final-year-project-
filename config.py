@@ -48,7 +48,7 @@ CONFIG: Dict[str, Any] = {
     # Module A: Unauthorized Physical Materials & Devices (Malpractice Likelihood: 90% - 98%)
     "module_a_devices": {
         # Cell Phone (COCO 67)
-        "phone_conf_threshold": 0.40,
+        "phone_conf_threshold": 0.60,
         "phone_min_area": 1200.0,
         "phone_aspect_ratio_min": 1.30,
         "phone_aspect_ratio_max": 2.70,

@@ -170,6 +170,28 @@ def _is_hand_holding_paper(
             if diff_color < 35.0:
                 return False, 0.0, global_box, {"is_phone": True}
 
+    # Dark Smartphone Chassis / Camera Island Disqualification:
+    # If candidate contour is embedded in a dark phone casing (mean V < 95 in surrounding region):
+    surround_y1 = max(0, local_by1 - 15)
+    surround_y2 = min(hand_crop.shape[0], local_by2 + 15)
+    surround_x1 = max(0, local_bx1 - 15)
+    surround_x2 = min(hand_crop.shape[1], local_bx2 + 15)
+    surround_roi = hand_crop[surround_y1:surround_y2, surround_x1:surround_x2]
+    if surround_roi.size > 0:
+        surround_v = float(np.mean(cv2.cvtColor(surround_roi, cv2.COLOR_BGR2HSV)[:, :, 2]))
+        if surround_v < 95.0:
+            return False, 0.0, global_box, {"is_phone": True}
+
+    # Smartphone Body in Hand Check:
+    # If hand crop contains a smartphone rectangle (length >= 60, aspect ratio 1.3 - 3.5, area >= 1800):
+    c_edges = cv2.Canny(cv2.GaussianBlur(roi_gray, (5, 5), 0), 30, 110)
+    p_cnts, _ = cv2.findContours(c_edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for pc in p_cnts:
+        _, _, pw, ph = cv2.boundingRect(pc)
+        p_ar = max(pw, ph) / max(min(pw, ph), 1.0)
+        if (pw * ph >= 1800) and (1.3 <= p_ar <= 3.5) and (max(pw, ph) >= 60):
+            return False, 0.0, global_box, {"is_phone": True}
+
     # Background Window Light Disqualification:
     # If top edge of candidate box extends above the wrist/hand contour into the background, drop immediately
     if hand_box is not None and len(hand_box) >= 4:
@@ -488,25 +510,20 @@ class YOLO26Detector(BaseDetector):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__(config)
-        self.model_path = self.config.get("model_path", None)
-        if not self.model_path:
-            if os.path.exists("best.pt"):
-                self.model_path = "best.pt"
-            elif os.path.exists("backend/weights/best.pt"):
-                self.model_path = "backend/weights/best.pt"
-            else:
-                self.model_path = "yolov8n.pt" 
+        self.model_path = self.config.get("model_path", "yolov8n.pt")
+        if not self.model_path or "best.pt" in str(self.model_path):
+            self.model_path = "yolov8n.pt"
         self.iou_threshold = float(self.config.get("iou_threshold", 0.28))
-        self.imgsz = int(self.config.get("imgsz", 640))
+        self.imgsz = int(self.config.get("imgsz", 416))
         self.augment = bool(self.config.get("augment", False))
-        self.enable_clahe = bool(self.config.get("enable_clahe", True))
+        self.enable_clahe = bool(self.config.get("enable_clahe", False))
         self.nms_free = self.config.get("nms_free", True)
         
         # Specific Confidence Thresholds per object class (calibrated for high sensitivity without false alarms)
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.18))
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.60))
         self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.28))
-        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.15))
-        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.22))
+        self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.35))
+        self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.60))
 
         # Geometric Validation Parameters for Cell Phones (calibrated for far-range detection)
         self.phone_min_area = float(self.config.get("phone_min_area", 80.0))
@@ -515,8 +532,8 @@ class YOLO26Detector(BaseDetector):
         self.phone_min_aspect_ratio = float(self.config.get("phone_min_aspect_ratio", 1.0))
         self.phone_max_aspect_ratio = float(self.config.get("phone_max_aspect_ratio", 4.5))
 
-        # Paper detection enabled for automated local detection pipeline
-        self.enable_paper_heuristic = self.config.get("enable_paper_heuristic", True)
+        # Paper heuristic disabled by default (proven GitHub architecture delegates chits/books/phones cleanly)
+        self.enable_paper_heuristic = bool(self.config.get("enable_paper_heuristic", False))
 
         self.model = None
         self._fallback_mode = False
@@ -528,16 +545,10 @@ class YOLO26Detector(BaseDetector):
         return apply_clahe_preprocessing(frame)
 
     def _load_model(self):
-        """Attempts to load the standard yolov8m.pt model, falling back gracefully if unavailable."""
+        """Attempts to load the standard yolov8n.pt model."""
         try:
             from ultralytics import YOLO
-            target = self.model_path if (self.model_path and os.path.exists(self.model_path)) else (
-                "best.pt" if os.path.exists("best.pt") else (
-                    "backend/weights/best.pt" if os.path.exists("backend/weights/best.pt") else (
-                        "yolov8n.pt" if os.path.exists("yolov8n.pt") else "yolov8m.pt"
-                    )
-                )
-            )
+            target = self.model_path if (self.model_path and os.path.exists(self.model_path) and "best.pt" not in self.model_path) else "yolov8n.pt"
             logger.info(f"Loading YOLO detector model from {target}...")
             self.model = YOLO(target)
             logger.info(f"YOLO detector model ({target}) loaded successfully via Ultralytics.")
@@ -772,10 +783,17 @@ class YOLO26Detector(BaseDetector):
                             person_boxes.append(box)
 
                     # 2. Validation for Cell Phone (Class 67 in COCO, or Class 1 in custom model)
-                    elif cls_name in ("cell phone", "phone", "mobile phone", "telephone") or (
+                    elif cls_name in ("cell phone", "phone", "mobile phone", "telephone", "cell_phone") or (
                         "phone" in cls_name and "head" not in cls_name and "ear" not in cls_name
                     ):
-                        if conf < self.phone_conf_threshold:
+                        if conf < max(0.60, self.phone_conf_threshold):
+                            continue
+
+                        # Frame size gate: A smartphone cannot cover oversized region (>35% frame or >65% height)
+                        if (box_area > 0.35 * w * h) or (bw > 0.50 * w) or (bh > 0.65 * h):
+                            continue
+
+                        if not (1.0 <= aspect_ratio <= 3.2):
                             continue
 
                         # Strict priority: A detected phone is ALWAYS kept as a cell phone (never downgraded to a book)
@@ -846,7 +864,7 @@ class YOLO26Detector(BaseDetector):
                     elif cls_name in ("non-cheating", "non_cheating"):
                         continue
 
-                    elif cls_name in ("exam_chit", "chit", "cheating-paper", "cheating_paper", "paper", "cheating"):
+                    elif cls_name in ("exam_chit", "chit", "cheating-paper", "cheating_paper", "paper", "cheating", "cheat_chit", "cheat chit"):
                         if conf < self.book_conf_threshold:
                             continue
                         if not self._is_valid_exam_chit(frame, box, person_boxes=person_boxes):
