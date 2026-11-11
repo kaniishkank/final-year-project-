@@ -1,6 +1,6 @@
 """
 EviGuard Proctored Inference Engine - Standalone Real-Time Execution Loop
-Runs YOLO26 (NMS-free), MediaPipe Hands & FaceMesh in an OpenCV webcam stream.
+Runs YOLOv8 (NMS-free), MediaPipe Hands & FaceMesh in an OpenCV webcam stream.
 Renders real-time HUD bounding boxes, 3D head pose axes, telemetry overlays,
 and records rolling 6-second MP4 evidence clips upon critical malpractice triggers.
 """
@@ -105,7 +105,7 @@ def draw_hud(
         status_text = "MALPRACTICE"
 
     # Title & Engine
-    cv2.putText(annotated, "EviGuard AI [YOLO26 + MediaPipe]", (12, 22),
+    cv2.putText(annotated, "EviGuard AI [YOLOv8 + MediaPipe]", (12, 22),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (241, 245, 249), 2, cv2.LINE_AA)
 
     # Telemetry Line: IQ & Status
@@ -181,7 +181,7 @@ def draw_hud(
 def main():
     """Main execution loop for real-time proctoring."""
     print("=" * 65)
-    print("  EviGuard Proctored Inference Engine (YOLO26 + MediaPipe)")
+    print("  EviGuard Proctored Inference Engine (YOLOv8 + MediaPipe)")
     print("=" * 65)
 
     # 1. Initialize Engines

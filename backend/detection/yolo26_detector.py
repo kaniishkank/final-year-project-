@@ -43,17 +43,15 @@ def apply_clahe_preprocessing(frame: np.ndarray) -> np.ndarray:
 
 def _is_hand_holding_paper(
     frame_or_roi: np.ndarray,
-    hand_box: Optional[Union[List[int], List[float], Tuple[int, ...], Tuple[float, ...]]] = None
+    hand_box: Optional[Union[List[int], List[float], Tuple[int, ...], Tuple[float, ...]]] = None,
+    landmarks: Optional[List[Tuple[float, float]]] = None
 ) -> Tuple[bool, float, List[float], Dict[str, Any]]:
     """Analyzes cropped high-resolution hand area for micro-chits and folded paper slips:
     - Extracts raw hand crop using landmark boundary plus 45px padding.
     - Applies CLAHE contrast enhancement directly to the crop.
-    - Checks for white/light paper presence with:
-      * HSV S < 55, V > 140
-      * Lower area minimum to 120 px²
-      * paper_pixel_ratio >= 0.08
-      * edge_density >= 0.015
-    - Calculates global screen coordinates: [x1 + local_bx1, y1 + local_by1, x1 + local_bx2, y1 + local_by2]
+    - Rejects tall/vertical architectural contours (window grills/doors: ar > 2.2 or height > 180).
+    - Compact paper rule: aspect ratio between 0.4 and 2.0, area <= 12,000 px².
+    - Strict hand palm / finger intersection: must intersect palm center / fingertip landmarks (0, 5, 9, 13, 17, 8, 12).
     Returns (is_chit, conf, global_box, metrics).
     """
     if frame_or_roi is None or frame_or_roi.size == 0:
@@ -64,6 +62,9 @@ def _is_hand_holding_paper(
     # 1. Extract raw hand crop with 45px boundary padding
     if hand_box is not None and len(hand_box) >= 4:
         hx1, hy1, hx2, hy2 = [int(v) for v in hand_box[:4]]
+        # Ignore top 40% of camera frame (ceiling, doors, wall trims)
+        if hy2 < 0.40 * h_img or (hy1 + hy2) / 2.0 < 0.40 * h_img:
+            return False, 0.0, [0.0, 0.0, 0.0, 0.0], {}
         x1 = max(0, hx1 - 45)
         y1 = max(0, hy1 - 45)
         x2 = min(w_img, hx2 + 45)
@@ -97,40 +98,59 @@ def _is_hand_holding_paper(
     white_edges = edges & white_mask
     edge_density = float(np.count_nonzero(white_edges)) / total_pixels
 
-    # 5. Check contours down to 120 px² minimum
+    # 5. Check contours down to 120 px² minimum with strict architectural rejection
     contours, _ = cv2.findContours(white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     has_micro_chit = False
     max_chit_area = 0.0
     best_cnt = None
-    for cnt in contours:
-        c_area = cv2.contourArea(cnt)
-        if 120.0 <= c_area <= (total_pixels * 0.85):
-            has_micro_chit = True
-            if c_area > max_chit_area:
-                max_chit_area = c_area
-                best_cnt = cnt
 
-    is_chit = (
-        (paper_pixel_ratio >= 0.08 or has_micro_chit or paper_pixels >= 120)
-        and (edge_density >= 0.015 or np.count_nonzero(white_edges) >= 10)
-    )
+    for cnt in contours:
+        c_area = float(cv2.contourArea(cnt))
+        # Paper chits must be compact: area cannot exceed 6,000 px², minimum 100 px²
+        if not (100.0 <= c_area <= 6000.0):
+            continue
+
+        cbx, cby, cbw, cbh = cv2.boundingRect(cnt)
+        c_bbox_area = float(cbw * cbh)
+        if c_bbox_area > 6000.0:
+            continue
+
+        # Compute bounding box aspect ratio: ar = height / max(width, 1)
+        ar = float(cbh) / max(float(cbw), 1.0)
+
+        # 1. Reject Tall / Vertical Architectural Contours and Handheld Smartphones:
+        # A smartphone held in hand has cbh >= 65 and 1.4 <= ar <= 2.8.
+        # This is a mobile phone, NOT an exam chit!
+        if cbh >= 65 and (1.4 <= ar <= 2.8):
+            continue
+        if cbh > 85 or ar > 1.65:
+            continue
+
+        # Paper chits must be compact: aspect ratio between 0.45 and 1.65
+        if not (0.45 <= ar <= 1.65):
+            continue
+
+        cnt_mask = np.zeros(white_mask.shape, dtype=np.uint8)
+        cv2.drawContours(cnt_mask, [cnt], -1, 255, -1)
+        cnt_edges = cv2.countNonZero(white_edges & cnt_mask)
+        cnt_edge_ratio = cnt_edges / float(c_area + 1e-6)
+        if cnt_edge_ratio < 0.010 and cnt_edges < 6:
+            continue
+
+        has_micro_chit = True
+        if c_area > max_chit_area:
+            max_chit_area = c_area
+            best_cnt = cnt
+
+    if not has_micro_chit or best_cnt is None:
+        return False, 0.0, [float(x1), float(y1), float(x2), float(y2)], {}
 
     # 6. Calculate global screen coordinates for the detected slip
-    if best_cnt is not None:
-        local_bx1, local_by1, bw, bh = cv2.boundingRect(best_cnt)
-        local_bx1 = max(0, local_bx1 - 4)
-        local_by1 = max(0, local_by1 - 4)
-        local_bx2 = min(hand_crop.shape[1], local_bx1 + bw + 8)
-        local_by2 = min(hand_crop.shape[0], local_by1 + bh + 8)
-    else:
-        white_pts = cv2.findNonZero(white_mask)
-        if white_pts is not None and len(white_pts) > 0:
-            local_bx1, local_by1, bw, bh = cv2.boundingRect(white_pts)
-            local_bx2 = local_bx1 + bw
-            local_by2 = local_by1 + bh
-        else:
-            local_bx1, local_by1 = 0, 0
-            local_bx2, local_by2 = hand_crop.shape[1], hand_crop.shape[0]
+    local_bx1, local_by1, bw, bh = cv2.boundingRect(best_cnt)
+    local_bx1 = max(0, local_bx1 - 4)
+    local_by1 = max(0, local_by1 - 4)
+    local_bx2 = min(hand_crop.shape[1], local_bx1 + bw + 8)
+    local_by2 = min(hand_crop.shape[0], local_by1 + bh + 8)
 
     global_box = [
         float(x1 + local_bx1),
@@ -139,6 +159,60 @@ def _is_hand_holding_paper(
         float(y1 + local_by2)
     ]
 
+    # Handheld Device / Phone Extension Check:
+    # If the region immediately above the candidate box (up to 30px higher) has identical color profile (diff < 35)
+    # and extends above the hand, this is a phone/device chassis held in hand, NOT a paper chit!
+    if local_by1 > 15:
+        above_strip = hand_crop[max(0, local_by1 - 25):local_by1, local_bx1:local_bx2]
+        cand_strip = hand_crop[local_by1:min(hand_crop.shape[0], local_by1 + 25), local_bx1:local_bx2]
+        if above_strip.size > 0 and cand_strip.size > 0:
+            diff_color = float(np.mean(np.abs(np.mean(above_strip, axis=(0, 1)) - np.mean(cand_strip, axis=(0, 1)))))
+            if diff_color < 35.0:
+                return False, 0.0, global_box, {"is_phone": True}
+
+    # Background Window Light Disqualification:
+    # If top edge of candidate box extends above the wrist/hand contour into the background, drop immediately
+    if hand_box is not None and len(hand_box) >= 4:
+        if global_box[1] < float(hand_box[1]) - 2.0:
+            return False, 0.0, global_box, {}
+
+    if landmarks and len(landmarks) >= 13:
+        min_lms_y = min(p[1] for p in landmarks)
+        if global_box[1] < float(min_lms_y) - 2.0:
+            return False, 0.0, global_box, {}
+
+    gw = abs(global_box[2] - global_box[0])
+    gh = abs(global_box[3] - global_box[1])
+    g_ar = float(gh) / max(float(gw), 1.0)
+    # Strict chit size limits: maximum height 70px, area <= 6,000 px², aspect ratio 0.45 - 1.65
+    if gh > 85 or g_ar > 1.65 or g_ar < 0.45 or (gw * gh) > 6000.0:
+        return False, 0.0, global_box, {}
+
+    if hand_box is not None and len(hand_box) >= 4:
+        hb_float = [float(v) for v in hand_box[:4]]
+        iw = max(0.0, min(global_box[2], hb_float[2]) - max(global_box[0], hb_float[0]))
+        ih = max(0.0, min(global_box[3], hb_float[3]) - max(global_box[1], hb_float[1]))
+        inter_area = iw * ih
+        g_area = max(1.0, gw * gh)
+        if (inter_area / g_area) < 0.15:
+            return False, 0.0, global_box, {}
+
+    if landmarks and len(landmarks) >= 13:
+        palm_finger_indices = [5, 9, 13, 17, 8, 12]
+
+        touches_palm_or_finger = False
+        margin = 25.0
+        for idx in palm_finger_indices:
+            if idx < len(landmarks):
+                lx, ly = landmarks[idx]
+                if (global_box[0] - margin <= lx <= global_box[2] + margin) and \
+                   (global_box[1] - margin <= ly <= global_box[3] + margin):
+                    touches_palm_or_finger = True
+                    break
+
+        if not touches_palm_or_finger:
+            return False, 0.0, global_box, {}
+
     metrics = {
         "paper_pixel_ratio": paper_pixel_ratio,
         "edge_density": edge_density,
@@ -146,7 +220,7 @@ def _is_hand_holding_paper(
         "max_chit_area": max_chit_area,
         "global_box": global_box
     }
-    return is_chit, 0.94 if is_chit else 0.0, global_box, metrics
+    return True, 0.94, global_box, metrics
 
 
 class DocumentExamDetector:
@@ -414,7 +488,14 @@ class YOLO26Detector(BaseDetector):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__(config)
-        self.model_path = self.config.get("model_path", "yolov8m.pt")
+        self.model_path = self.config.get("model_path", None)
+        if not self.model_path:
+            if os.path.exists("best.pt"):
+                self.model_path = "best.pt"
+            elif os.path.exists("backend/weights/best.pt"):
+                self.model_path = "backend/weights/best.pt"
+            else:
+                self.model_path = "yolov8n.pt" 
         self.iou_threshold = float(self.config.get("iou_threshold", 0.28))
         self.imgsz = int(self.config.get("imgsz", 640))
         self.augment = bool(self.config.get("augment", False))
@@ -422,7 +503,7 @@ class YOLO26Detector(BaseDetector):
         self.nms_free = self.config.get("nms_free", True)
         
         # Specific Confidence Thresholds per object class (calibrated for high sensitivity without false alarms)
-        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.22))
+        self.phone_conf_threshold = float(self.config.get("phone_confidence_threshold", 0.18))
         self.person_conf_threshold = float(self.config.get("person_confidence_threshold", 0.28))
         self.book_conf_threshold = float(self.config.get("book_confidence_threshold", 0.15))
         self.default_conf_threshold = float(self.config.get("confidence_threshold", 0.22))
@@ -450,10 +531,10 @@ class YOLO26Detector(BaseDetector):
         """Attempts to load the standard yolov8m.pt model, falling back gracefully if unavailable."""
         try:
             from ultralytics import YOLO
-            target = self.model_path if os.path.exists(self.model_path) else (
-                "backend/weights/yolov8m.pt" if os.path.exists("backend/weights/yolov8m.pt") else (
-                    "yolov8m.pt" if os.path.exists("yolov8m.pt") else (
-                        "backend/weights/best.pt" if os.path.exists("backend/weights/best.pt") else "yolov8m.pt"
+            target = self.model_path if (self.model_path and os.path.exists(self.model_path)) else (
+                "best.pt" if os.path.exists("best.pt") else (
+                    "backend/weights/best.pt" if os.path.exists("backend/weights/best.pt") else (
+                        "yolov8n.pt" if os.path.exists("yolov8n.pt") else "yolov8m.pt"
                     )
                 )
             )
@@ -706,6 +787,10 @@ class YOLO26Detector(BaseDetector):
                         if conf < self.book_conf_threshold:
                             continue
 
+                        # Minimum Size Gate for Books: area >= 28,000 px² and width >= 150 px
+                        if box_area < 28000.0 or bw < 150.0:
+                            continue
+
                         # Reject door top / background wall frames
                         cx, cy = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
                         if cy < (0.28 * h) and (cx < 0.12 * w or cx > 0.88 * w):
@@ -761,7 +846,7 @@ class YOLO26Detector(BaseDetector):
                     elif cls_name in ("non-cheating", "non_cheating"):
                         continue
 
-                    elif cls_name in ("cheating-paper", "cheating_paper", "paper", "cheating"):
+                    elif cls_name in ("exam_chit", "chit", "cheating-paper", "cheating_paper", "paper", "cheating"):
                         if conf < self.book_conf_threshold:
                             continue
                         if not self._is_valid_exam_chit(frame, box, person_boxes=person_boxes):

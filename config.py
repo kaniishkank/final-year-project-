@@ -1,7 +1,7 @@
 """
 EviGuard AI Proctoring System - Global Configuration Module
 Contains all operational thresholds, bounding area cutoffs, camera intrinsic assumptions,
-and probabilistic threat scoring weights for YOLO26 + MediaPipe inference.
+and probabilistic threat scoring weights for YOLOv8 + MediaPipe inference.
 """
 
 import os
@@ -16,13 +16,13 @@ CONFIG: Dict[str, Any] = {
         "version": "2.0.0",
         "device": "auto",  # 'cuda', 'cpu', or 'auto'
         "imgsz": 320,  # 320x320 tensor for ultra-low latency & 30+ FPS
-        "nms_free": True,  # Native YOLO26 end-to-end NMS-free mode
+        "nms_free": True,  # Native YOLOv8 end-to-end NMS-free mode
     },
 
     # Model Checkpoint Paths
     "models": {
-        "yolo_detection": "yolo26n.pt",
-        "yolo_pose": "yolo26n-pose.pt",
+        "yolo_detection": "yolov8n.pt",
+        "yolo_pose": "yolov8n-pose.pt",
         "fallback_detection": "yolov8n.pt",
         "fallback_pose": "yolov8n-pose.pt",
     },

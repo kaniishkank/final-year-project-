@@ -17,10 +17,26 @@ Features:
    - Audit Dossier & Neural Settings (Evidence review, XAI attributions, PDF/CSV export).
 """
 
+import sys
+import os
+
+# Add parent directory to sys.path and register packages at the very top
+_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
+import backend
+import backend.detection
+import backend.db
+import backend.explainability
+import backend.pose
+import backend.reporting
+import backend.scoring
+import backend.tracking
+
 from datetime import datetime
 import json
 import math
-import os
 import shutil
 import threading
 import time
@@ -39,10 +55,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import yaml
-
-# Add parent directory to sys.path
-import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from backend.db.models import DatabaseManager, ExamSession, Incident, RiskMetricLog
 from backend.detection.base import DetectionResult
@@ -1148,11 +1160,15 @@ with tab_vision:
 
                 loop_frame += 1
 
-                output: PipelineOutput = pipeline.process_frame(
-                    frame=frame,
-                    session_id=session_id,
-                    candidate_name=candidate_name
-                )
+                try:
+                    output: PipelineOutput = pipeline.process_frame(
+                        frame=frame,
+                        session_id=session_id,
+                        candidate_name=candidate_name
+                    )
+                except Exception as frame_err:
+                    time.sleep(0.01)
+                    continue
 
                 # 1. Update Video Frame with high-speed JPEG compression
                 ret_enc, encoded_jpeg = cv2.imencode('.jpg', output.annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 75])

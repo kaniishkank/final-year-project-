@@ -1,7 +1,7 @@
 """
 EviGuard Main Processing Pipeline
 Integrates Detection, CustomTracker, Pose/Gaze Estimation, Risk Scoring, XAI, Evidence Recording, and DB logging.
-Optimized with parallel multi-threading for YOLO26 & MediaPipe, temporal voting buffers, and zero-latency triggers.
+Optimized with parallel multi-threading for YOLOv8 & MediaPipe, temporal voting buffers, and zero-latency triggers.
 """
 
 from collections import deque
@@ -19,13 +19,24 @@ import cv2
 import numpy as np
 import yaml
 
-from .db.models import DatabaseManager, Incident
-from .detection.base import DetectionResult
-from .detection.factory import DetectorFactory
-from .explainability.reason_generator import ReasonGenerator, IncidentExplanation
-from .pose.pose_gaze import PoseGazeEstimator, PoseGazeResult
-from .scoring.risk_engine import RiskEngine, RiskAssessment
-from .tracking.tracker import CustomTracker, PersonTracker, TrackedObject
+try:
+    from backend.db.models import DatabaseManager, Incident
+    from backend.detection.base import DetectionResult
+    from backend.detection.factory import DetectorFactory
+    from backend.detection.yolo26_detector import _is_hand_holding_paper
+    from backend.explainability.reason_generator import ReasonGenerator, IncidentExplanation
+    from backend.pose.pose_gaze import PoseGazeEstimator, PoseGazeResult
+    from backend.scoring.risk_engine import RiskEngine, RiskAssessment
+    from backend.tracking.tracker import CustomTracker, PersonTracker, TrackedObject
+except Exception:
+    from .db.models import DatabaseManager, Incident
+    from .detection.base import DetectionResult
+    from .detection.factory import DetectorFactory
+    from .detection.yolo26_detector import _is_hand_holding_paper
+    from .explainability.reason_generator import ReasonGenerator, IncidentExplanation
+    from .pose.pose_gaze import PoseGazeEstimator, PoseGazeResult
+    from .scoring.risk_engine import RiskEngine, RiskAssessment
+    from .tracking.tracker import CustomTracker, PersonTracker, TrackedObject
 
 
 @dataclass
@@ -131,19 +142,24 @@ class EviGuardPipeline:
         # Initialize Modules
         det_cfg = dict(self.config.get("detection", {}))
         # Use standard yolov8m.pt weights with CLAHE pre-processing, conf=0.28, iou=0.28, imgsz=640, augment=False
-        det_cfg["model_path"] = "yolov8m.pt"
+        if os.path.exists("best.pt"):
+            det_cfg["model_path"] = "best.pt"
+        elif os.path.exists("backend/weights/best.pt"):
+            det_cfg["model_path"] = "backend/weights/best.pt"
+        else:
+            det_cfg["model_path"] = "yolov8n.pt"
         det_cfg["imgsz"] = 640
         det_cfg["iou_threshold"] = 0.28
         det_cfg["augment"] = False
         det_cfg["enable_clahe"] = True
         det_cfg["enable_paper_heuristic"] = True
         det_cfg["confidence_threshold"] = float(self.config.get("detection", {}).get("confidence_threshold", 0.22))
-        det_cfg["phone_confidence_threshold"] = float(self.config.get("detection", {}).get("phone_confidence_threshold", 0.42))
+        det_cfg["phone_confidence_threshold"] = float(self.config.get("detection", {}).get("phone_confidence_threshold", 0.18))
         det_cfg["book_confidence_threshold"] = float(self.config.get("detection", {}).get("book_confidence_threshold", 0.15))
         det_cfg["person_confidence_threshold"] = float(self.config.get("detection", {}).get("person_confidence_threshold", 0.28))
         self.phone_conf_threshold = det_cfg["phone_confidence_threshold"]
         self.book_conf_threshold = det_cfg["book_confidence_threshold"]
-        model_type = det_cfg.get("model_type", "yolo26")
+        model_type = det_cfg.get("model_type", "yolov8")
         self.detector = DetectorFactory.create_detector(model_type, det_cfg)
         
         self.tracker = CustomTracker(self.config.get("tracking", {}))
@@ -210,6 +226,79 @@ class EviGuardPipeline:
                 pass
         return {}
 
+    def _inspect_hand_for_phone(self, frame: np.ndarray, hand_box: List[float]) -> Optional[DetectionResult]:
+        """Inspects raw high-resolution hand crop specifically for handheld cell phones."""
+        if frame is None or frame.size == 0 or not hand_box or len(hand_box) < 4:
+            return None
+        h_img, w_img = frame.shape[:2]
+        hx1, hy1, hx2, hy2 = [int(v) for v in hand_box[:4]]
+        x1 = max(0, hx1 - 35)
+        y1 = max(0, hy1 - 35)
+        x2 = min(w_img, hx2 + 35)
+        y2 = min(h_img, hy2 + 35)
+        hand_crop = frame[y1:y2, x1:x2]
+        if hand_crop.size == 0 or hand_crop.shape[0] < 15 or hand_crop.shape[1] < 15:
+            return None
+
+        # 1. Fast YOLO inference on hand crop targeting cell phone (conf >= 0.15)
+        try:
+            if hasattr(self.detector, "model") and self.detector.model is not None:
+                model_names = getattr(self.detector.model, "names", {})
+                crop_res = self.detector.model.predict(
+                    source=hand_crop,
+                    conf=0.15,
+                    iou=0.25,
+                    verbose=False
+                )
+                for cr in crop_res:
+                    if cr.boxes is not None and len(cr.boxes) > 0:
+                        for i in range(len(cr.boxes)):
+                            c_conf = float(cr.boxes.conf[i].cpu().numpy())
+                            c_id = int(cr.boxes.cls[i].cpu().numpy())
+                            c_name = str(model_names.get(c_id, "")).lower()
+                            is_p = ("phone" in c_name) or c_id in (1, 67)
+                            if is_p and c_conf >= 0.15:
+                                l_box = cr.boxes.xyxy[i].cpu().numpy().tolist()
+                                g_box = [
+                                    float(x1 + l_box[0]),
+                                    float(y1 + l_box[1]),
+                                    float(x1 + l_box[2]),
+                                    float(y1 + l_box[3])
+                                ]
+                                return DetectionResult(
+                                    box=g_box,
+                                    confidence=max(c_conf, 0.88),
+                                    class_id=67,
+                                    class_name="cell phone"
+                                )
+        except Exception:
+            pass
+
+        # 2. Geometric smartphone rectangle in hand (aspect ratio 1.4 - 2.8, area 1800 - 25000 px²)
+        try:
+            crop_gray = cv2.cvtColor(hand_crop, cv2.COLOR_BGR2GRAY)
+            blurred = cv2.GaussianBlur(crop_gray, (5, 5), 0)
+            edges = cv2.Canny(blurred, 40, 130)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+            closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+            contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for cnt in contours:
+                c_area = float(cv2.contourArea(cnt))
+                if 1800.0 <= c_area <= 25000.0:
+                    cbx, cby, cbw, cbh = cv2.boundingRect(cnt)
+                    ar = max(cbw, cbh) / max(min(cbw, cbh), 1.0)
+                    if 1.4 <= ar <= 2.8 and max(cbw, cbh) >= 60 and min(cbw, cbh) >= 22:
+                        g_box = [float(x1 + cbx), float(y1 + cby), float(x1 + cbx + cbw), float(y1 + cby + cbh)]
+                        return DetectionResult(
+                            box=g_box,
+                            confidence=0.88,
+                            class_id=67,
+                            class_name="cell phone"
+                        )
+        except Exception:
+            pass
+        return None
+
     def process_frame(
         self,
         frame: np.ndarray,
@@ -243,7 +332,7 @@ class EviGuardPipeline:
         is_inference_frame = (self.frame_index % self.inference_stride == 0) or (self.last_pose_gaze_result is None)
 
         if is_inference_frame:
-            # Run YOLO26 detection and MediaPipe Pose/Gaze in parallel threads
+            # Run YOLOv8 detection and MediaPipe Pose/Gaze in parallel threads
             future_det = self.executor.submit(self.detector.detect, frame)
             future_pose = self.executor.submit(self.pose_gaze.estimate, frame)
 
@@ -300,17 +389,24 @@ class EviGuardPipeline:
                     if not is_hand_anchored:
                         continue
 
+                # 1b. Minimum Size Gate for Books: area >= 28,000 px² and width >= 150 px
+                if "book" in c_lower:
+                    bw = abs(d.box[2] - d.box[0])
+                    bh = abs(d.box[3] - d.box[1])
+                    if (bw * bh < 28000.0) or (bw < 150.0):
+                        continue
+
                 # 2. Strict Phone Verification:
                 is_phone = c_lower in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67)
                 if is_phone:
-                    # Minimum confidence 0.42
-                    if d.confidence < 0.42:
+                    # Minimum confidence 0.18
+                    if d.confidence < 0.18:
                         continue
-                    # Aspect ratio between 1.3 and 2.6
+                    # Aspect ratio allow tilted phones: 1.0 to 3.2
                     bw = abs(d.box[2] - d.box[0])
                     bh = abs(d.box[3] - d.box[1])
                     ar = max(bw, bh) / (min(bw, bh) + 1e-6)
-                    if not (1.3 <= ar <= 2.6):
+                    if not (1.0 <= ar <= 3.2):
                         continue
                     # Torso/neck shadow exclusion
                     if s_bbox and len(s_bbox) >= 4:
@@ -337,15 +433,20 @@ class EviGuardPipeline:
                 gated_detections.append(d)
             detections = gated_detections
 
+            # Check if any phone is already detected
+            phone_boxes_in_frame = [
+                d.box for d in detections
+                if d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67)
+            ]
+
             # Detection logic order:
             # A. High-Resolution Hand-Crop Micro-Chit Inspection:
             has_micro_chit_in_hand = False
             if pose_gaze_result and getattr(pose_gaze_result, "hand_boxes", None):
                 scale_x = orig_w / float(w)
                 scale_y = orig_h / float(h)
-                from backend.detection.yolo26_detector import _is_hand_holding_paper
 
-                for h_box in pose_gaze_result.hand_boxes[:2]:
+                for h_idx, h_box in enumerate(pose_gaze_result.hand_boxes[:2]):
                     # Map canvas hand box coordinates to full-resolution raw frame coordinates
                     raw_h_box = [
                         h_box[0] * scale_x,
@@ -353,29 +454,84 @@ class EviGuardPipeline:
                         h_box[2] * scale_x,
                         h_box[3] * scale_y
                     ]
+
+                    # Priority 1: Inspect hand specifically for a handheld cell phone FIRST
+                    p_det = self._inspect_hand_for_phone(raw_full_res_frame, raw_h_box)
+                    if p_det:
+                        canvas_pbox = [
+                            float(p_det.box[0] / scale_x),
+                            float(p_det.box[1] / scale_y),
+                            float(p_det.box[2] / scale_x),
+                            float(p_det.box[3] / scale_y)
+                        ]
+                        p_det.box = canvas_pbox
+                        detections.append(p_det)
+                        phone_boxes_in_frame.append(canvas_pbox)
+                        continue # Completely bypass chit inspection for this hand!
+
+                    # If this hand overlaps or is near any detected phone, completely bypass chit inspection
+                    hand_has_phone = False
+                    for pb in phone_boxes_in_frame:
+                        near_x = (h_box[2] >= pb[0] - 120.0) and (h_box[0] <= pb[2] + 120.0)
+                        near_y = (h_box[3] >= pb[1] - 120.0) and (h_box[1] <= pb[3] + 120.0)
+                        if near_x and near_y:
+                            hand_has_phone = True
+                            break
+                    if hand_has_phone:
+                        continue
+
+                    raw_lms = None
+                    if getattr(pose_gaze_result, "hand_landmarks", None) and h_idx < len(pose_gaze_result.hand_landmarks):
+                        raw_lms = [(p[0] * scale_x, p[1] * scale_y) for p in pose_gaze_result.hand_landmarks[h_idx]]
                     # Extract high-resolution crop with 45px padding and analyze
-                    res = _is_hand_holding_paper(raw_full_res_frame, raw_h_box)
+                    res = _is_hand_holding_paper(raw_full_res_frame, raw_h_box, landmarks=raw_lms)
                     is_chit = res[0]
                     c_conf = res[1]
                     raw_global_box = res[2] if len(res) == 4 else None
 
                     if is_chit and raw_global_box:
-                        has_micro_chit_in_hand = True
-                        # Map detected slip box back to canvas coordinates
                         canvas_box = [
                             float(raw_global_box[0] / scale_x),
                             float(raw_global_box[1] / scale_y),
                             float(raw_global_box[2] / scale_x),
                             float(raw_global_box[3] / scale_y)
                         ]
-                        detections.append(
-                            DetectionResult(
-                                box=canvas_box,
-                                confidence=0.94,
-                                class_id=73,
-                                class_name="exam chit in hand"
+                        # Discard if within 120px of any phone
+                        near_phone = False
+                        for pb in phone_boxes_in_frame:
+                            near_x = (canvas_box[2] >= pb[0] - 120.0) and (canvas_box[0] <= pb[2] + 120.0)
+                            near_y = (canvas_box[3] >= pb[1] - 120.0) and (canvas_box[1] <= pb[3] + 120.0)
+                            if near_x and near_y:
+                                near_phone = True
+                                break
+                        if not near_phone:
+                            has_micro_chit_in_hand = True
+                            detections.append(
+                                DetectionResult(
+                                    box=canvas_box,
+                                    confidence=0.94,
+                                    class_id=73,
+                                    class_name="exam chit in hand"
+                                )
                             )
-                        )
+
+            # Purge any book or chit within 120px of a detected phone
+            if phone_boxes_in_frame:
+                purged_dets = []
+                for d in detections:
+                    if d.class_name.lower() in ("book", "unauthorized paper/notes", "notes", "paper", "exam chit in hand"):
+                        near_phone = False
+                        for pb in phone_boxes_in_frame:
+                            near_x = (d.box[2] >= pb[0] - 120.0) and (d.box[0] <= pb[2] + 120.0)
+                            near_y = (d.box[3] >= pb[1] - 120.0) and (d.box[1] <= pb[3] + 120.0)
+                            if near_x and near_y:
+                                near_phone = True
+                                break
+                        if not near_phone:
+                            purged_dets.append(d)
+                    else:
+                        purged_dets.append(d)
+                detections = purged_dets
 
             # Instantly suppress FINGER_SIGNALLING whenever micro-chit or phone triggers
             has_phone_detected = any(
@@ -486,7 +642,7 @@ class EviGuardPipeline:
         has_phone = any(
             (d.class_name.lower() in ("cell phone", "phone") or getattr(d, "class_id", -1) in (1, 67) or "phone" in d.class_name.lower())
             and d.class_name.lower() not in ("book", "unauthorized paper/notes", "notes", "paper")
-            and d.confidence >= 0.28
+            and d.confidence >= 0.18
             for d in tracked_detections
         )
         has_notes = any(
@@ -496,7 +652,7 @@ class EviGuardPipeline:
         if has_phone:
             clean_violations = [
                 v for v in risk_result.active_violations 
-                if not any(kw in v.upper() for kw in ("FINGER", "SIGNALLING", "HAND", "GESTURE", "NOTES"))
+                if not any(kw in v.upper() for kw in ("FINGER", "SIGNALLING", "HAND", "GESTURE", "NOTES", "PAPER", "CHIT", "BOOK"))
             ]
             if "VIOLATION: MOBILE_PHONE_DETECTED" not in clean_violations:
                 clean_violations.insert(0, "VIOLATION: MOBILE_PHONE_DETECTED")

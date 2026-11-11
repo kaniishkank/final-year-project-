@@ -1,6 +1,6 @@
 """
 EviGuard Core Vision & Proctored Inference Engine
-Integrates Ultralytics YOLO26 (NMS-free end-to-end), MediaPipe Hands,
+Integrates Ultralytics YOLOv8 (NMS-free end-to-end), MediaPipe Hands,
 MediaPipe FaceMesh, Smartwatch Wrist ROI analyzer, and Desk Paper Heuristics.
 """
 
@@ -79,7 +79,7 @@ class ProctoredInferenceEngine:
         self.imgsz = int(self.sys_cfg.get("imgsz", 640))
         self.head_pose_solver = HeadPoseEstimator(self.config)
 
-        # 1. Initialize YOLO26 / Ultralytics
+        # 1. Initialize YOLOv8 / Ultralytics
         self.yolo_model = None
         self.yolo_pose_model = None
         self._load_yolo_models()
@@ -95,36 +95,36 @@ class ProctoredInferenceEngine:
         self._load_hands()
 
     def _load_yolo_models(self):
-        """Loads YOLO26 detection and pose checkpoints with local fallback."""
+        """Loads YOLOv8 detection and pose checkpoints with local fallback."""
         try:
             from ultralytics import YOLO
-            model_path = self.config.get("models", {}).get("yolo_detection", "yolo26n.pt")
+            model_path = self.config.get("models", {}).get("yolo_detection", "yolov8n.pt")
             if not os.path.exists(model_path):
                 # Check for alternative local checkpoints
-                for alt in ["yolo26n.pt", "yolov8n.pt"]:
+                for alt in ["yolov8n.pt", "yolov8n.pt"]:
                     if os.path.exists(alt):
                         model_path = alt
                         break
 
-            logger.info(f"Loading YOLO26 model from {model_path}...")
+            logger.info(f"Loading YOLOv8 model from {model_path}...")
             self.yolo_model = YOLO(model_path)
-            logger.info("YOLO26 model loaded successfully.")
+            logger.info("YOLOv8 model loaded successfully.")
         except Exception as e:
-            logger.warning(f"Could not load YOLO26 detection model ({e}). Using heuristic fallback.")
+            logger.warning(f"Could not load YOLOv8 detection model ({e}). Using heuristic fallback.")
             self.yolo_model = None
 
         # Load Pose model for wrist ROI if available
         try:
             from ultralytics import YOLO
-            pose_path = self.config.get("models", {}).get("yolo_pose", "yolo26n-pose.pt")
+            pose_path = self.config.get("models", {}).get("yolo_pose", "yolov8n-pose.pt")
             if not os.path.exists(pose_path):
-                for alt in ["yolo26n-pose.pt", "yolov8n-pose.pt"]:
+                for alt in ["yolov8n-pose.pt", "yolov8n-pose.pt"]:
                     if os.path.exists(alt):
                         pose_path = alt
                         break
             if os.path.exists(pose_path):
                 self.yolo_pose_model = YOLO(pose_path)
-                logger.info(f"YOLO26 Pose model loaded from {pose_path}.")
+                logger.info(f"YOLOv8 Pose model loaded from {pose_path}.")
         except Exception:
             self.yolo_pose_model = None
 
@@ -254,7 +254,7 @@ class ProctoredInferenceEngine:
         has_critical = False
         smartwatch_flag = False
 
-        # 1. YOLO26 Detection Inference (Native NMS-Free)
+        # 1. YOLOv8 Detection Inference (Native NMS-Free)
         if self.yolo_model is not None:
             try:
                 results = self.yolo_model.predict(
@@ -323,7 +323,7 @@ class ProctoredInferenceEngine:
                                     )
                                 )
             except Exception as e:
-                logger.error(f"YOLO26 inference error: {e}")
+                logger.error(f"YOLOv8 inference error: {e}")
 
         # 2. Add Paper Workspace Heuristic
         student_boxes = [d.box for d in detected_objects if d.class_name == "person"]

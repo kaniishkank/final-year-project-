@@ -1,0 +1,8 @@
+path: C:/Users/Kaushikan/Desktop/final year projecct/dataset
+train: train/images
+val: val/images
+nc: 3
+names:
+- cheat_chit
+- cell_phone
+- book
