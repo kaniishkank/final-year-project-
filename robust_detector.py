@@ -122,6 +122,8 @@ class EviGuardRobustEngine:
 
         # Handheld paper chit consecutive frames tracker (>= 3 frames required)
         self.chit_consecutive_frames = 0
+        # Isolated LAB-space paper chit detector tracker (>= 3 frames required)
+        self.lab_chit_streak = 0
 
         # Compatibility aliases
         self.phone_hist = self.history
@@ -232,13 +234,15 @@ class EviGuardRobustEngine:
         """
         Target Object Coverage:
         Any detection containing 'paper', 'chit', 'document', 'note', 'book', 'phone', or 'cell phone'
-        with confidence >= 0.35 maps directly to:
-        VIOLATION: UNAUTHORIZED_EXAM_MATERIAL (Threat 95, Red Box).
+        maps directly to VIOLATION: UNAUTHORIZED_EXAM_MATERIAL (Threat 95, Red Box).
+        Confidence: >= 0.25 for books; >= 0.35 for all other objects.
         """
-        if conf < 0.35:
+        cls_lower = raw_class_name.lower()
+        is_book = ("book" in cls_lower or "textbook" in cls_lower or "notebook" in cls_lower)
+        min_conf = 0.25 if is_book else 0.35
+        if conf < min_conf:
             return None
 
-        cls_lower = raw_class_name.lower()
         prohibited = (
             "paper", "chit", "document", "note", "book", "phone", "cell phone",
             "laptop", "headphone", "earphone", "tv", "display", "screen"
@@ -376,6 +380,146 @@ class EviGuardRobustEngine:
 
         return []
 
+    def _detect_hand_paper_chit(self, frame: np.ndarray, hand_landmarks: Any) -> Optional[Dict[str, Any]]:
+        """
+        Isolated LAB-Space Paper Chit Detector:
+        Runs only when MediaPipe Hands detects a hand and no YOLO phone/book violation is already active on that hand.
+        Uses lighting-invariant CIE LAB color-space (L > 148, shade tolerant), quadrilateral polygon check (4-7 vertices),
+        internal Canny edge density inside eroded contour mask (>= 0.035), and strict finger-contact verification (>= 2 landmarks).
+        """
+        if hand_landmarks is None or not hasattr(hand_landmarks, "landmark"):
+            return None
+
+        h, w, _ = frame.shape
+        hand_pts_full = [(int(p.x * w), int(p.y * h)) for p in hand_landmarks.landmark]
+        if not hand_pts_full:
+            return None
+
+        xs = [p[0] for p in hand_pts_full]
+        ys = [p[1] for p in hand_pts_full]
+
+        # 1. Tight Hand ROI Extraction with 15px padding
+        min_x = max(0, min(xs) - 15)
+        max_x = min(w, max(xs) + 15)
+        min_y = max(0, min(ys) - 15)
+        max_y = min(h, max(ys) + 15)
+
+        if (max_x - min_x) < 30 or (max_y - min_y) < 30:
+            return None
+
+        crop = frame[min_y:max_y, min_x:max_x]
+        if crop.size == 0 or crop.shape[0] < 30 or crop.shape[1] < 30:
+            return None
+
+        # 2. Shade-Tolerant Luminance for Real Paper in CIE LAB (L > 148)
+        lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
+        L, A, B = cv2.split(lab)
+
+        # White/ruled paper has high L and neutral A/B (~128), unlike skin
+        paper_mask = (
+            (L > 148) & (np.abs(A.astype(int) - 128) < 15) & (B.astype(int) < 145)
+        ).astype(np.uint8) * 255
+
+        # Single 3x3 morphological close to connect ink lines across the paper
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        paper_mask = cv2.morphologyEx(paper_mask, cv2.MORPH_CLOSE, kernel)
+
+        # 3. Contour Extraction & Filtering
+        contours, _ = cv2.findContours(paper_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return None
+
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            # Area between 280 and 8500 pixels
+            if area < 280 or area > 8500:
+                continue
+
+            rx, ry, rw, rh = cv2.boundingRect(cnt)
+            if rw <= 0 or rh <= 0:
+                continue
+
+            # Bounding aspect ratio between 0.25 and 4.0
+            ar = float(rw) / float(rh)
+            if ar < 0.25 or ar > 4.0:
+                continue
+
+            # Contour solidity (area / hull_area) >= 0.60
+            hull = cv2.convexHull(cnt)
+            hull_area = cv2.contourArea(hull)
+            solidity = float(area) / hull_area if hull_area > 0 else 0.0
+            if solidity < 0.60:
+                continue
+
+            # Polygon approximation has between 4 and 7 vertices (rejects irregular wall gaps)
+            peri = cv2.arcLength(cnt, True)
+            approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
+            if len(approx) < 4 or len(approx) > 7:
+                continue
+
+            # Map back to full-frame coordinates
+            gx1 = min_x + rx
+            gy1 = min_y + ry
+            gx2 = gx1 + rw
+            gy2 = gy1 + rh
+
+            # Strict Finger-Contact Requirement (Blocks Background Wall Gaps)
+            # Contour box expanded by 10px must overlap with at least 2 hand landmarks
+            exp_x1 = max(0, gx1 - 10)
+            exp_y1 = max(0, gy1 - 10)
+            exp_x2 = min(w, gx2 + 10)
+            exp_y2 = min(h, gy2 + 10)
+
+            touching_landmarks = sum(
+                1 for (lx, ly) in hand_pts_full
+                if exp_x1 <= lx <= exp_x2 and exp_y1 <= ly <= exp_y2
+            )
+            if touching_landmarks < 2:
+                continue
+
+            # Reject Smooth Painted Walls via Internal Edge Density Check
+            cnt_crop = crop[ry:ry + rh, rx:rx + rw]
+            if cnt_crop.size == 0:
+                continue
+
+            cnt_shifted = cnt - np.array([rx, ry])
+            mask = np.zeros((rh, rw), dtype=np.uint8)
+            cv2.drawContours(mask, [cnt_shifted], -1, 255, -1)
+
+            erode_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            eroded_mask = cv2.erode(mask, erode_kernel, iterations=2)
+            if np.count_nonzero(eroded_mask) < 25:
+                eroded_mask = cv2.erode(mask, erode_kernel, iterations=1)
+            if np.count_nonzero(eroded_mask) == 0:
+                eroded_mask = mask
+
+            total_internal_pixels = np.count_nonzero(eroded_mask)
+            if total_internal_pixels <= 0:
+                continue
+
+            gray_crop = cv2.cvtColor(cnt_crop, cv2.COLOR_BGR2GRAY)
+            canny_edges = cv2.Canny(gray_crop, 50, 150)
+            internal_edge_pixels = np.count_nonzero((canny_edges > 0) & (eroded_mask > 0))
+            edge_density = float(internal_edge_pixels) / float(total_internal_pixels)
+
+            # Flat painted walls produce 0.0 or < 0.01; written paper chits produce >= 0.035
+            if edge_density < 0.035:
+                continue
+
+            # Valid finger-held paper slip detected
+            return {
+                "label": "VIOLATION: UNAUTHORIZED_EXAM_MATERIAL (PAPER CHIT)",
+                "box": (gx1, gy1, gx2, gy2),
+                "conf": 0.92,
+                "class_name": "unauthorized_exam_material",
+                "secondary_tag": "notes",
+                "threat": self.UNIFIED_THREAT,
+                "category": "notes",
+                "color": self.UNIFIED_COLOR
+            }
+
+        return None
+
     def process(
         self,
         frame: np.ndarray,
@@ -433,7 +577,7 @@ class EviGuardRobustEngine:
         if self.frame_count % 2 == 0:
             predict_kwargs = {
                 "source": frame,
-                "conf": 0.35,
+                "conf": 0.25,
                 "imgsz": 320,
                 "verbose": False
             }
@@ -455,29 +599,33 @@ class EviGuardRobustEngine:
                 if not matched_label:
                     continue
 
+                is_book = ("book" in cls_name or "textbook" in cls_name or "notebook" in cls_name)
+
                 # B. Facial Core Masking (50px radius suppression around nose tip landmark 1)
-                if nose_pt:
+                # Disabled for books only: open books held near the face must still trigger
+                if not is_book and nose_pt:
                     if math.hypot(cx - nose_pt[0], cy - nose_pt[1]) <= 50:
                         continue
                     if abs(cx - nose_pt[0]) <= 50 and abs(cy - nose_pt[1]) <= 50:
                         continue
 
                 # C. MediaPipe Hand-Anchor Verification
-                # Confirmed ONLY if within 65px of wrist/knuckles OR resting on desk with conf >= 0.55
-                is_near_hand = False
-                if hand_pts:
-                    for hx, hy in hand_pts:
-                        if (x1 - 65 <= hx <= x2 + 65) and (y1 - 65 <= hy <= y2 + 65):
-                            is_near_hand = True
-                            break
-                        if math.hypot(cx - hx, cy - hy) <= 65:
-                            is_near_hand = True
-                            break
+                # Bypassed for books only: fingers often grip far edge or hidden behind cover
+                if not is_book:
+                    is_near_hand = False
+                    if hand_pts:
+                        for hx, hy in hand_pts:
+                            if (x1 - 65 <= hx <= x2 + 65) and (y1 - 65 <= hy <= y2 + 65):
+                                is_near_hand = True
+                                break
+                            if math.hypot(cx - hx, cy - hy) <= 65:
+                                is_near_hand = True
+                                break
 
-                is_desk_resting = (conf >= 0.55 and cy >= (h * 0.50))
+                    is_desk_resting = (conf >= 0.55 and cy >= (h * 0.50))
 
-                if not (is_near_hand or is_desk_resting):
-                    continue
+                    if not (is_near_hand or is_desk_resting):
+                        continue
 
                 sec_tag = self._get_secondary_tag(cls_name)
                 raw_detections.append({
@@ -504,12 +652,46 @@ class EviGuardRobustEngine:
             if paper_chits:
                 raw_detections.extend(paper_chits)
 
+        # Check Isolated LAB-Space Paper Chit Detector on detected hands
+        # (Runs only when MediaPipe Hands detects a hand and no YOLO phone/book violation is already active on that hand)
+        found_lab_chit = None
+        if hand_lms:
+            for hl in hand_lms:
+                h_xs = [int(p.x * w) for p in hl.landmark]
+                h_ys = [int(p.y * h) for p in hl.landmark]
+                if h_xs and h_ys:
+                    hx1, hx2 = min(h_xs) - 15, max(h_xs) + 15
+                    hy1, hy2 = min(h_ys) - 15, max(h_ys) + 15
+                    yolo_active = any(
+                        d.get("secondary_tag") in ("phone", "book") and
+                        not (d["box"][2] < hx1 or d["box"][0] > hx2 or d["box"][3] < hy1 or d["box"][1] > hy2)
+                        for d in raw_detections if "box" in d and len(d["box"]) >= 4
+                    )
+                    if not yolo_active:
+                        chit = self._detect_hand_paper_chit(frame, hl)
+                        if chit:
+                            found_lab_chit = chit
+                            break
+
+        if found_lab_chit is not None:
+            self.lab_chit_streak += 1
+            if self.lab_chit_streak >= 3:
+                raw_detections.append(found_lab_chit)
+        else:
+            self.lab_chit_streak = 0
+
         # 4. Temporal Stability Buffer: Require positive detection in 2 of the last 4 frames
+        # Instant 1-Frame Trigger for Books & 3-Frame Confirmed Paper Chits
+        has_book = any(d.get("secondary_tag") == "book" for d in raw_detections)
+        has_confirmed_chit = any("PAPER CHIT" in d.get("label", "") for d in raw_detections)
+
         has_detection = len(raw_detections) > 0
         self.history.append(has_detection)
 
         confirmed: List[Dict[str, Any]] = []
-        if sum(self.history) >= self.CONFIRM_THRESHOLD:
+        if has_book or has_confirmed_chit:
+            confirmed = list(raw_detections)
+        elif sum(self.history) >= self.CONFIRM_THRESHOLD:
             confirmed = list(raw_detections)
 
         return confirmed, face_core
@@ -529,7 +711,7 @@ class EviGuardRobustEngine:
             x1, y1, x2, y2 = map(int, box)
             conf = v.get("conf", 0.0)
             label_val = v.get("label", "")
-            if "(PAPER CHIT DETECTED)" in label_val:
+            if "(PAPER CHIT)" in label_val or "(PAPER CHIT DETECTED)" in label_val:
                 caption = f"VIOLATION: UNAUTHORIZED_EXAM_MATERIAL [PAPER CHIT] ({conf*100:.0f}%)" if conf > 0 else "VIOLATION: UNAUTHORIZED_EXAM_MATERIAL [PAPER CHIT]"
             else:
                 sec_tag = v.get("secondary_tag", v.get("category", "")).upper()
@@ -548,4 +730,5 @@ class EviGuardRobustEngine:
         self.history.clear()
         self.cached_detections = []
         self.chit_consecutive_frames = 0
+        self.lab_chit_streak = 0
         self.frame_count = 0

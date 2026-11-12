@@ -893,9 +893,10 @@ class ThreadedCamera:
                 try:
                     cap = cv2.VideoCapture(idx, b)
                     if cap.isOpened():
-                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                        # Minimize OpenCV hardware buffer to 1 and lock resolution to 640x480
                         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
                         ret, test_frame = cap.read()
                         if ret and test_frame is not None and test_frame.size > 0:
                             self.cap = cap
@@ -912,7 +913,7 @@ class ThreadedCamera:
         while self.running:
             if self.cap is not None and self.cap.isOpened():
                 try:
-                    # Flush internal hardware frame queue with non-blocking grab()
+                    # Latest-frame-only grabbing: continuously grab and overwrite self.frame without blocking
                     grabbed = self.cap.grab()
                     if grabbed:
                         ret, frame = self.cap.retrieve()
@@ -921,12 +922,10 @@ class ThreadedCamera:
                                 frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
                             with self.lock:
                                 self.frame = frame
-                    else:
-                        time.sleep(0.001)
                 except Exception:
-                    time.sleep(0.01)
+                    pass
             else:
-                time.sleep(0.05)
+                time.sleep(0.01)
 
     def read(self) -> Optional[np.ndarray]:
         with self.lock:
@@ -1364,11 +1363,12 @@ with tab_vision:
                         candidate_name=candidate_name
                     )
                 except Exception as frame_err:
-                    time.sleep(0.01)
+                    time.sleep(0.001)
                     continue
 
-                # 1. Fast Canvas Rendering directly on NumPy arrays (channels="BGR", use_container_width=True)
-                video_placeholder.image(output.annotated_frame, channels="BGR", use_container_width=True)
+                # 1. Fast JPEG Byte Encoding instead of Heavy Raw PNG (prevents Streamlit internal PNG conversion bottleneck)
+                _, buffer = cv2.imencode('.jpg', output.annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                video_placeholder.image(buffer.tobytes(), use_container_width=True)
 
                 # 2. Extract metrics
                 risk_score = float(output.risk.smoothed_score)

@@ -1,8 +1,10 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+*.pyc
 *$py.class
 *.cache
+*.log
 
 # Pytest & IDE
 .pytest_cache/
@@ -22,12 +24,18 @@ scratch/
 # Datasets & Runtime Logs
 datasets/
 violations_log.json
+evidence/*.jpg
+evidence/*.png
 
 # Database and local temp media (keep directory structure)
 data/*.db
 data/evidence_clips/*.mp4
 data/evidence_clips/*.jpg
 !data/evidence_clips/.gitkeep
+
+# Streamlit runtime
+.streamlit/
+!.streamlit/config.toml
 
 # Environments
 .env
