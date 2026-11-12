@@ -89,29 +89,49 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Outfit:wght@600;700;800;900&display=swap');
 
     /* =========================================================================
-       1. GLOBAL CANVAS & HIGH-END AEROSPACE OBSIDIAN MESH
+       1. AMBIENT TOP LIGHT STRIP & EDITORIAL CANVAS
        ========================================================================= */
+    @keyframes ambientGlowShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    /* Animated gradient light bar along top edge */
+    .stApp::before {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #2563EB, #38BDF8, #FF4D00, #2563EB);
+        background-size: 300% 100%;
+        animation: ambientGlowShift 8s ease infinite;
+        z-index: 999999;
+    }
+
     html, body, [data-testid="stAppViewContainer"], .stApp {
-        background-color: #06080E !important;
+        background-color: #F6F7F9 !important;
         background-image: 
-            radial-gradient(circle at 12% 10%, rgba(99, 102, 241, 0.11) 0%, transparent 45%),
-            radial-gradient(circle at 88% 18%, rgba(6, 182, 212, 0.09) 0%, transparent 40%),
-            radial-gradient(circle at 75% 85%, rgba(16, 185, 129, 0.08) 0%, transparent 45%),
-            linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px) !important;
+            radial-gradient(circle at 14% 12%, rgba(37, 99, 235, 0.035) 0%, transparent 45%),
+            radial-gradient(circle at 86% 16%, rgba(255, 77, 0, 0.025) 0%, transparent 40%),
+            radial-gradient(circle at 75% 85%, rgba(4, 120, 87, 0.025) 0%, transparent 45%),
+            linear-gradient(rgba(15, 23, 42, 0.018) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(15, 23, 42, 0.018) 1px, transparent 1px) !important;
         background-size: 100% 100%, 100% 100%, 100% 100%, 36px 36px, 36px 36px !important;
         background-attachment: fixed !important;
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
-        color: #F1F5F9 !important;
+        font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        color: #0F172A !important;
     }
 
     #MainMenu { visibility: hidden !important; }
     footer { visibility: hidden !important; }
 
-    /* Hide Streamlit default top bar to reclaim 60px of screen height */
+    /* Remove default Streamlit top bar / header clutter */
     header[data-testid="stHeader"] {
         height: 0px !important;
         min-height: 0px !important;
@@ -122,127 +142,162 @@ st.markdown("""
 
     /* Screen-fitting compact container padding */
     .block-container {
-        padding-top: 0.6rem !important;
-        padding-bottom: 1.2rem !important;
-        padding-left: 1.2rem !important;
-        padding-right: 1.2rem !important;
+        padding-top: 0.75rem !important;
+        padding-bottom: 1.5rem !important;
+        padding-left: 1.25rem !important;
+        padding-right: 1.25rem !important;
         max-width: 98% !important;
         margin: 0 auto !important;
     }
 
     /* =========================================================================
-       2. SEGMENTED FLOATING PILL TAB STRIP
+       2. TAB NAVIGATION & ANIMATED SECTION SWITCHING
        ========================================================================= */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 6px !important;
-        background: rgba(15, 23, 42, 0.8) !important;
-        padding: 4px 8px !important;
-        border-radius: 12px !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
-        backdrop-filter: blur(16px) !important;
-        -webkit-backdrop-filter: blur(16px) !important;
-        margin-bottom: 12px !important;
+    @keyframes sectionReveal {
+        0% {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
+
+    div[data-baseweb="tab-panel"],
+    div[role="tabpanel"],
+    div[data-testid="stVerticalBlock"] > div[data-baseweb="tab-panel"] {
+        animation: sectionReveal 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+    }
+
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px !important;
+        background: #FFFFFF !important;
+        padding: 6px 10px !important;
+        border-radius: 14px !important;
+        border: 1px solid #E2E8F0 !important;
+        box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04) !important;
+        margin-bottom: 16px !important;
+    }
+
     .stTabs [data-baseweb="tab"] {
         background: transparent !important;
         border-radius: 10px !important;
-        color: #94A3B8 !important;
-        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        color: #475569 !important;
+        font-family: 'Plus Jakarta Sans', 'Inter', sans-serif !important;
         font-weight: 600 !important;
-        font-size: 0.86rem !important;
-        padding: 7px 16px !important;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        font-size: 0.9rem !important;
+        padding: 8px 18px !important;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
         border: 1px solid transparent !important;
+        position: relative !important;
     }
+
     .stTabs [data-baseweb="tab"]:hover {
-        color: #FFFFFF !important;
-        background: rgba(255, 255, 255, 0.05) !important;
+        color: #0F172A !important;
+        background: #F8FAFC !important;
     }
+
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, rgba(37, 99, 235, 0.3) 0%, rgba(30, 64, 175, 0.45) 100%) !important;
-        border: 1px solid rgba(56, 189, 248, 0.45) !important;
-        color: #38BDF8 !important;
-        box-shadow: 0 4px 16px rgba(37, 99, 235, 0.25) !important;
+        background: #EFF6FF !important;
+        border: 1px solid #BFDBFE !important;
+        color: #1D4ED8 !important;
+        font-weight: 700 !important;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.10) !important;
+    }
+
+    .stTabs [data-baseweb="tab-highlight"] {
+        background: linear-gradient(90deg, #2563EB, #FF4D00) !important;
+        box-shadow: 0 0 10px rgba(255, 77, 0, 0.4) !important;
+        height: 3px !important;
+        border-radius: 9999px !important;
+    }
+
+    .stTabs [data-baseweb="tab-border"] {
+        background-color: transparent !important;
     }
 
     /* =========================================================================
-       3. NATIVE STREAMLIT BORDERED CONTAINERS & FROSTED GLASS CARDS
+       3. EDITORIAL CARDS & INTERACTIVE HOVER LIGHTING
        ========================================================================= */
-    div[data-testid="stVerticalBlockBorderWrapper"], .enterprise-kpi-card {
-        background: linear-gradient(145deg, rgba(16, 23, 38, 0.82) 0%, rgba(9, 14, 26, 0.92) 100%) !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        border-top: 1px solid rgba(255, 255, 255, 0.18) !important;
+    div[data-testid="stVerticalBlockBorderWrapper"],
+    .enterprise-kpi-card,
+    .telemetry-stat-card {
+        background: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
         border-radius: 14px !important;
         padding: 16px 20px !important;
-        box-shadow: 0 14px 32px -8px rgba(0, 0, 0, 0.65), 0 0 1px 1px rgba(255, 255, 255, 0.03) inset !important;
-        backdrop-filter: blur(18px) !important;
-        -webkit-backdrop-filter: blur(18px) !important;
+        box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04) !important;
         position: relative !important;
         overflow: hidden !important;
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
         margin-bottom: 12px !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"]:hover, .enterprise-kpi-card:hover {
-        border-color: rgba(56, 189, 248, 0.35) !important;
-        box-shadow: 0 18px 40px -8px rgba(37, 99, 235, 0.2), 0 0 20px rgba(56, 189, 248, 0.12) !important;
+
+    div[data-testid="stVerticalBlockBorderWrapper"]:hover,
+    .enterprise-kpi-card:hover,
+    .telemetry-stat-card:hover {
+        border-color: rgba(37, 99, 235, 0.35) !important;
+        box-shadow: 0 12px 32px rgba(37, 99, 235, 0.12), 0 0 0 1px rgba(37, 99, 235, 0.35) !important;
+        transform: translateY(-2px) !important;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"]::before, .enterprise-kpi-card::before {
+
+    div[data-testid="stVerticalBlockBorderWrapper"]::before,
+    .enterprise-kpi-card::before {
         content: "";
         position: absolute;
         top: 0;
         left: 0;
         right: 0;
         height: 2px;
-        background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.75), transparent);
+        background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.5), transparent);
     }
 
     /* =========================================================================
-       4. TYPOGRAPHY & METRIC HUD READOUTS
+       4. TYPOGRAPHY & HEADINGS
        ========================================================================= */
     h1, .page-title {
-        font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif !important;
-        font-size: 20px !important;
+        font-family: 'Plus Jakarta Sans', 'Outfit', sans-serif !important;
+        font-size: 1.25rem !important;
         font-weight: 800 !important;
         letter-spacing: -0.02em !important;
-        color: #F8FAFC !important;
-        margin-bottom: 2px !important;
+        color: #0F172A !important;
+        margin-bottom: 4px !important;
     }
 
     h2, h3, .section-header {
-        font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif !important;
-        font-size: 15px !important;
+        font-family: 'Plus Jakarta Sans', 'Outfit', sans-serif !important;
+        font-size: 1.05rem !important;
         font-weight: 700 !important;
-        color: #F8FAFC !important;
+        color: #0F172A !important;
         letter-spacing: -0.01em !important;
         margin-bottom: 4px !important;
     }
 
     p, span, li, .body-text {
-        font-family: 'Plus Jakarta Sans', sans-serif !important;
-        font-size: 13px !important;
-        font-weight: 500 !important;
-        color: #94A3B8 !important;
-        line-height: 1.5 !important;
+        font-family: 'Plus Jakarta Sans', 'Inter', sans-serif !important;
+        font-size: 0.9rem !important;
+        font-weight: 450 !important;
+        color: #334155 !important;
+        line-height: 1.55 !important;
     }
 
     .eyebrow-label {
         font-family: 'JetBrains Mono', monospace !important;
-        font-size: 10.5px !important;
+        font-size: 0.72rem !important;
         font-weight: 700 !important;
         text-transform: uppercase !important;
-        letter-spacing: 0.08em !important;
-        color: #38BDF8 !important;
+        letter-spacing: 0.06em !important;
+        color: #2563EB !important;
     }
 
     .kpi-value-text {
         font-family: 'JetBrains Mono', monospace !important;
-        font-size: 28px !important;
+        font-size: 1.85rem !important;
         font-weight: 800 !important;
-        color: #F8FAFC !important;
-        letter-spacing: -0.03em !important;
-        line-height: 1.15 !important;
-        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6) !important;
+        color: #0F172A !important;
+        letter-spacing: -0.02em !important;
+        line-height: 1.2 !important;
     }
 
     /* KPI Card Inner Elements */
@@ -254,17 +309,17 @@ st.markdown("""
     }
     .kpi-icon-badge {
         font-size: 1.15rem;
-        filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.4));
+        filter: drop-shadow(0 2px 4px rgba(37, 99, 235, 0.2));
     }
     .kpi-footer-status {
         display: flex;
         align-items: center;
         gap: 6px;
-        margin-top: 4px;
+        margin-top: 6px;
     }
     .kpi-status-dot {
-        width: 6px;
-        height: 6px;
+        width: 7px;
+        height: 7px;
         border-radius: 50%;
         display: inline-block;
     }
@@ -276,15 +331,16 @@ st.markdown("""
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: linear-gradient(135deg, rgba(16, 23, 38, 0.90) 0%, rgba(9, 14, 26, 0.96) 100%);
-        border: 1px solid rgba(255, 255, 255, 0.09);
-        border-top: 1px solid rgba(255, 255, 255, 0.20);
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
         border-radius: 14px;
-        padding: 8px 18px;
-        margin-bottom: 12px;
-        box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.7);
-        backdrop-filter: blur(18px);
-        -webkit-backdrop-filter: blur(18px);
+        padding: 10px 22px;
+        margin-bottom: 14px;
+        box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+        transition: all 0.3s ease;
+    }
+    .saas-top-navbar:hover {
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.07);
     }
 
     .saas-brand-title {
@@ -295,28 +351,26 @@ st.markdown("""
 
     .saas-logo-icon {
         font-size: 1.6rem;
-        filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.8));
+        filter: drop-shadow(0 2px 6px rgba(37, 99, 235, 0.25));
     }
 
     .saas-brand-text {
-        font-family: 'Outfit', sans-serif;
-        font-size: 18px;
+        font-family: 'Plus Jakarta Sans', 'Outfit', sans-serif;
+        font-size: 19px;
         font-weight: 800;
         letter-spacing: -0.02em;
-        background: linear-gradient(135deg, #FFFFFF 0%, #E2E8F0 50%, #94A3B8 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: #0F172A;
     }
 
     .saas-brand-badge {
-        background: linear-gradient(135deg, rgba(56, 189, 248, 0.12) 0%, rgba(37, 99, 235, 0.2) 100%);
-        color: #38BDF8;
-        border: 1px solid rgba(56, 189, 248, 0.35);
+        background: #EFF6FF;
+        color: #1D4ED8;
+        border: 1px solid #BFDBFE;
         border-radius: 6px;
-        padding: 2px 7px;
-        font-size: 10px;
+        padding: 2px 8px;
+        font-size: 0.72rem;
         font-weight: 700;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.06em;
         font-family: 'JetBrains Mono', monospace;
     }
 
@@ -324,88 +378,96 @@ st.markdown("""
         display: flex;
         align-items: center;
         gap: 8px;
-        background: rgba(15, 23, 42, 0.75);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
         border-radius: 8px;
-        padding: 5px 14px;
-        font-family: 'Plus Jakarta Sans', sans-serif;
-        font-size: 12.5px;
+        padding: 6px 14px;
+        font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+        font-size: 0.88rem;
     }
     .saas-chip-label {
         color: #64748B;
         font-weight: 600;
-        font-size: 10.5px;
+        font-size: 0.72rem;
+        letter-spacing: 0.06em;
         font-family: 'JetBrains Mono', monospace;
     }
     .saas-chip-name {
         font-weight: 700;
-        color: #F8FAFC;
+        color: #0F172A;
     }
     .saas-chip-id {
-        color: #38BDF8;
+        color: #2563EB;
         font-family: 'JetBrains Mono', monospace;
         font-weight: 700;
     }
 
     /* =========================================================================
-       6. STATUS BADGES & BREATHING PULSE ANIMATIONS
+       6. STATUS BADGES & ACCENTS
        ========================================================================= */
     @keyframes pulse-glow {
-        0%, 100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.7)); }
-        50% { opacity: 0.6; transform: scale(0.94); filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.2)); }
+        0%, 100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 6px rgba(4, 120, 87, 0.6)); }
+        50% { opacity: 0.65; transform: scale(0.96); filter: drop-shadow(0 0 2px rgba(4, 120, 87, 0.2)); }
     }
 
     .badge-luxury-ready, .pill-safe {
-        background: rgba(16, 185, 129, 0.12) !important;
-        color: #34D399 !important;
-        border: 1px solid rgba(16, 185, 129, 0.35) !important;
+        background: #ECFDF5 !important;
+        color: #047857 !important;
+        border: 1px solid #A7F3D0 !important;
         padding: 4px 12px !important;
         border-radius: 9999px !important;
         font-family: 'JetBrains Mono', monospace !important;
         font-size: 0.72rem !important;
         font-weight: 700 !important;
+        letter-spacing: 0.06em !important;
+        text-transform: uppercase !important;
         display: inline-flex !important;
         align-items: center !important;
         gap: 6px !important;
-        box-shadow: 0 0 14px rgba(16, 185, 129, 0.2) !important;
+        box-shadow: 0 1px 4px rgba(4, 120, 87, 0.08) !important;
     }
     .badge-luxury-ready::before, .pill-safe::before {
         content: "";
         width: 6px;
         height: 6px;
         border-radius: 50%;
-        background: #34D399;
-        box-shadow: 0 0 8px #34D399;
+        background: #047857;
+        box-shadow: 0 0 6px rgba(4, 120, 87, 0.6);
         animation: pulse-glow 2s infinite ease-in-out;
     }
 
     .pill-alert {
-        background: rgba(239, 68, 68, 0.15) !important;
-        color: #F87171 !important;
-        border: 1px solid rgba(239, 68, 68, 0.4) !important;
+        background: #FEF2F2 !important;
+        color: #B91C1C !important;
+        border: 1px solid #FECACA !important;
         padding: 4px 10px !important;
         border-radius: 9999px !important;
         font-family: 'JetBrains Mono', monospace !important;
         font-size: 0.72rem !important;
         font-weight: 700 !important;
+        letter-spacing: 0.06em !important;
+        text-transform: uppercase !important;
         display: inline-flex !important;
         align-items: center !important;
         gap: 5px !important;
-        box-shadow: 0 0 12px rgba(239, 68, 68, 0.25) !important;
+        box-shadow: 0 1px 4px rgba(185, 28, 28, 0.08) !important;
     }
 
     .pill-warn {
-        background: rgba(245, 158, 11, 0.15) !important;
-        color: #FBBF24 !important;
-        border: 1px solid rgba(245, 158, 11, 0.4) !important;
+        background: #FFFBEB !important;
+        color: #B45309 !important;
+        border: 1px solid #FDE68A !important;
         padding: 4px 10px !important;
         border-radius: 9999px !important;
         font-family: 'JetBrains Mono', monospace !important;
         font-size: 0.72rem !important;
         font-weight: 700 !important;
+        letter-spacing: 0.06em !important;
+        text-transform: uppercase !important;
         display: inline-flex !important;
         align-items: center !important;
         gap: 5px !important;
+        box-shadow: 0 1px 4px rgba(180, 83, 9, 0.08) !important;
     }
 
     /* Video HUD Topbar */
@@ -413,62 +475,177 @@ st.markdown("""
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: rgba(15, 23, 42, 0.75);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 8px;
-        padding: 5px 12px;
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 8px 14px;
         margin-bottom: 10px;
         font-family: 'JetBrains Mono', monospace;
         font-size: 11px;
+        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
     }
     .hud-rec-indicator {
-        color: #EF4444;
-        font-weight: 800;
-        letter-spacing: 0.08em;
+        color: #DC2626;
+        font-weight: 700;
+        letter-spacing: 0.06em;
     }
     .hud-spec-tag {
-        color: #94A3B8;
+        color: #64748B;
         font-weight: 600;
     }
     .hud-encryption-tag {
-        color: #38BDF8;
+        color: #2563EB;
         font-weight: 700;
         letter-spacing: 0.04em;
     }
 
-    /* Form Inputs & Buttons */
-    .stTextInput>div>div>input, select, textarea {
-        background: rgba(15, 23, 42, 0.85) !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        border-radius: 10px !important;
-        color: #F8FAFC !important;
-        font-family: 'Plus Jakarta Sans', sans-serif !important;
-        font-size: 0.88rem !important;
-        padding: 10px 14px !important;
-        transition: all 0.2s ease !important;
-    }
-    .stTextInput>div>div>input:focus, select:focus, textarea:focus {
-        border-color: #38BDF8 !important;
-        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25) !important;
-    }
-
-    .stButton>button, .stFormSubmitButton>button, button[kind="primary"], button[data-testid="baseButton-primary"] {
-        background: linear-gradient(135deg, #1E40AF 0%, #2563EB 50%, #3B82F6 100%) !important;
+    /* =========================================================================
+       7. BUTTONS & INPUT CONTROLS
+       ========================================================================= */
+    /* Primary Action Buttons */
+    button[kind="primary"], 
+    button[data-testid="baseButton-primary"], 
+    .stFormSubmitButton > button,
+    div[data-testid="stDownloadButton"] > button {
+        background: #2563EB !important;
+        background-color: #2563EB !important;
         color: #FFFFFF !important;
-        border: 1px solid rgba(255, 255, 255, 0.25) !important;
+        border: none !important;
         border-radius: 10px !important;
-        font-family: 'Plus Jakarta Sans', sans-serif !important;
-        font-weight: 700 !important;
+        font-family: 'Plus Jakarta Sans', 'Inter', sans-serif !important;
+        font-weight: 600 !important;
         font-size: 0.92rem !important;
         padding: 10px 22px !important;
-        letter-spacing: 0.02em !important;
-        box-shadow: 0 8px 24px -4px rgba(37, 99, 235, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        letter-spacing: 0.01em !important;
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25) !important;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        width: 100% !important;
     }
-    .stButton>button:hover, .stFormSubmitButton>button:hover, button[kind="primary"]:hover {
+    button[kind="primary"]:hover, 
+    button[data-testid="baseButton-primary"]:hover, 
+    .stFormSubmitButton > button:hover,
+    div[data-testid="stDownloadButton"] > button:hover {
+        background: #1D4ED8 !important;
+        background-color: #1D4ED8 !important;
+        box-shadow: 0 8px 24px rgba(37, 99, 235, 0.35) !important;
         transform: translateY(-2px) !important;
-        box-shadow: 0 12px 30px -4px rgba(37, 99, 235, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
-        border-color: rgba(147, 197, 253, 0.6) !important;
+    }
+
+    /* Secondary / Standard Action Buttons */
+    div[data-testid="stButton"] > button[data-testid="baseButton-secondary"],
+    div[data-testid="stButton"] > button:not([kind="primary"]) {
+        background: #FFFFFF !important;
+        background-color: #FFFFFF !important;
+        color: #334155 !important;
+        border: 1px solid #CBD5E1 !important;
+        border-radius: 10px !important;
+        font-family: 'Plus Jakarta Sans', 'Inter', sans-serif !important;
+        font-size: 0.88rem !important;
+        font-weight: 600 !important;
+        padding: 8px 16px !important;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04) !important;
+    }
+    div[data-testid="stButton"] > button[data-testid="baseButton-secondary"]:hover,
+    div[data-testid="stButton"] > button:not([kind="primary"]):hover {
+        background: #F8FAFC !important;
+        color: #0F172A !important;
+        border-color: #2563EB !important;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12) !important;
+        transform: translateY(-1px) !important;
+    }
+
+    /* Destructive Action Container (Reset All Exam Data button) */
+    .danger-action-container div[data-testid="stButton"] > button,
+    .danger-action-container button {
+        background: #FEF2F2 !important;
+        background-color: #FEF2F2 !important;
+        border: 1px solid #FECACA !important;
+        color: #B91C1C !important;
+        border-radius: 10px !important;
+        font-family: 'Plus Jakarta Sans', 'Inter', sans-serif !important;
+        font-weight: 600 !important;
+        font-size: 0.9rem !important;
+        padding: 10px 18px !important;
+        box-shadow: 0 2px 8px rgba(185, 28, 28, 0.06) !important;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        width: 100% !important;
+    }
+    .danger-action-container div[data-testid="stButton"] > button:hover,
+    .danger-action-container button:hover {
+        background: #DC2626 !important;
+        background-color: #DC2626 !important;
+        border-color: #DC2626 !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 6px 20px rgba(220, 38, 38, 0.35) !important;
+        transform: translateY(-2px) !important;
+    }
+
+    /* Form Inputs, Selectboxes & Textareas */
+    .stTextInput>div>div>input, 
+    div[data-baseweb="select"] > div,
+    select, textarea {
+        background: #FFFFFF !important;
+        background-color: #FFFFFF !important;
+        border: 1px solid #CBD5E1 !important;
+        border-radius: 10px !important;
+        color: #0F172A !important;
+        font-family: 'Plus Jakarta Sans', 'Inter', sans-serif !important;
+        font-size: 0.9rem !important;
+        padding: 8px 14px !important;
+        transition: all 0.2s ease !important;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04) !important;
+    }
+    .stTextInput>div>div>input:focus, 
+    div[data-baseweb="select"] > div:focus-within,
+    select:focus, textarea:focus {
+        border-color: #2563EB !important;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18) !important;
+    }
+
+    div[data-baseweb="popover"], div[data-baseweb="menu"], ul[data-baseweb="menu"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 10px !important;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08) !important;
+    }
+    li[data-baseweb="menu-item"] {
+        color: #334155 !important;
+        background-color: transparent !important;
+        font-family: 'Plus Jakarta Sans', 'Inter', sans-serif !important;
+        font-size: 0.9rem !important;
+    }
+    li[data-baseweb="menu-item"]:hover, li[aria-selected="true"] {
+        background-color: #EFF6FF !important;
+        color: #1D4ED8 !important;
+    }
+
+    /* Multiselect Tags */
+    span[data-baseweb="tag"] {
+        background-color: #EFF6FF !important;
+        border: 1px solid #BFDBFE !important;
+        border-radius: 6px !important;
+        color: #1D4ED8 !important;
+    }
+
+    /* Sliders */
+    div[data-testid="stSlider"] div[role="slider"] {
+        background-color: #2563EB !important;
+        border: 2px solid #FFFFFF !important;
+        box-shadow: 0 0 8px rgba(37, 99, 235, 0.5) !important;
+    }
+    div[data-testid="stSliderTrack"] > div:first-child {
+        background-color: #2563EB !important;
+    }
+    div[data-testid="stSliderTrack"] {
+        background-color: #E2E8F0 !important;
+    }
+    .stSlider label p, .stSelectbox label p, .stTextInput label p, .stMultiSelect label p {
+        color: #334155 !important;
+        font-size: 0.88rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.01em !important;
+        font-family: 'Plus Jakarta Sans', 'Inter', sans-serif !important;
     }
 
     /* Exam Rule Cards Styling */
@@ -482,16 +659,17 @@ st.markdown("""
         display: flex;
         align-items: flex-start;
         gap: 14px;
-        background: rgba(15, 23, 42, 0.55);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 10px;
-        padding: 12px 14px;
-        transition: all 0.2s ease;
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 12px 16px;
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .exam-rule-card:hover {
-        background: rgba(30, 41, 59, 0.75);
-        border-color: rgba(56, 189, 248, 0.35);
-        transform: translateY(-1px);
+        background: #FFFFFF;
+        border-color: #CBD5E1;
+        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+        transform: translateY(-2px);
     }
     .exam-rule-icon {
         width: 44px;
@@ -514,81 +692,89 @@ st.markdown("""
         margin-bottom: 5px;
     }
     .exam-rule-title {
-        font-size: 15.5px;
+        font-size: 1.05rem;
         font-weight: 700;
-        color: #FFFFFF;
+        color: #0F172A;
         letter-spacing: -0.01em;
         font-family: 'Plus Jakarta Sans', sans-serif;
     }
     .exam-rule-desc {
-        font-size: 14.5px;
-        color: #E2E8F0;
+        font-size: 0.9rem;
+        color: #334155;
         line-height: 1.55;
         margin: 0;
-        font-weight: 400;
+        font-weight: 450;
+        font-family: 'Plus Jakarta Sans', sans-serif;
     }
     .rule-badge {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 11px;
+        font-size: 0.72rem;
         font-weight: 700;
         padding: 3px 9px;
         border-radius: 9999px;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
     }
     .rule-badge-danger {
-        background: rgba(239, 68, 68, 0.18);
-        color: #F87171;
-        border: 1px solid rgba(239, 68, 68, 0.4);
+        background: #FEF2F2;
+        color: #B91C1C;
+        border: 1px solid #FECACA;
     }
     .rule-badge-warning {
-        background: rgba(245, 158, 11, 0.18);
-        color: #FBBF24;
-        border: 1px solid rgba(245, 158, 11, 0.4);
+        background: #FFFBEB;
+        color: #B45309;
+        border: 1px solid #FDE68A;
     }
     .rule-badge-info {
-        background: rgba(59, 130, 246, 0.18);
-        color: #93C5FD;
-        border: 1px solid rgba(59, 130, 246, 0.4);
+        background: #EFF6FF;
+        color: #1D4ED8;
+        border: 1px solid #BFDBFE;
     }
     .rule-badge-success {
-        background: rgba(16, 185, 129, 0.18);
-        color: #6EE7B7;
-        border: 1px solid rgba(16, 185, 129, 0.4);
+        background: #ECFDF5;
+        color: #047857;
+        border: 1px solid #A7F3D0;
     }
 
     /* Telemetry HUD Ribbons */
     .telemetry-stat-card {
-        background: rgba(15, 23, 42, 0.65);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 10px;
-        padding: 8px 14px;
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 14px;
+        padding: 12px 16px;
         display: flex;
         flex-direction: column;
         justify-content: center;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+        transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .telemetry-stat-card:hover {
+        border-color: rgba(37, 99, 235, 0.35);
+        box-shadow: 0 12px 32px rgba(37, 99, 235, 0.12), 0 0 0 1px rgba(37, 99, 235, 0.35);
+        transform: translateY(-2px);
     }
     .telemetry-stat-label {
-        font-size: 10px;
+        font-size: 0.72rem;
         font-family: 'JetBrains Mono', monospace;
         font-weight: 700;
-        color: #94A3B8;
+        color: #64748B;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        margin-bottom: 2px;
+        margin-bottom: 4px;
     }
     .telemetry-stat-value {
-        font-size: 1.25rem;
+        font-size: 1.45rem;
         font-family: 'JetBrains Mono', monospace;
         font-weight: 800;
-        line-height: 1.1;
+        line-height: 1.2;
+        color: #0F172A;
     }
 
     /* Video & Chart Containers */
     [data-testid="stImage"] img, video, .js-plotly-plot {
         border-radius: 12px !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6) !important;
+        border: 1px solid #E2E8F0 !important;
+        box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04) !important;
     }
 
     /* Telemetry Row Layout */
@@ -596,16 +782,18 @@ st.markdown("""
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 8px 12px;
-        background: rgba(15, 23, 42, 0.65);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 8px;
+        padding: 10px 14px;
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-bottom: 1px solid #F1F5F9;
+        border-radius: 10px;
         margin-bottom: 6px;
-        transition: all 0.2s ease;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .enterprise-telemetry-row:hover {
-        background: rgba(30, 41, 59, 0.8);
-        border-color: rgba(56, 189, 248, 0.3);
+        background: #F8FAFC;
+        border-color: #CBD5E1;
+        transform: translateY(-1px);
     }
 
     /* Dossier Meta Grid */
@@ -616,40 +804,40 @@ st.markdown("""
         margin-bottom: 10px;
     }
     .dossier-meta-item {
-        background: rgba(15, 23, 42, 0.65);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 6px;
-        padding: 6px 10px;
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 6px 12px;
     }
     .dossier-meta-label {
-        font-size: 10.5px;
+        font-size: 0.72rem;
         font-family: 'JetBrains Mono', monospace;
-        color: #94A3B8;
+        color: #64748B;
         display: block;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.06em;
     }
     .dossier-meta-val {
-        font-size: 12.5px;
+        font-size: 0.88rem;
         font-weight: 700;
-        color: #F8FAFC;
+        color: #0F172A;
         font-family: 'JetBrains Mono', monospace;
     }
 
     /* Custom Scrollbars */
     ::-webkit-scrollbar {
-        width: 5px;
-        height: 5px;
+        width: 6px;
+        height: 6px;
     }
     ::-webkit-scrollbar-track {
-        background: #06080E;
+        background: #F6F7F9;
     }
     ::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.16);
+        background: #CBD5E1;
         border-radius: 4px;
     }
     ::-webkit-scrollbar-thumb:hover {
-        background: #38BDF8;
+        background: #2563EB;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -759,39 +947,42 @@ class ThreadedCamera:
 # 5. GLOWING CIRCULAR THREAT ARC DIAL
 # ==============================================================================
 def get_threat_meter_html(risk_score: float, risk_level: str) -> str:
-    """Renders a holographic luxury dark glass SVG circular threat dial with ambient glow and gradient arcs."""
+    """Renders a crisp editorial SVG circular threat dial with subtle ambient backlight and sharp typography."""
     if risk_score >= 70.0 or risk_level == "CRITICAL":
-        stroke_gradient_start = "#FF2A55"
+        stroke_gradient_start = "#DC2626"
         stroke_gradient_end = "#EF4444"
-        glow_color = "rgba(239, 68, 68, 0.55)"
-        bg_color = "rgba(239, 68, 68, 0.16)"
-        border_color = "rgba(239, 68, 68, 0.4)"
+        glow_color = "rgba(220, 38, 38, 0.35)"
+        glow_subtle = "rgba(220, 38, 38, 0.08)"
+        bg_color = "#FEF2F2"
+        border_color = "#FECACA"
         badge_text = "CRITICAL THREAT"
-        badge_color = "#F87171"
+        badge_color = "#B91C1C"
         sub_text = "Violation Active"
         display_val = f"{risk_score:.0f}"
         pct = min(100.0, max(0.0, risk_score))
         dash_offset = 235.6 - (pct / 100.0) * 235.6
     elif risk_score >= 30.0 or risk_level in ("SUSPICIOUS", "MEDIUM", "MONITOR"):
-        stroke_gradient_start = "#F59E0B"
-        stroke_gradient_end = "#FBBF24"
-        glow_color = "rgba(245, 158, 11, 0.50)"
-        bg_color = "rgba(245, 158, 11, 0.16)"
-        border_color = "rgba(245, 158, 11, 0.4)"
+        stroke_gradient_start = "#D97706"
+        stroke_gradient_end = "#F59E0B"
+        glow_color = "rgba(217, 119, 6, 0.30)"
+        glow_subtle = "rgba(217, 119, 6, 0.08)"
+        bg_color = "#FFFBEB"
+        border_color = "#FDE68A"
         badge_text = "ELEVATED RISK"
-        badge_color = "#FBBF24"
+        badge_color = "#B45309"
         sub_text = "Sensor Deviation"
         display_val = f"{risk_score:.0f}"
         pct = min(100.0, max(0.0, risk_score))
         dash_offset = 235.6 - (pct / 100.0) * 235.6
     else:
-        stroke_gradient_start = "#00F5A0"
-        stroke_gradient_end = "#00D26A"
-        glow_color = "rgba(0, 245, 160, 0.45)"
-        bg_color = "rgba(0, 245, 160, 0.14)"
-        border_color = "rgba(0, 245, 160, 0.35)"
-        badge_text = "OPTIMAL INTEGRITY"
-        badge_color = "#34D399"
+        stroke_gradient_start = "#047857"
+        stroke_gradient_end = "#10B981"
+        glow_color = "rgba(4, 120, 87, 0.25)"
+        glow_subtle = "rgba(4, 120, 87, 0.08)"
+        bg_color = "#ECFDF5"
+        border_color = "#A7F3D0"
+        badge_text = "100% OPTIMAL INTEGRITY"
+        badge_color = "#047857"
         sub_text = "Compliant Session"
         integrity_pct = max(0.0, min(100.0, 100.0 - risk_score))
         display_val = "100%" if risk_score <= 2.0 else f"{integrity_pct:.0f}%"
@@ -800,25 +991,27 @@ def get_threat_meter_html(risk_score: float, risk_level: str) -> str:
     return f"""
     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 0 12px 0;">
         <div style="position: relative; width: 210px; height: 125px; display: flex; justify-content: center; align-items: flex-end;">
-            <svg width="210" height="210" viewBox="0 0 220 220" style="position: absolute; top: -45px; transform: rotate(180deg);">
+            <!-- Ambient Radial Glow Behind Gauge -->
+            <div style="position: absolute; width: 160px; height: 160px; top: -20px; border-radius: 50%; background: radial-gradient(circle, {glow_subtle} 0%, transparent 70%); filter: blur(12px); pointer-events: none;"></div>
+            <svg width="210" height="210" viewBox="0 0 220 220" style="position: absolute; top: -45px; transform: rotate(180deg); z-index: 2;">
                 <defs>
                     <linearGradient id="meterGrad_{display_val.replace('%', '')}" x1="0%" y1="0%" x2="100%" y2="0%">
                         <stop offset="0%" stop-color="{stroke_gradient_start}" />
                         <stop offset="100%" stop-color="{stroke_gradient_end}" />
                     </linearGradient>
                 </defs>
-                <!-- Ambient Dark Obsidian Track -->
-                <circle cx="110" cy="110" r="75" fill="none" stroke="#131B2E" stroke-width="14" stroke-dasharray="235.6 235.6" stroke-dashoffset="0" />
+                <!-- Crisp Editorial Track -->
+                <circle cx="110" cy="110" r="75" fill="none" stroke="#E2E8F0" stroke-width="14" stroke-dasharray="235.6 235.6" stroke-dashoffset="0" />
                 <!-- Active Luminous Progress Arc -->
                 <circle cx="110" cy="110" r="75" fill="none" stroke="url(#meterGrad_{display_val.replace('%', '')})" stroke-width="14" 
                     stroke-dasharray="235.6 235.6" stroke-dashoffset="{dash_offset}" 
                     stroke-linecap="round" 
-                    style="transition: stroke-dashoffset 0.25s ease; filter: drop-shadow(0 0 12px {glow_color});" />
+                    style="transition: stroke-dashoffset 0.25s ease; filter: drop-shadow(0 2px 8px {glow_color});" />
             </svg>
             <div style="text-align: center; z-index: 5; margin-bottom: 2px;">
-                <div style="font-family: 'JetBrains Mono', monospace; font-size: 34px; font-weight: 800; color: #FFFFFF; line-height: 1; letter-spacing: -0.02em; text-shadow: 0 0 18px {glow_color};">{display_val}</div>
-                <div style="display: inline-block; background: {bg_color}; border: 1px solid {border_color}; border-radius: 9999px; padding: 3px 12px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: {badge_color}; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 6px; box-shadow: 0 0 10px {glow_color};">{badge_text}</div>
-                <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 11.5px; font-weight: 500; color: #94A3B8; margin-top: 3px;">{sub_text}</div>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 34px; font-weight: 700; color: #0F172A; line-height: 1; letter-spacing: -0.02em;">{display_val}</div>
+                <div style="display: inline-block; background: {bg_color}; border: 1px solid {border_color}; border-radius: 9999px; padding: 3px 12px; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 700; color: {badge_color}; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 6px;">{badge_text}</div>
+                <div style="font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; font-size: 0.85rem; font-weight: 500; color: #475569; margin-top: 3px;">{sub_text}</div>
             </div>
         </div>
     </div>
@@ -879,7 +1072,7 @@ st.markdown(f"""
                 <span class="saas-brand-text">EviGuard AI</span>
                 <span class="saas-brand-badge">SMART EXAM PROCTOR</span>
             </div>
-            <div style="font-size: 11px; color: #94A3B8; font-weight: 500;">Real-Time AI Cheat Detection & Integrity Monitoring</div>
+            <div style="font-size: 11px; color: #475569; font-weight: 500;">Real-Time AI Cheat Detection & Integrity Monitoring</div>
         </div>
     </div>
     <div style="display: flex; align-items: center; gap: 12px;">
@@ -915,7 +1108,7 @@ with tab_overview:
     total_flags = st.session_state.total_flags
     integrity_score = st.session_state.integrity_score
     peak_risk = st.session_state.peak_risk
-    score_color = "#34D399" if integrity_score >= 80 else ("#FBBF24" if integrity_score >= 50 else "#EF4444")
+    score_color = "#047857" if integrity_score >= 80 else ("#D97706" if integrity_score >= 50 else "#DC2626")
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     with kpi1:
@@ -925,10 +1118,10 @@ with tab_overview:
                 <span class="kpi-icon-badge">🛡️</span>
                 <div class="eyebrow-label">Academic Integrity</div>
             </div>
-            <div class="kpi-value-text" style="color: {score_color}; text-shadow: 0 0 20px {score_color}45;">{integrity_score:.1f}%</div>
+            <div class="kpi-value-text" style="color: {score_color}; ">{integrity_score:.1f}%</div>
             <div class="kpi-footer-status">
                 <span class="kpi-status-dot" style="background: {score_color}; box-shadow: 0 0 8px {score_color};"></span>
-                <span style="color: #94A3B8; font-size: 11.5px; font-weight: 600;">Status:</span>
+                <span style="color: #475569; font-size: 11.5px; font-weight: 600;">Status:</span>
                 <b style="color: {score_color}; font-size: 11.5px;">{'CLEAN (No Cheating)' if integrity_score >= 80 else 'FLAGGED FOR REVIEW'}</b>
             </div>
         </div>
@@ -941,9 +1134,9 @@ with tab_overview:
                 <span class="kpi-icon-badge">🚨</span>
                 <div class="eyebrow-label">Suspicious Alerts</div>
             </div>
-            <div class="kpi-value-text" style="color: {'#34D399' if total_flags == 0 else '#FB7185'}; text-shadow: 0 0 20px {'#34D39945' if total_flags == 0 else '#FB718545'};">{total_flags}</div>
+            <div class="kpi-value-text" style="color: {'#047857' if total_flags == 0 else '#DC2626'}; ">{total_flags}</div>
             <div class="kpi-footer-status">
-                <span style="color: #94A3B8; font-size: 11.5px; font-weight: 600;">{confirmed_count} Confirmed Violations</span>
+                <span style="color: #475569; font-size: 11.5px; font-weight: 600;">{confirmed_count} Confirmed Violations</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -955,9 +1148,9 @@ with tab_overview:
                 <span class="kpi-icon-badge">📈</span>
                 <div class="eyebrow-label">Highest Threat Score</div>
             </div>
-            <div class="kpi-value-text" style="color: {'#34D399' if peak_risk < 30 else ('#FBBF24' if peak_risk < 70 else '#EF4444')}; text-shadow: 0 0 20px {'#34D39945' if peak_risk < 30 else ('#FBBF2445' if peak_risk < 70 else '#EF444445')};">{peak_risk:.1f}<span style="font-size: 16px; color: #64748B;">/100</span></div>
+            <div class="kpi-value-text" style="color: {'#047857' if peak_risk < 30 else ('#D97706' if peak_risk < 70 else '#DC2626')}; ">{peak_risk:.1f}<span style="font-size: 16px; color: #475569;">/100</span></div>
             <div class="kpi-footer-status">
-                <span style="color: #94A3B8; font-size: 11.5px; font-weight: 600;">Peak Anomaly Score</span>
+                <span style="color: #475569; font-size: 11.5px; font-weight: 600;">Peak Anomaly Score</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -969,9 +1162,9 @@ with tab_overview:
                 <span class="kpi-icon-badge">⚖️</span>
                 <div class="eyebrow-label">Verified Malpractice</div>
             </div>
-            <div class="kpi-value-text" style="color: {'#34D399' if confirmed_count == 0 else '#EF4444'}; text-shadow: 0 0 20px {'#34D39945' if confirmed_count == 0 else '#EF444445'};">{confirmed_count}</div>
+            <div class="kpi-value-text" style="color: {'#047857' if confirmed_count == 0 else '#DC2626'}; ">{confirmed_count}</div>
             <div class="kpi-footer-status">
-                <span style="color: #94A3B8; font-size: 11.5px; font-weight: 600;">Proctor Confirmed Cheating</span>
+                <span style="color: #475569; font-size: 11.5px; font-weight: 600;">Proctor Confirmed Cheating</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1032,7 +1225,7 @@ with tab_overview:
             </div>
             <div class="exam-rules-container">
                 <div class="exam-rule-card">
-                    <div class="exam-rule-icon" style="background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.35); color: #F87171;">
+                    <div class="exam-rule-icon" style="background: #FEF2F2; border-color: #FECACA; color: #DC2626;">
                         📱
                     </div>
                     <div class="exam-rule-body">
@@ -1046,7 +1239,7 @@ with tab_overview:
                     </div>
                 </div>
                 <div class="exam-rule-card">
-                    <div class="exam-rule-icon" style="background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.35); color: #FBBF24;">
+                    <div class="exam-rule-icon" style="background: #FFFBEB; border-color: #FDE68A; color: #D97706;">
                         👀
                     </div>
                     <div class="exam-rule-body">
@@ -1060,7 +1253,7 @@ with tab_overview:
                     </div>
                 </div>
                 <div class="exam-rule-card">
-                    <div class="exam-rule-icon" style="background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.35); color: #60A5FA;">
+                    <div class="exam-rule-icon" style="background: #EFF6FF; border-color: #BFDBFE; color: #2563EB;">
                         👤
                     </div>
                     <div class="exam-rule-body">
@@ -1074,7 +1267,7 @@ with tab_overview:
                     </div>
                 </div>
                 <div class="exam-rule-card" style="margin-bottom: 0;">
-                    <div class="exam-rule-icon" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.35); color: #34D399;">
+                    <div class="exam-rule-icon" style="background: #ECFDF5; border-color: #A7F3D0; color: #047857;">
                         🛡️
                     </div>
                     <div class="exam-rule-body">
@@ -1130,7 +1323,7 @@ with tab_vision:
             st.markdown("""
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <h3 class="section-header" style="margin: 0;">⚡ Live Sensor Telemetry</h3>
-                <span class="eyebrow-label" style="color: #60A5FA;">LIVE READOUTS</span>
+                <span class="eyebrow-label" style="color: #2563EB;">LIVE READOUTS</span>
             </div>
             """, unsafe_allow_html=True)
             threat_gauge_v_holder = st.empty()
@@ -1206,16 +1399,16 @@ with tab_vision:
                             clean_v = [v[11:] if v.startswith("VIOLATION: ") else (v[7:] if v.startswith("ALERT: ") else v) for v in active_violations]
                             alert_str = ' • '.join(clean_v) if clean_v else "ELEVATED RISK DETECTED"
                         vision_banner_holder.markdown(f"""
-                        <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 14px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 20px rgba(239, 68, 68, 0.2); backdrop-filter: blur(14px);">
+                        <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(220, 38, 38, 0.08);">
                             <span style="font-size: 1.3rem;">🚨</span>
-                            <span style="color: #FCA5A5; font-weight: 700; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: 0.02em;">SECURITY ALERT: {alert_str}</span>
+                            <span style="color: #B91C1C; font-weight: 700; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: 0.02em;">SECURITY ALERT: {alert_str}</span>
                         </div>
                         """, unsafe_allow_html=True)
                     else:
                         vision_banner_holder.markdown("""
-                        <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 14px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.15); backdrop-filter: blur(14px);">
+                        <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(4, 120, 87, 0.08);">
                             <span style="font-size: 1.3rem;">✅</span>
-                            <span style="color: #34D399; font-weight: 700; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif;">COMPLIANCE VERIFIED: Candidate within normal proctoring tolerances</span>
+                            <span style="color: #047857; font-weight: 700; font-size: 14px; font-family: 'Inter', sans-serif;">COMPLIANCE VERIFIED: Candidate within normal proctoring tolerances</span>
                         </div>
                         """, unsafe_allow_html=True)
 
@@ -1224,20 +1417,20 @@ with tab_vision:
                     telemetry_rows_v_holder.markdown(f"""
                     <div style="margin-top: 4px;">
                         <div class="enterprise-telemetry-row">
-                            <span class="body-text" style="color: #94A3B8; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#34D399' if person_count == 1 else '#EF4444'};">{person_count} Detected</span>
+                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
+                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#047857' if person_count == 1 else '#DC2626'};">{person_count} Detected</span>
                         </div>
                         <div class="enterprise-telemetry-row">
-                            <span class="body-text" style="color: #94A3B8; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #F8FAFC;">{yaw_val:+.1f}°</span>
+                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
+                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">{yaw_val:+.1f}°</span>
                         </div>
                         <div class="enterprise-telemetry-row">
-                            <span class="body-text" style="color: #94A3B8; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #F8FAFC;">{pitch_val:+.1f}°</span>
+                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
+                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">{pitch_val:+.1f}°</span>
                         </div>
                         <div class="enterprise-telemetry-row">
-                            <span class="body-text" style="color: #94A3B8; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#34D399' if not output.pose_gaze.is_looking_away else '#EF4444'};">{gaze_status}</span>
+                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
+                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#047857' if not output.pose_gaze.is_looking_away else '#DC2626'};">{gaze_status}</span>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -1249,17 +1442,17 @@ with tab_vision:
 
     else:
         vision_banner_holder.markdown("""
-        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(14px);">
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);">
             <span style="font-size: 1.3rem;">🛡️</span>
-            <span style="color: #60A5FA; font-weight: 700; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif;">VISION SENSOR ON STANDBY: Ready for live proctoring stream</span>
+            <span style="color: #2563EB; font-weight: 700; font-size: 0.92rem; font-family: 'Plus Jakarta Sans', sans-serif;">VISION SENSOR ON STANDBY: Ready for live proctoring stream</span>
         </div>
         """, unsafe_allow_html=True)
 
         video_placeholder.markdown("""
-        <div style="background: rgba(15, 23, 42, 0.5); border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 16px; height: 380px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #94A3B8; backdrop-filter: blur(12px);">
-            <span style="font-size: 3rem; margin-bottom: 8px;">📷</span>
-            <div style="font-size: 16px; font-weight: 700; color: #F8FAFC; margin-bottom: 4px; font-family: 'Plus Jakarta Sans', sans-serif;">Camera Feed on Standby</div>
-            <div style="font-size: 13.5px; color: #94A3B8;">Toggle switch above to activate real-time AI vision proctoring.</div>
+        <div style="background: #FFFFFF; border: 2px dashed #CBD5E1; border-radius: 12px; height: 380px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #475569; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);">
+            <span style="font-size: 3rem; margin-bottom: 10px; filter: drop-shadow(0 2px 8px rgba(37, 99, 235, 0.25));">📷</span>
+            <div style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin-bottom: 6px; font-family: 'Plus Jakarta Sans', sans-serif;">Camera Feed on Standby</div>
+            <div style="font-size: 0.9rem; color: #475569; font-family: 'Plus Jakarta Sans', sans-serif;">Toggle switch above to activate real-time AI vision proctoring.</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1268,20 +1461,20 @@ with tab_vision:
         telemetry_rows_v_holder.markdown("""
         <div style="margin-top: 4px;">
             <div class="enterprise-telemetry-row">
-                <span class="body-text" style="color: #94A3B8; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
-                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #34D399;">1 Detected</span>
+                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
+                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #047857;">1 Detected</span>
             </div>
             <div class="enterprise-telemetry-row">
-                <span class="body-text" style="color: #94A3B8; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
-                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #F8FAFC;">+0.0°</span>
+                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
+                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">+0.0°</span>
             </div>
             <div class="enterprise-telemetry-row">
-                <span class="body-text" style="color: #94A3B8; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
-                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #F8FAFC;">+0.0°</span>
+                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
+                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">+0.0°</span>
             </div>
             <div class="enterprise-telemetry-row">
-                <span class="body-text" style="color: #94A3B8; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
-                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #34D399;">Direct (Screen)</span>
+                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
+                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #047857;">Direct (Screen)</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1309,19 +1502,19 @@ with tab_telemetry:
     <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px;">
         <div class="telemetry-stat-card">
             <span class="telemetry-stat-label">TOTAL FRAMES MONITORED</span>
-            <div class="telemetry-stat-value" style="color: #38BDF8;">{total_frames} <span style="font-size: 12px; color: #64748B;">frames</span></div>
+            <div class="telemetry-stat-value" style="color: #2563EB;">{total_frames} <span style="font-size: 12px; color: #475569;">frames</span></div>
         </div>
         <div class="telemetry-stat-card">
             <span class="telemetry-stat-label">CLEAN EXAM DURATION</span>
-            <div class="telemetry-stat-value" style="color: #34D399;">{clean_pct:.1f}% <span style="font-size: 12px; color: #64748B;">normal (&lt;30)</span></div>
+            <div class="telemetry-stat-value" style="color: #047857;">{clean_pct:.1f}% <span style="font-size: 12px; color: #475569;">normal (&lt;30)</span></div>
         </div>
         <div class="telemetry-stat-card">
             <span class="telemetry-stat-label">SUSPICIOUS WARNINGS</span>
-            <div class="telemetry-stat-value" style="color: #FBBF24;">{warn_frames} <span style="font-size: 12px; color: #64748B;">frames (30-69)</span></div>
+            <div class="telemetry-stat-value" style="color: #D97706;">{warn_frames} <span style="font-size: 12px; color: #475569;">frames (30-69)</span></div>
         </div>
         <div class="telemetry-stat-card">
             <span class="telemetry-stat-label">CRITICAL CHEAT FRAMES</span>
-            <div class="telemetry-stat-value" style="color: {'#34D399' if crit_frames == 0 else '#EF4444'};">{crit_frames} <span style="font-size: 12px; color: #64748B;">frames (≥70)</span></div>
+            <div class="telemetry-stat-value" style="color: {'#047857' if crit_frames == 0 else '#DC2626'};">{crit_frames} <span style="font-size: 12px; color: #475569;">frames (≥70)</span></div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -1334,7 +1527,7 @@ with tab_telemetry:
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
                 <div>
                     <h3 class="section-header" style="margin: 0;">📈 Threat Score Timeline</h3>
-                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #94A3B8;">Real-time risk curve (0-100). Red = Critical (70), Yellow = Warning (30).</p>
+                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #475569;">Real-time risk curve (0-100). Red = Critical (70), Yellow = Warning (30).</p>
                 </div>
                 <span class="eyebrow-label">LIVE TIMELINE</span>
             </div>
@@ -1351,15 +1544,15 @@ with tab_telemetry:
                 )
                 fig_line.add_hline(y=70, line_dash="dash", line_color="#EF4444", annotation_text="Critical (70)", annotation_position="top left")
                 fig_line.add_hline(y=30, line_dash="dot", line_color="#F59E0B", annotation_text="Warning (30)", annotation_position="top left")
-                fig_line.update_traces(line_color="#3B82F6", line_width=2.5)
+                fig_line.update_traces(line_color="#2563EB", line_width=2.5)
                 fig_line.update_layout(
                     height=230,
                     margin=dict(l=10, r=10, t=10, b=20),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="#94A3B8", family="Plus Jakarta Sans"),
-                    xaxis=dict(gridcolor="rgba(255, 255, 255, 0.08)"),
-                    yaxis=dict(gridcolor="rgba(255, 255, 255, 0.08)", range=[0, 100])
+                    font=dict(color="#334155", family="Plus Jakarta Sans"),
+                    xaxis=dict(gridcolor="#E2E8F0"),
+                    yaxis=dict(gridcolor="#E2E8F0", range=[0, 100])
                 )
                 st.plotly_chart(fig_line, key="telemetry_timeline_chart", width="stretch")
             else:
@@ -1371,7 +1564,7 @@ with tab_telemetry:
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
                 <div>
                     <h3 class="section-header" style="margin: 0;">🚦 Risk Level Exposure</h3>
-                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #94A3B8;">% of exam time in Normal vs Warning vs Critical.</p>
+                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #475569;">% of exam time in Normal vs Warning vs Critical.</p>
                 </div>
                 <span class="eyebrow-label">DISTRIBUTION</span>
             </div>
@@ -1402,9 +1595,9 @@ with tab_telemetry:
                     text=risk_summary_df["Percentage"].apply(lambda p: f"{p}%"),
                     color="Category",
                     color_discrete_map={
-                        "Normal (<30)": "#10B981",
-                        "Warning (30-69)": "#F59E0B",
-                        "Critical (≥70)": "#EF4444"
+                        "Normal (<30)": "#047857",
+                        "Warning (30-69)": "#D97706",
+                        "Critical (≥70)": "#DC2626"
                     }
                 )
                 fig_risk.update_layout(
@@ -1413,13 +1606,13 @@ with tab_telemetry:
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     showlegend=False,
-                    font=dict(color="#CBD5E1", family="Plus Jakarta Sans"),
-                    xaxis=dict(gridcolor="rgba(255, 255, 255, 0.08)", range=[0, 105], ticksuffix="%"),
-                    yaxis=dict(gridcolor="rgba(255, 255, 255, 0.08)", autorange="reversed")
+                    font=dict(color="#334155", family="Plus Jakarta Sans"),
+                    xaxis=dict(gridcolor="#E2E8F0", range=[0, 105], ticksuffix="%"),
+                    yaxis=dict(gridcolor="#E2E8F0", autorange="reversed")
                 )
                 fig_risk.update_traces(
                     textposition="outside",
-                    textfont=dict(size=11, color="#FFFFFF", family="JetBrains Mono"),
+                    textfont=dict(size=11, color="#0F172A", family="JetBrains Mono"),
                     marker=dict(line=dict(width=1, color="rgba(255,255,255,0.2)"))
                 )
                 st.plotly_chart(fig_risk, key="telemetry_risk_exposure_chart", width="stretch")
@@ -1432,7 +1625,7 @@ with tab_telemetry:
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
                 <div>
                     <h3 class="section-header" style="margin: 0;">🍩 Violations Breakdown</h3>
-                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #94A3B8;">Proportion of detected infractions by violation type.</p>
+                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #475569;">Proportion of detected infractions by violation type.</p>
                 </div>
                 <span class="eyebrow-label">TAXONOMY</span>
             </div>
@@ -1442,12 +1635,12 @@ with tab_telemetry:
                 v_types = [i["violation_type"] for i in incidents]
                 v_df = pd.Series(v_types).value_counts().reset_index()
                 v_df.columns = ["Violation Type", "Count"]
-                fig_pie = px.pie(v_df, values="Count", names="Violation Type", hole=0.55, color_discrete_sequence=px.colors.sequential.Blues_r)
+                fig_pie = px.pie(v_df, values="Count", names="Violation Type", hole=0.55, color_discrete_sequence=["#2563EB", "#FF4D00", "#047857", "#D97706", "#7C3AED", "#06B6D4"])
                 fig_pie.update_layout(
                     height=230,
                     margin=dict(l=10, r=10, t=10, b=20),
                     paper_bgcolor="rgba(0,0,0,0)", 
-                    font=dict(color="#F8FAFC", family="Plus Jakarta Sans")
+                    font=dict(color="#0F172A", family="Plus Jakarta Sans")
                 )
                 st.plotly_chart(fig_pie, key="telemetry_pie_chart", width="stretch")
             else:
@@ -1478,10 +1671,10 @@ with tab_audit:
 
             if not incidents:
                 st.markdown("""
-                <div style="text-align: center; padding: 30px 20px; color: #CBD5E1;">
-                    <span style="font-size: 2.5rem;">🛡️</span>
-                    <h4 style="color: #FFFFFF; font-weight: 700; font-size: 15px; margin-top: 8px;">Zero Cheating Incidents Recorded</h4>
-                    <p style="font-size: 13px; color: #94A3B8;">Candidate has maintained full academic integrity throughout this session.</p>
+                <div style="text-align: center; padding: 36px 20px; background: #FFFFFF; border: 1px dashed #CBD5E1; border-radius: 14px; margin: 8px 0; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);">
+                    <span style="font-size: 2.5rem; filter: drop-shadow(0 2px 6px rgba(4, 120, 87, 0.2));">🛡️</span>
+                    <h4 style="color: #0F172A; font-weight: 700; font-size: 1.05rem; margin-top: 10px; margin-bottom: 4px; font-family: 'Plus Jakarta Sans', sans-serif;">Zero Cheating Incidents Recorded</h4>
+                    <p style="font-size: 0.9rem; color: #475569; margin: 0; font-family: 'Plus Jakarta Sans', sans-serif;">Candidate has maintained full academic integrity throughout this session.</p>
                 </div>
                 """, unsafe_allow_html=True)
             else:
@@ -1495,7 +1688,7 @@ with tab_audit:
                     and (not ver_filter or inc["proctor_verdict"] in ver_filter)
                 ]
 
-                st.markdown(f"<div style='font-size: 12.5px; color: #94A3B8; font-weight: 600; margin-bottom: 12px;'>Displaying <b>{len(filtered_incidents)}</b> flagged incident(s):</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size: 12.5px; color: #475569; font-weight: 600; margin-bottom: 12px;'>Displaying <b>{len(filtered_incidents)}</b> flagged incident(s):</div>", unsafe_allow_html=True)
 
                 for inc in filtered_incidents:
                     sev_cls = "pill-alert" if inc["severity"] in ("CRITICAL", "HIGH") else "pill-warn"
@@ -1510,7 +1703,7 @@ with tab_audit:
                             st.markdown(f"""
                             <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
                                 <span class="{sev_cls}">{inc['severity']}</span>
-                                <span style="font-size: 13.5px; font-weight: 700; color: #FFFFFF;">{inc['reason_summary']}</span>
+                                <span style="font-size: 13.5px; font-weight: 700; color: #0F172A;">{inc['reason_summary']}</span>
                             </div>
                             <p class="body-text" style="font-size: 13px; margin-bottom: 8px;">{inc['reason_narrative']}</p>
                             """, unsafe_allow_html=True)
@@ -1531,7 +1724,7 @@ with tab_audit:
                                 </div>
                                 <div class="dossier-meta-item">
                                     <span class="dossier-meta-label">Threat Score</span>
-                                    <span class="dossier-meta-val" style="color: {'#FB7185' if inc['risk_score'] >= 70 else '#FBBF24'};">{inc['risk_score']:.1f}/100</span>
+                                    <span class="dossier-meta-val" style="color: {'#DC2626' if inc['risk_score'] >= 70 else '#D97706'};">{inc['risk_score']:.1f}/100</span>
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
@@ -1553,7 +1746,7 @@ with tab_audit:
                                     margin=dict(l=5, r=5, t=10, b=5), 
                                     paper_bgcolor="rgba(0,0,0,0)", 
                                     plot_bgcolor="rgba(0,0,0,0)", 
-                                    font=dict(color="#FFFFFF", family="Plus Jakarta Sans")
+                                    font=dict(color="#0F172A", family="Plus Jakarta Sans")
                                 )
                                 st.plotly_chart(fig_b, key=f"saas_xai_{inc['id']}", width="stretch")
 
@@ -1588,7 +1781,7 @@ with tab_audit:
                     <h3 class="section-header" style="margin: 0;">📄 Official Exam Reports</h3>
                     <span class="pill-safe">● 1-CLICK EXPORT</span>
                 </div>
-                <p class="body-text" style="font-size: 13px; margin-bottom: 12px;">Generate certified integrity PDF certificates and detailed CSV logs.</p>
+                <p class="body-text" style="font-size: 0.9rem; color: #475569; margin-bottom: 12px;">Generate certified integrity PDF certificates and detailed CSV logs.</p>
                 """, unsafe_allow_html=True)
 
                 try:
@@ -1624,13 +1817,16 @@ with tab_audit:
         with st.container(border=True):
             st.markdown("""
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <h3 class="section-header" style="margin: 0; color: #FB7185;">🧹 Clear Data & Reset</h3>
+                <h3 class="section-header" style="margin: 0; color: #B91C1C;">🧹 Clear Data & Reset</h3>
                 <span class="pill-alert">MAINTENANCE</span>
             </div>
-            <p class="body-text" style="font-size: 12.5px; margin-bottom: 12px;">Clear session logs, temporary snapshots, and reset database to start fresh.</p>
+            <p class="body-text" style="font-size: 0.9rem; color: #475569; margin-bottom: 12px;">Clear session logs, temporary snapshots, and reset database to start fresh.</p>
             """, unsafe_allow_html=True)
 
-            if st.button("⚠️ Reset All Exam Data", width="stretch", key="btn_system_purge"):
+            st.markdown('<div class="danger-action-container">', unsafe_allow_html=True)
+            purge_clicked = st.button("⚠️ Reset All Exam Data", width="stretch", key="btn_system_purge")
+            st.markdown('</div>', unsafe_allow_html=True)
+            if purge_clicked:
                 st.cache_data.clear()
                 st.cache_resource.clear()
                 db_manager.purge_all_data()
