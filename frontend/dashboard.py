@@ -854,7 +854,9 @@ def get_db_manager():
 
 @st.cache_resource
 def get_pipeline():
-    return EviGuardPipeline("config.yaml")
+    p = EviGuardPipeline("config.yaml")
+    p.inference_stride = 1
+    return p
 
 db_manager = get_db_manager()
 pipeline = get_pipeline()
@@ -895,10 +897,12 @@ class ThreadedCamera:
                 try:
                     cap = cv2.VideoCapture(idx, b)
                     if cap.isOpened():
-                        # Minimize OpenCV hardware buffer to 1 and lock resolution to 640x480
-                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                        # Force hardware MJPEG decompression on Windows, 640x480, 30 FPS, buffer 1
+                        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
                         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                        cap.set(cv2.CAP_PROP_FPS, 30)
+                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                         ret, test_frame = cap.read()
                         if ret and test_frame is not None and test_frame.size > 0:
                             self.cap = cap
@@ -1022,14 +1026,14 @@ class MJPEGStreamer:
                                     jpg = streamer_ref.standby_jpeg
                                 else:
                                     with streamer_ref.lock:
-                                        cached_detections = streamer_ref.state.get("latest_detections", [])
                                         annotated = streamer_ref.state.get("latest_annotated")
+                                        cached_detections = streamer_ref.state.get("latest_detections", [])
 
-                                    # Fast overlay: draw cached violation boxes onto fresh frame, or serve latest annotated HUD
-                                    if cached_detections:
-                                        display_frame = streamer_ref.pipeline.detector.draw_violations(frame, cached_detections)
-                                    elif annotated is not None:
+                                    # Restore Full Clean HUD: serve the complete HUD annotated frame whenever available
+                                    if annotated is not None:
                                         display_frame = annotated
+                                    elif cached_detections:
+                                        display_frame = streamer_ref.pipeline.detector.draw_violations(frame, cached_detections)
                                     else:
                                         display_frame = frame
 
@@ -1098,6 +1102,7 @@ class MJPEGStreamer:
 
     def _ai_inference_worker(self):
         """Dedicated background AI inference thread: continuously reads frame, runs pipeline, and updates shared state."""
+        self.pipeline.inference_stride = 1
         while True:
             if not self.is_active or self.camera is None:
                 time.sleep(0.05)
