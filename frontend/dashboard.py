@@ -883,6 +883,10 @@ class ThreadedCamera:
         self.running = True
         self.thread = threading.Thread(target=self._capture_worker, daemon=True)
         self.thread.start()
+        for _ in range(10):
+            if self.frame is not None:
+                break
+            time.sleep(0.03)
         return self
 
     def _capture_worker(self):
@@ -900,13 +904,17 @@ class ThreadedCamera:
                         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                        ret, test_frame = cap.read()
-                        if ret and test_frame is not None and test_frame.size > 0:
-                            self.cap = cap
-                            self.is_connected = True
-                            with self.lock:
-                                self.frame = test_frame
-                            break
+                        for _ in range(5):
+                            ret, test_frame = cap.read()
+                            if ret and test_frame is not None and test_frame.size > 0:
+                                self.cap = cap
+                                self.is_connected = True
+                                with self.lock:
+                                    self.frame = test_frame
+                                break
+                            time.sleep(0.04)
+                    if self.is_connected:
+                        break
                     cap.release()
                 except Exception:
                     pass
@@ -1284,203 +1292,6 @@ with tab_overview:
                 </div>
             </div>
             """, unsafe_allow_html=True)
-
-
-# ------------------------------------------------------------------------------
-# MODULE 2: REAL-TIME VISION & AI PROCTORING
-# ------------------------------------------------------------------------------
-with tab_vision:
-    st.markdown("""
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-        <div>
-            <h3 class="page-title" style="margin: 0;">📹 High-Definition Real-Time Vision Feed</h3>
-            <p class="body-text" style="margin-top: 4px; margin-bottom: 0;">Zero-latency hardware vision stream with neural HUD overlays, 3D head pose vectors, and violation alerts.</p>
-        </div>
-        <span class="pill-safe">● ZERO-LATENCY • 60 FPS • NATIVE</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-    vision_banner_holder = st.empty()
-
-    col_v_left, col_v_right = st.columns([14, 6], gap="medium")
-
-    with col_v_left:
-        with st.container(border=True):
-            st.markdown("""
-            <div class="video-hud-topbar">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span class="hud-rec-indicator">● LIVE SENSOR FEED</span>
-                    <span class="hud-spec-tag">• 30 FPS • REAL-TIME AI</span>
-                </div>
-                <div class="hud-encryption-tag">🔒 LIVE PROCTOR FEED</div>
-            </div>
-            """, unsafe_allow_html=True)
-            t_c1, t_c2 = st.columns([3, 2])
-            start_stream = t_c1.toggle("▶ Enable Live AI Vision Stream", value=True, key="vision_tab_stream_toggle")
-            cam_src = t_c2.selectbox("Select Camera Device Index", [0, 1, 2], index=0, key="vision_cam_src_select")
-            video_placeholder = st.empty()
-
-    with col_v_right:
-        with st.container(border=True):
-            st.markdown("""
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <h3 class="section-header" style="margin: 0;">⚡ Live Sensor Telemetry</h3>
-                <span class="eyebrow-label" style="color: #2563EB;">LIVE READOUTS</span>
-            </div>
-            """, unsafe_allow_html=True)
-            threat_gauge_v_holder = st.empty()
-            telemetry_rows_v_holder = st.empty()
-
-    if start_stream:
-        camera = ThreadedCamera(src=cam_src, width=640, height=480).start()
-        
-        loop_frame = 0
-        last_flagged_state = None
-        last_risk_bin = -1
-        init_attempts = 0
-
-        try:
-            while True:
-                # Buffer Flush: Drop buffered stale frames if the processing loop falls behind
-                if camera.cap is not None and hasattr(camera.cap, "grab"):
-                    camera.cap.grab()
-
-                frame = camera.read()
-                if frame is None:
-                    init_attempts += 1
-                    if init_attempts <= 25:
-                        video_placeholder.info("🔄 Connecting to hardware camera sensor and initializing vision pipeline...")
-                        time.sleep(0.08)
-                        continue
-                    else:
-                        video_placeholder.warning("⚠️ Waiting for webcam stream. If camera does not appear, select a different camera index above or ensure no other app (e.g. Zoom/Teams) is using the webcam.")
-                        time.sleep(0.2)
-                        continue
-
-                loop_frame += 1
-
-                try:
-                    output: PipelineOutput = pipeline.process_frame(
-                        frame=frame,
-                        session_id=session_id,
-                        candidate_name=candidate_name
-                    )
-                except Exception as frame_err:
-                    time.sleep(0.001)
-                    continue
-
-                # 1. Fast JPEG Byte Encoding instead of Heavy Raw PNG (prevents Streamlit internal PNG conversion bottleneck)
-                _, buffer = cv2.imencode('.jpg', output.annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
-                video_placeholder.image(buffer.tobytes(), use_container_width=True)
-
-                # 2. Extract metrics
-                risk_score = float(output.risk.smoothed_score)
-                risk_level = str(output.risk.risk_level)
-                active_violations = list(output.risk.active_violations)
-                person_count = int(output.pose_gaze.face_count if output.pose_gaze.face_detected else len(output.detections))
-                yaw_val = float(output.pose_gaze.yaw)
-                pitch_val = float(output.pose_gaze.pitch)
-                gaze_status = str(output.pose_gaze.gaze_direction) if output.pose_gaze.face_detected else "Candidate Absent"
-                is_flagged = bool(output.risk.is_incident_triggered or len(active_violations) > 0 or risk_score >= 70.0)
-
-                # Rate-throttle UI updates to avoid Streamlit websocket queue congestion
-                current_risk_bin = int(risk_score // 5)
-                state_changed = (is_flagged != last_flagged_state) or (current_risk_bin != last_risk_bin)
-
-                if loop_frame % 5 == 0 or state_changed or output.incident_logged:
-                    last_flagged_state = is_flagged
-                    last_risk_bin = current_risk_bin
-
-                    if is_flagged or active_violations:
-                        has_unauth_banner = any(
-                            "UNAUTHORIZED" in v.upper() or "PHONE" in v.upper() or "BOOK" in v.upper() or "NOTES" in v.upper() or "CHIT" in v.upper() or "PAPER" in v.upper()
-                            for v in active_violations
-                        )
-                        if has_unauth_banner:
-                            alert_str = "UNAUTHORIZED EXAM MATERIAL DETECTED"
-                        else:
-                            clean_v = [v[11:] if v.startswith("VIOLATION: ") else (v[7:] if v.startswith("ALERT: ") else v) for v in active_violations]
-                            alert_str = ' • '.join(clean_v) if clean_v else "ELEVATED RISK DETECTED"
-                        vision_banner_holder.markdown(f"""
-                        <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(220, 38, 38, 0.08);">
-                            <span style="font-size: 1.3rem;">🚨</span>
-                            <span style="color: #B91C1C; font-weight: 700; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: 0.02em;">SECURITY ALERT: {alert_str}</span>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        vision_banner_holder.markdown("""
-                        <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(4, 120, 87, 0.08);">
-                            <span style="font-size: 1.3rem;">✅</span>
-                            <span style="color: #047857; font-weight: 700; font-size: 14px; font-family: 'Inter', sans-serif;">COMPLIANCE VERIFIED: Candidate within normal proctoring tolerances</span>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                    threat_gauge_v_holder.markdown(get_threat_meter_html(risk_score, risk_level), unsafe_allow_html=True)
-
-                    telemetry_rows_v_holder.markdown(f"""
-                    <div style="margin-top: 4px;">
-                        <div class="enterprise-telemetry-row">
-                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#047857' if person_count == 1 else '#DC2626'};">{person_count} Detected</span>
-                        </div>
-                        <div class="enterprise-telemetry-row">
-                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">{yaw_val:+.1f}°</span>
-                        </div>
-                        <div class="enterprise-telemetry-row">
-                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">{pitch_val:+.1f}°</span>
-                        </div>
-                        <div class="enterprise-telemetry-row">
-                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#047857' if not output.pose_gaze.is_looking_away else '#DC2626'};">{gaze_status}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-        except Exception as e:
-            st.error(f"Live stream error: {e}")
-        finally:
-            camera.stop()
-
-    else:
-        vision_banner_holder.markdown("""
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);">
-            <span style="font-size: 1.3rem;">🛡️</span>
-            <span style="color: #2563EB; font-weight: 700; font-size: 0.92rem; font-family: 'Plus Jakarta Sans', sans-serif;">VISION SENSOR ON STANDBY: Ready for live proctoring stream</span>
-        </div>
-        """, unsafe_allow_html=True)
-
-        video_placeholder.markdown("""
-        <div style="background: #FFFFFF; border: 2px dashed #CBD5E1; border-radius: 12px; height: 380px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #475569; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);">
-            <span style="font-size: 3rem; margin-bottom: 10px; filter: drop-shadow(0 2px 8px rgba(37, 99, 235, 0.25));">📷</span>
-            <div style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin-bottom: 6px; font-family: 'Plus Jakarta Sans', sans-serif;">Camera Feed on Standby</div>
-            <div style="font-size: 0.9rem; color: #475569; font-family: 'Plus Jakarta Sans', sans-serif;">Toggle switch above to activate real-time AI vision proctoring.</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        threat_gauge_v_holder.markdown(get_threat_meter_html(0.0, "LOW"), unsafe_allow_html=True)
-
-        telemetry_rows_v_holder.markdown("""
-        <div style="margin-top: 4px;">
-            <div class="enterprise-telemetry-row">
-                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
-                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #047857;">1 Detected</span>
-            </div>
-            <div class="enterprise-telemetry-row">
-                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
-                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">+0.0°</span>
-            </div>
-            <div class="enterprise-telemetry-row">
-                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
-                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">+0.0°</span>
-            </div>
-            <div class="enterprise-telemetry-row">
-                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
-                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #047857;">Direct (Screen)</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------------------
@@ -1869,3 +1680,201 @@ with tab_audit:
                     with open("config.yaml", "w") as f:
                         yaml.dump(updated_cfg, f)
                     st.success("Settings saved successfully!")
+
+
+# ==============================================================================
+# MODULE 2: REAL-TIME VISION & HIGH-SPEED PROCTORING STREAM
+# ==============================================================================
+with tab_vision:
+    st.markdown("""
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <div>
+            <h3 class="page-title" style="margin: 0;">📹 High-Definition Real-Time Vision Feed</h3>
+            <p class="body-text" style="margin-top: 4px; margin-bottom: 0;">Zero-latency hardware vision stream with neural HUD overlays, 3D head pose vectors, and violation alerts.</p>
+        </div>
+        <span class="pill-safe">● ZERO-LATENCY • 60 FPS • NATIVE</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    vision_banner_holder = st.empty()
+
+    col_v_left, col_v_right = st.columns([14, 6], gap="medium")
+
+    with col_v_left:
+        with st.container(border=True):
+            st.markdown("""
+            <div class="video-hud-topbar">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="hud-rec-indicator">● LIVE SENSOR FEED</span>
+                    <span class="hud-spec-tag">• 30 FPS • REAL-TIME AI</span>
+                </div>
+                <div class="hud-encryption-tag">🔒 LIVE PROCTOR FEED</div>
+            </div>
+            """, unsafe_allow_html=True)
+            t_c1, t_c2 = st.columns([3, 2])
+            start_stream = t_c1.toggle("▶ Enable Live AI Vision Stream", value=True, key="vision_tab_stream_toggle")
+            cam_src = t_c2.selectbox("Select Camera Device Index", [0, 1, 2], index=0, key="vision_cam_src_select")
+            video_placeholder = st.empty()
+
+    with col_v_right:
+        with st.container(border=True):
+            st.markdown("""
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h3 class="section-header" style="margin: 0;">⚡ Live Sensor Telemetry</h3>
+                <span class="eyebrow-label" style="color: #2563EB;">LIVE READOUTS</span>
+            </div>
+            """, unsafe_allow_html=True)
+            threat_gauge_v_holder = st.empty()
+            telemetry_rows_v_holder = st.empty()
+
+    if start_stream:
+        camera = ThreadedCamera(src=cam_src, width=640, height=480).start()
+        
+        loop_frame = 0
+        last_flagged_state = None
+        last_risk_bin = -1
+        init_attempts = 0
+
+        try:
+            while True:
+                frame = camera.read()
+                if frame is None:
+                    init_attempts += 1
+                    if init_attempts <= 25:
+                        video_placeholder.info("🔄 Connecting to hardware camera sensor and initializing vision pipeline...")
+                        time.sleep(0.08)
+                        continue
+                    else:
+                        video_placeholder.warning("⚠️ Waiting for webcam stream. If camera does not appear, select a different camera index above or ensure no other app (e.g. Zoom/Teams) is using the webcam.")
+                        time.sleep(0.2)
+                        continue
+
+                loop_frame += 1
+
+                try:
+                    output: PipelineOutput = pipeline.process_frame(
+                        frame=frame,
+                        session_id=session_id,
+                        candidate_name=candidate_name
+                    )
+                except Exception as frame_err:
+                    time.sleep(0.001)
+                    continue
+
+                # 1. Fast JPEG Byte Encoding instead of Heavy Raw PNG (prevents Streamlit internal PNG conversion bottleneck)
+                disp_frame = output.annotated_frame
+                if disp_frame.shape[1] >= 640:
+                    disp_frame = cv2.resize(disp_frame, (560, 420), interpolation=cv2.INTER_LINEAR)
+                _, buffer = cv2.imencode('.jpg', disp_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 55])
+                video_placeholder.image(buffer.tobytes(), width="stretch")
+
+                # 2. Extract metrics
+                risk_score = float(output.risk.smoothed_score)
+                risk_level = str(output.risk.risk_level)
+                active_violations = list(output.risk.active_violations)
+                person_count = int(output.pose_gaze.face_count if output.pose_gaze.face_detected else len(output.detections))
+                yaw_val = float(output.pose_gaze.yaw)
+                pitch_val = float(output.pose_gaze.pitch)
+                gaze_status = str(output.pose_gaze.gaze_direction) if output.pose_gaze.face_detected else "Candidate Absent"
+                is_flagged = bool(output.risk.is_incident_triggered or len(active_violations) > 0 or risk_score >= 70.0)
+
+                # Rate-throttle UI updates to avoid Streamlit websocket queue congestion
+                current_risk_bin = int(risk_score // 5)
+                state_changed = (is_flagged != last_flagged_state) or (current_risk_bin != last_risk_bin)
+
+                if loop_frame % 10 == 0 or state_changed or output.incident_logged:
+                    last_flagged_state = is_flagged
+                    last_risk_bin = current_risk_bin
+
+                    if is_flagged or active_violations:
+                        has_unauth_banner = any(
+                            "UNAUTHORIZED" in v.upper() or "PHONE" in v.upper() or "BOOK" in v.upper() or "NOTES" in v.upper() or "CHIT" in v.upper() or "PAPER" in v.upper()
+                            for v in active_violations
+                        )
+                        if has_unauth_banner:
+                            alert_str = "UNAUTHORIZED EXAM MATERIAL DETECTED"
+                        else:
+                            clean_v = [v[11:] if v.startswith("VIOLATION: ") else (v[7:] if v.startswith("ALERT: ") else v) for v in active_violations]
+                            alert_str = ' • '.join(clean_v) if clean_v else "ELEVATED RISK DETECTED"
+                        vision_banner_holder.markdown(f"""
+                        <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(220, 38, 38, 0.08);">
+                            <span style="font-size: 1.3rem;">🚨</span>
+                            <span style="color: #B91C1C; font-weight: 700; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: 0.02em;">SECURITY ALERT: {alert_str}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        vision_banner_holder.markdown("""
+                        <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(4, 120, 87, 0.08);">
+                            <span style="font-size: 1.3rem;">✅</span>
+                            <span style="color: #047857; font-weight: 700; font-size: 14px; font-family: 'Inter', sans-serif;">COMPLIANCE VERIFIED: Candidate within normal proctoring tolerances</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    threat_gauge_v_holder.markdown(get_threat_meter_html(risk_score, risk_level), unsafe_allow_html=True)
+
+                    telemetry_rows_v_holder.markdown(f"""
+                    <div style="margin-top: 4px;">
+                        <div class="enterprise-telemetry-row">
+                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
+                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#047857' if person_count == 1 else '#DC2626'};">{person_count} Detected</span>
+                        </div>
+                        <div class="enterprise-telemetry-row">
+                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
+                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">{yaw_val:+.1f}°</span>
+                        </div>
+                        <div class="enterprise-telemetry-row">
+                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
+                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">{pitch_val:+.1f}°</span>
+                        </div>
+                        <div class="enterprise-telemetry-row">
+                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
+                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#047857' if not output.pose_gaze.is_looking_away else '#DC2626'};">{gaze_status}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                time.sleep(0.008)
+
+        except Exception as e:
+            st.error(f"Live stream error: {e}")
+        finally:
+            camera.stop()
+
+    else:
+        vision_banner_holder.markdown("""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);">
+            <span style="font-size: 1.3rem;">🛡️</span>
+            <span style="color: #2563EB; font-weight: 700; font-size: 0.92rem; font-family: 'Plus Jakarta Sans', sans-serif;">VISION SENSOR ON STANDBY: Ready for live proctoring stream</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        video_placeholder.markdown("""
+        <div style="background: #FFFFFF; border: 2px dashed #CBD5E1; border-radius: 12px; height: 380px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #475569; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);">
+            <span style="font-size: 3rem; margin-bottom: 10px; filter: drop-shadow(0 2px 8px rgba(37, 99, 235, 0.25));">📷</span>
+            <div style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin-bottom: 6px; font-family: 'Plus Jakarta Sans', sans-serif;">Camera Feed on Standby</div>
+            <div style="font-size: 0.9rem; color: #475569; font-family: 'Plus Jakarta Sans', sans-serif;">Toggle switch above to activate real-time AI vision proctoring.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        threat_gauge_v_holder.markdown(get_threat_meter_html(0.0, "LOW"), unsafe_allow_html=True)
+
+        telemetry_rows_v_holder.markdown("""
+        <div style="margin-top: 4px;">
+            <div class="enterprise-telemetry-row">
+                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
+                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #047857;">1 Detected</span>
+            </div>
+            <div class="enterprise-telemetry-row">
+                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
+                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">+0.0°</span>
+            </div>
+            <div class="enterprise-telemetry-row">
+                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
+                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">+0.0°</span>
+            </div>
+            <div class="enterprise-telemetry-row">
+                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
+                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #047857;">Direct (Screen)</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
