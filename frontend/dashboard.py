@@ -990,13 +990,13 @@ class SinglePipelineStreamer:
     - Serves /stream for 30 FPS video and /telemetry for JSON telemetry readouts.
     - Zero st.image() bottleneck; native HTML <img src="http://127.0.0.1:8502/stream" /> renders at hardware 30+ FPS.
     """
-    def __init__(self, pipeline: EviGuardPipeline, host: str = "127.0.0.1", port: int = 8502):
+    def __init__(self, pipeline: EviGuardPipeline, host: str = "127.0.0.1", port: int = 8502, default_cam_src: int = 0):
         self.pipeline = pipeline
         self.host = host
         self.port = port
-        self.camera: Optional[ThreadedCamera] = None
-        self.camera_src: int = -1
-        self.is_active = False
+        self.camera_src: int = default_cam_src
+        self.camera: Optional[ThreadedCamera] = ThreadedCamera(src=default_cam_src, width=640, height=480).start()
+        self.is_active = True
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
         self.session_id: str = "DEFAULT_SESSION"
@@ -1056,7 +1056,7 @@ class SinglePipelineStreamer:
                 )
 
                 if output is not None and getattr(output, "annotated_frame", None) is not None:
-                    ret, buf = cv2.imencode('.jpg', output.annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                    ret, buf = cv2.imencode('.jpg', output.annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 65])
                     with self.lock:
                         self.shared_state["latest_output"] = output
                         self.shared_state["latest_annotated"] = output.annotated_frame
@@ -1073,10 +1073,18 @@ class SinglePipelineStreamer:
 
     def _stream_encoder_worker(self):
         """Thread B: Dedicated 30 FPS Stream Encoder Worker - runs at steady ~30 FPS, never waits on AI inference."""
+        target_interval = 1.0 / 30.0
+        next_tick = time.perf_counter()
         while True:
             try:
+                now = time.perf_counter()
+                sleep_dur = next_tick - now
+                if sleep_dur > 0:
+                    time.sleep(sleep_dur)
+                next_tick = time.perf_counter() + target_interval
+
                 if not self.is_active or self.camera is None or not self.camera.is_connected:
-                    time.sleep(0.04)
+                    time.sleep(0.03)
                     continue
 
                 frame = self.camera.get_frame()
@@ -1105,7 +1113,7 @@ class SinglePipelineStreamer:
                 if display_frame is None:
                     display_frame = latest_annotated if latest_annotated is not None else frame
 
-                ret, buf = cv2.imencode('.jpg', display_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                ret, buf = cv2.imencode('.jpg', display_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 65])
                 if ret and buf is not None:
                     jpeg_bytes = buf.tobytes()
                     with self.lock:
@@ -1115,8 +1123,6 @@ class SinglePipelineStreamer:
                         self.cond.notify_all()
             except Exception:
                 pass
-
-            time.sleep(0.03) # Steady ~30 FPS pacing
 
     def _start_http_server(self):
         streamer_ref = self
@@ -1256,7 +1262,7 @@ class SinglePipelineStreamer:
             self.candidate_name = candidate_name
             self.is_active = active
             if active:
-                if self.camera is None or self.camera_src != cam_src or not self.camera.running or not self.camera.is_connected:
+                if self.camera is None or self.camera_src != cam_src or not self.camera.running:
                     if self.camera is not None:
                         self.camera.stop()
                     self.camera_src = cam_src
@@ -1278,10 +1284,11 @@ class SinglePipelineStreamer:
 
 
 @st.cache_resource(show_spinner=False)
-def get_streamer(_pipeline: EviGuardPipeline) -> SinglePipelineStreamer:
-    return SinglePipelineStreamer(_pipeline, host="127.0.0.1", port=8502)
+def init_vision_engine(_pipeline: EviGuardPipeline) -> SinglePipelineStreamer:
+    return SinglePipelineStreamer(_pipeline, host="127.0.0.1", port=8502, default_cam_src=0)
 
-streamer = get_streamer(pipeline)
+get_streamer = init_vision_engine
+streamer = init_vision_engine(pipeline)
 
 
 # ==============================================================================
@@ -1912,7 +1919,7 @@ with tab_vision:
                             })
                             .catch(e => {});
                     }
-                    setInterval(updateTelemetry, 250);
+                    setInterval(updateTelemetry, 1000);
                     updateTelemetry();
                     </script>
                 </body>
@@ -2145,12 +2152,24 @@ with tab_audit:
 
     with col_a1:
         with st.container(border=True):
-            st.markdown("""
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <h3 class="section-header" style="margin: 0;">📋 Flagged Incident Evidence Log</h3>
-                <span class="eyebrow-label">INCIDENT TIMELINE</span>
-            </div>
-            """, unsafe_allow_html=True)
+            col_hdr1, col_hdr2 = st.columns([3, 1])
+            with col_hdr1:
+                st.markdown("""
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <h3 class="section-header" style="margin: 0;">📋 Flagged Incident Evidence Log</h3>
+                    <span class="eyebrow-label">INCIDENT TIMELINE</span>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_hdr2:
+                if st.button("🧹 Clear Audit Logs", key="btn_quick_clear_audit", width="stretch"):
+                    db_manager.purge_all_data()
+                    st.cache_data.clear()
+                    st.session_state.incidents = []
+                    st.session_state.total_flags = 0
+                    st.session_state.confirmed_count = 0
+                    st.session_state.pending_count = 0
+                    st.success("Audit logs cleared successfully!")
+                    st.rerun()
 
             if not incidents:
                 st.markdown("""
@@ -2171,14 +2190,28 @@ with tab_audit:
                     and (not ver_filter or inc["proctor_verdict"] in ver_filter)
                 ]
 
-                st.markdown(f"<div style='font-size: 12.5px; color: #475569; font-weight: 600; margin-bottom: 12px;'>Displaying <b>{len(filtered_incidents)}</b> flagged incident(s):</div>", unsafe_allow_html=True)
+                PAGE_SIZE = 10
+                total_items = len(filtered_incidents)
+                if total_items > PAGE_SIZE:
+                    current_page = st.selectbox(
+                        "Select Page",
+                        range(1, (total_items + PAGE_SIZE - 1) // PAGE_SIZE + 1),
+                        format_func=lambda p: f"Page {p} (Showing {(p-1)*PAGE_SIZE + 1} - {min(p*PAGE_SIZE, total_items)} of {total_items})",
+                        key="audit_page_select"
+                    )
+                    start_idx = (current_page - 1) * PAGE_SIZE
+                    display_incidents = filtered_incidents[start_idx:start_idx + PAGE_SIZE]
+                else:
+                    display_incidents = filtered_incidents
 
-                for inc in filtered_incidents:
+                st.markdown(f"<div style='font-size: 12.5px; color: #475569; font-weight: 600; margin-bottom: 12px;'>Displaying <b>{len(display_incidents)}</b> of <b>{total_items}</b> flagged incident(s):</div>", unsafe_allow_html=True)
+
+                for idx, inc in enumerate(display_incidents):
                     sev_cls = "pill-alert" if inc["severity"] in ("CRITICAL", "HIGH") else "pill-warn"
                     
                     with st.expander(
                         f"🚨 #{inc['id']} — [{inc['severity']}] {inc['violation_type']} ({inc['timestamp']})",
-                        expanded=True
+                        expanded=(idx == 0)
                     ):
                         i_col1, i_col2 = st.columns([3, 2], gap="medium")
                         
