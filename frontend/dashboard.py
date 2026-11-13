@@ -979,7 +979,9 @@ class SinglePipelineStreamer:
         # Shared atomic state
         self.shared_state: Dict[str, Any] = {
             "latest_output": None,
+            "latest_annotated": None,
             "latest_jpeg": None,
+            "frame_id": 0,
             "frame_seq": 0,
         }
 
@@ -988,23 +990,27 @@ class SinglePipelineStreamer:
         standby_img[:] = (9, 10, 15)
         cv2.putText(standby_img, "EviGuard AI - Vision Active", (160, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (220, 225, 235), 2)
         cv2.putText(standby_img, "Connecting to camera sensor...", (180, 265), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 135, 150), 1)
-        _, standby_buf = cv2.imencode('.jpg', standby_img, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+        _, standby_buf = cv2.imencode('.jpg', standby_img, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
         self.standby_jpeg = standby_buf.tobytes()
 
-        # Dedicated background processing worker loop
-        self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
-        self.worker_thread.start()
+        # Thread A: Dedicated AI inference worker
+        self.ai_thread = threading.Thread(target=self._ai_worker, daemon=True)
+        self.ai_thread.start()
+
+        # Thread B: Dedicated 30 FPS annotated frame stream encoder
+        self.stream_thread = threading.Thread(target=self._stream_encoder_worker, daemon=True)
+        self.stream_thread.start()
 
         # Start HTTP server
         self.server = None
         self._start_http_server()
 
-    def _worker_loop(self):
-        """Single background worker loop: pulls freshest frame, runs pipeline, and encodes JPEG."""
+    def _ai_worker(self):
+        """Thread A: Dedicated AI inference worker - continuously runs pipeline without blocking video streamer."""
         self.pipeline.inference_stride = 1
         while True:
             if not self.is_active or self.camera is None:
-                time.sleep(0.04)
+                time.sleep(0.05)
                 continue
 
             frame = self.camera.get_frame()
@@ -1018,18 +1024,57 @@ class SinglePipelineStreamer:
                     session_id=self.session_id,
                     candidate_name=self.candidate_name
                 )
-                _, buf = cv2.imencode('.jpg', output.annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
-                jpeg_bytes = buf.tobytes()
-
                 with self.lock:
                     self.shared_state["latest_output"] = output
-                    self.shared_state["latest_jpeg"] = jpeg_bytes
-                    self.shared_state["frame_seq"] += 1
-                    self.cond.notify_all()
+                    self.shared_state["latest_annotated"] = output.annotated_frame
             except Exception:
-                time.sleep(0.01)
+                pass
 
-            time.sleep(0.005) # Yield GIL
+            time.sleep(0.01)
+
+    def _stream_encoder_worker(self):
+        """Thread B: Dedicated 30 FPS Stream Encoder Worker - runs at steady ~30 FPS, never waits on AI inference."""
+        while True:
+            if not self.is_active or self.camera is None:
+                time.sleep(0.04)
+                continue
+
+            frame = self.camera.get_frame()
+            if frame is None:
+                time.sleep(0.01)
+                continue
+
+            with self.lock:
+                output = self.shared_state.get("latest_output")
+                latest_annotated = self.shared_state.get("latest_annotated")
+
+            display_frame = None
+            if output is not None:
+                try:
+                    person_count = int(output.pose_gaze.face_count if output.pose_gaze.face_detected else len(output.detections))
+                    display_frame = self.pipeline._render_hud(
+                        frame=frame.copy(),
+                        detections=output.detections,
+                        pose_gaze=output.pose_gaze,
+                        risk=output.risk,
+                        person_count=person_count
+                    )
+                except Exception:
+                    display_frame = latest_annotated
+
+            if display_frame is None:
+                display_frame = latest_annotated if latest_annotated is not None else frame
+
+            _, buf = cv2.imencode('.jpg', display_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            jpeg_bytes = buf.tobytes()
+
+            with self.lock:
+                self.shared_state["latest_jpeg"] = jpeg_bytes
+                self.shared_state["frame_id"] += 1
+                self.shared_state["frame_seq"] = self.shared_state["frame_id"]
+                self.cond.notify_all()
+
+            time.sleep(0.03) # Steady 30 FPS pacing
 
     def _start_http_server(self):
         streamer_ref = self
@@ -1119,7 +1164,9 @@ class SinglePipelineStreamer:
                     self.camera = None
                     self.camera_src = -1
                 self.shared_state["latest_output"] = None
+                self.shared_state["latest_annotated"] = None
                 self.shared_state["latest_jpeg"] = None
+                self.shared_state["frame_id"] = 0
                 self.shared_state["frame_seq"] = 0
 
     def get_latest_output(self) -> Optional[PipelineOutput]:
@@ -1527,10 +1574,10 @@ with tab_vision:
             components.html(
                 """
                 <div style="width: 100%; border-radius: 8px; overflow: hidden; background: #090A0F;">
-                    <img src="http://127.0.0.1:8502/stream" style="width:100%; height:auto; border-radius:8px; display:block; background:#090A0F;" />
+                    <img src="http://127.0.0.1:8502/stream" style="width:100%; height:520px; object-fit:contain; border-radius:8px; display:block; background:#090A0F;" />
                 </div>
                 """,
-                height=490,
+                height=540,
                 scrolling=False
             )
 
@@ -1606,7 +1653,7 @@ with tab_vision:
                         </div>
                         """, unsafe_allow_html=True)
 
-                time.sleep(0.5)
+                time.sleep(0.8)
         except Exception:
             pass
 
