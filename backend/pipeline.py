@@ -190,8 +190,8 @@ class EviGuardPipeline:
         self.active_student_ids: List[int] = [1]
         self.student_round_robin_idx = 0
         
-        # Temporal Inference Stride for High FPS (Every 3rd frame or configurable)
-        self.inference_stride = self.config.get("system", {}).get("inference_stride", 3)
+        # Temporal Inference Stride - In decoupled background worker, run full inference on every frame (stride=1)
+        self.inference_stride = 1
         self.target_w = self.config.get("video", {}).get("width", 640)
         self.target_h = self.config.get("video", {}).get("height", 480)
         self.last_tracked_detections: List[DetectionResult] = []
@@ -293,8 +293,8 @@ class EviGuardPipeline:
         # 2. Store frame in circular rolling buffer
         self.frame_buffer.append((frame.copy(), self.frame_index, now))
 
-        # 3. Object Detection & Pose/Gaze with Parallel Multi-Threading
-        is_inference_frame = (self.frame_index % self.inference_stride == 0) or (self.last_pose_gaze_result is None)
+        # 3. Object Detection & Pose/Gaze with Parallel Multi-Threading (100% of frames run full inference immediately)
+        is_inference_frame = True
 
         if is_inference_frame:
             # Run YOLOv8 detection and MediaPipe Pose/Gaze in parallel threads

@@ -875,6 +875,7 @@ class ThreadedCamera:
         self.height = height
         self.cap = None
         self.frame: Optional[np.ndarray] = None
+        self.frame_seq: int = 0
         self.running = False
         self.is_connected = False
         self.lock = threading.Lock()
@@ -939,10 +940,11 @@ class ThreadedCamera:
                                 frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
                             with self.lock:
                                 self.frame = frame
+                                self.frame_seq += 1
                     else:
-                        time.sleep(0.01)
+                        time.sleep(0.005)
                 except Exception:
-                    time.sleep(0.01)
+                    time.sleep(0.005)
             else:
                 time.sleep(0.02)
 
@@ -953,6 +955,10 @@ class ThreadedCamera:
     def get_frame(self) -> Optional[np.ndarray]:
         with self.lock:
             return self.frame.copy() if self.frame is not None else None
+
+    def get_frame_and_seq(self) -> Tuple[Optional[np.ndarray], int]:
+        with self.lock:
+            return (self.frame.copy() if self.frame is not None else None), self.frame_seq
 
     def stop(self):
         self.running = False
@@ -1026,31 +1032,41 @@ class SinglePipelineStreamer:
         self._start_http_server()
 
     def _ai_worker(self):
-        """Thread A: Dedicated AI inference worker - continuously runs pipeline without blocking video streamer."""
+        """Thread A: Dedicated AI inference worker - continuously runs pipeline without sleep on new frames."""
         self.pipeline.inference_stride = 1
+        last_processed_seq = -1
+
         while True:
             try:
                 if not self.is_active or self.camera is None or not self.camera.is_connected:
                     time.sleep(0.04)
                     continue
 
-                frame = self.camera.get_frame()
-                if frame is None:
-                    time.sleep(0.01)
+                frame, cur_seq = self.camera.get_frame_and_seq()
+                if frame is None or cur_seq == last_processed_seq:
+                    time.sleep(0.001)
                     continue
+
+                last_processed_seq = cur_seq
 
                 output = self.pipeline.process_frame(
                     frame=frame,
                     session_id=self.session_id,
                     candidate_name=self.candidate_name
                 )
-                with self.lock:
-                    self.shared_state["latest_output"] = output
-                    self.shared_state["latest_annotated"] = output.annotated_frame
-            except Exception:
-                pass
 
-            time.sleep(0.01)
+                if output is not None and getattr(output, "annotated_frame", None) is not None:
+                    ret, buf = cv2.imencode('.jpg', output.annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                    with self.lock:
+                        self.shared_state["latest_output"] = output
+                        self.shared_state["latest_annotated"] = output.annotated_frame
+                        if ret and buf is not None:
+                            self.shared_state["latest_jpeg"] = buf.tobytes()
+                            self.shared_state["frame_id"] += 1
+                            self.shared_state["frame_seq"] = self.shared_state["frame_id"]
+                            self.cond.notify_all()
+            except Exception:
+                time.sleep(0.002)
 
     def _stream_encoder_worker(self):
         """Thread B: Dedicated 30 FPS Stream Encoder Worker - runs at steady ~30 FPS, never waits on AI inference."""
