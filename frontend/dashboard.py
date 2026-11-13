@@ -1068,6 +1068,9 @@ class SinglePipelineStreamer:
             except Exception:
                 time.sleep(0.002)
 
+            # 8ms GIL Release: ensures MJPEG HTTP server thread gets clean, uninterrupted CPU slices
+            time.sleep(0.008)
+
     def _stream_encoder_worker(self):
         """Thread B: Dedicated 30 FPS Stream Encoder Worker - runs at steady ~30 FPS, never waits on AI inference."""
         while True:
@@ -1134,24 +1137,36 @@ class SinglePipelineStreamer:
                     self.send_header('Access-Control-Allow-Origin', '*')
                     self.end_headers()
 
-                    last_seq = -1
+                    last_sent_id = -1
+                    target_interval = 1.0 / 30.0  # Steady 30 FPS pacing (~33.3ms per frame)
+                    next_frame_time = time.perf_counter()
+
                     try:
                         while True:
+                            # Monotonic frame pacing via time.perf_counter()
+                            now = time.perf_counter()
+                            sleep_dur = next_frame_time - now
+                            if sleep_dur > 0:
+                                time.sleep(sleep_dur)
+                            next_frame_time = time.perf_counter() + target_interval
+
                             with streamer_ref.lock:
-                                current_seq = streamer_ref.shared_state["frame_seq"]
-                                if current_seq == last_seq:
-                                    streamer_ref.cond.wait(timeout=0.035)
-                                    current_seq = streamer_ref.shared_state["frame_seq"]
+                                current_id = streamer_ref.shared_state["frame_seq"]
 
                                 if not streamer_ref.is_active or streamer_ref.camera is None or not streamer_ref.camera.is_connected:
                                     jpg = streamer_ref.standby_jpeg
-                                    last_seq = -1
+                                    last_sent_id = -1
                                 else:
+                                    if current_id == last_sent_id:
+                                        streamer_ref.cond.wait(timeout=0.033)
+                                        current_id = streamer_ref.shared_state["frame_seq"]
+
                                     jpg = streamer_ref.shared_state.get("latest_jpeg")
                                     if jpg is None:
                                         jpg = streamer_ref.standby_jpeg
                                     else:
-                                        last_seq = current_seq
+                                        # Latest-only frame push: skips intermediate backlog to prevent fast-forward catch-up bursts
+                                        last_sent_id = current_id
 
                             part = (
                                 b"--frame\r\n"
@@ -1161,7 +1176,10 @@ class SinglePipelineStreamer:
                                 b"\r\n"
                             )
                             self.wfile.write(part)
-                            time.sleep(0.008)
+                            try:
+                                self.wfile.flush()
+                            except Exception:
+                                pass
                     except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
                         pass
                     except Exception:
