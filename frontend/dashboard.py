@@ -1129,7 +1129,28 @@ class SinglePipelineStreamer:
 
         class StreamHandler(BaseHTTPRequestHandler):
             def do_GET(self):
-                if self.path in ('/stream', '/video_feed'):
+                clean_path = self.path.split('?')[0]
+                if clean_path in ('/latest_frame.jpg', '/latest_frame', '/frame.jpg', '/current_frame'):
+                    with streamer_ref.lock:
+                        jpg = streamer_ref.shared_state.get("latest_jpeg")
+                        if jpg is None or not streamer_ref.is_active or streamer_ref.camera is None or not streamer_ref.camera.is_connected:
+                            jpg = streamer_ref.standby_jpeg
+
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'image/jpeg')
+                    self.send_header('Content-Length', str(len(jpg)))
+                    self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                    self.send_header('Pragma', 'no-cache')
+                    self.send_header('Expires', '0')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    try:
+                        self.wfile.write(jpg)
+                        self.wfile.flush()
+                    except Exception:
+                        pass
+
+                elif clean_path in ('/stream', '/video_feed'):
                     try:
                         self.request.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     except Exception:
@@ -1191,7 +1212,7 @@ class SinglePipelineStreamer:
                     except Exception:
                         pass
 
-                elif self.path in ('/telemetry', '/api/telemetry'):
+                elif clean_path in ('/telemetry', '/api/telemetry'):
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')
                     self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
@@ -1689,9 +1710,114 @@ with tab_vision:
         with video_placeholder:
             components.html(
                 """
-                <div style="width: 100%; border-radius: 8px; overflow: hidden; background: #090A0F;">
-                    <img src="http://127.0.0.1:8502/stream" style="width:100%; height:520px; object-fit:contain; border-radius:8px; display:block; background:#090A0F;" />
-                </div>
+                <!DOCTYPE html>
+                <html>
+                <head>
+                <meta charset="utf-8">
+                <style>
+                    * { box-sizing: border-box; }
+                    html, body {
+                        margin: 0;
+                        padding: 0;
+                        width: 100%;
+                        height: 100%;
+                        background: #090A0F;
+                        overflow: hidden;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                    }
+                    .viewport-box {
+                        position: relative;
+                        width: 100%;
+                        height: 520px;
+                        background: #090A0F;
+                        border-radius: 8px;
+                        overflow: hidden;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                    }
+                    #viewportCanvas {
+                        width: 100%;
+                        height: 520px;
+                        object-fit: contain;
+                        border-radius: 8px;
+                        display: block;
+                        background: #090A0F;
+                    }
+                </style>
+                </head>
+                <body>
+                    <div class="viewport-box">
+                        <canvas id="viewportCanvas" width="640" height="480"></canvas>
+                    </div>
+                    <script>
+                    (function() {
+                        const canvas = document.getElementById('viewportCanvas');
+                        const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+                        let isFetching = false;
+                        let lastFrameTime = 0;
+                        const targetInterval = 30; // ~33ms for smooth 30 FPS pacing
+
+                        async function pullNextFrame() {
+                            if (isFetching) return;
+                            const now = performance.now();
+                            if (now - lastFrameTime < targetInterval) {
+                                requestAnimationFrame(pullNextFrame);
+                                return;
+                            }
+
+                            isFetching = true;
+                            try {
+                                const res = await fetch('http://127.0.0.1:8502/latest_frame.jpg?t=' + now, {
+                                    cache: 'no-store',
+                                    mode: 'cors'
+                                });
+                                if (res.ok) {
+                                    const blob = await res.blob();
+                                    if (window.createImageBitmap) {
+                                        const bitmap = await createImageBitmap(blob);
+                                        if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+                                            canvas.width = bitmap.width;
+                                            canvas.height = bitmap.height;
+                                        }
+                                        ctx.drawImage(bitmap, 0, 0);
+                                        bitmap.close();
+                                    } else {
+                                        await new Promise((resolve) => {
+                                            const img = new Image();
+                                            img.onload = () => {
+                                                if (canvas.width !== img.width || canvas.height !== img.height) {
+                                                    canvas.width = img.width;
+                                                    canvas.height = img.height;
+                                                }
+                                                ctx.drawImage(img, 0, 0);
+                                                URL.revokeObjectURL(img.src);
+                                                resolve();
+                                            };
+                                            img.onerror = () => {
+                                                URL.revokeObjectURL(img.src);
+                                                resolve();
+                                            };
+                                            img.src = URL.createObjectURL(blob);
+                                        });
+                                    }
+                                    lastFrameTime = performance.now();
+                                }
+                            } catch (err) {
+                                // Standby or brief network pause
+                            } finally {
+                                isFetching = false;
+                                requestAnimationFrame(pullNextFrame);
+                            }
+                        }
+
+                        requestAnimationFrame(pullNextFrame);
+                    })();
+                    </script>
+                </body>
+                </html>
                 """,
                 height=540,
                 scrolling=False
