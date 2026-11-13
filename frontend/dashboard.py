@@ -35,13 +35,16 @@ import backend.scoring
 import backend.tracking
 
 from datetime import datetime
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import json
 import math
 import shutil
+import socket
 import threading
 import time
 from typing import Dict, Any, List, Optional
 import warnings
+import streamlit.components.v1 as components
 
 # Suppress background telemetry & deprecation warnings
 os.environ["GLOG_minloglevel"] = "2"
@@ -934,6 +937,10 @@ class ThreadedCamera:
         with self.lock:
             return self.frame.copy() if self.frame is not None else None
 
+    def get_frame(self) -> Optional[np.ndarray]:
+        with self.lock:
+            return self.frame.copy() if self.frame is not None else None
+
     def stop(self):
         self.running = False
         if self.cap is not None:
@@ -943,6 +950,188 @@ class ThreadedCamera:
             except Exception:
                 pass
         self.cap = None
+
+
+# ==============================================================================
+# 4B. SINGLE-PIPELINE BACKGROUND MJPEG STREAMER (HIGH-FPS PERSISTENT VIEWPORT)
+# ==============================================================================
+class SinglePipelineStreamer:
+    """
+    Singleton background MJPEG streaming server on 127.0.0.1:8502:
+    - Maintains single shared ThreadedCamera and EviGuardPipeline instance.
+    - Dedicated background thread continuously pulls freshest frame, runs pipeline.process_frame,
+      preserves all full HUD annotations (bounding boxes, red alert badges, face mesh, gaze vectors),
+      and encodes JPEG once into shared_state for all clients.
+    - Zero st.image() bottleneck; native HTML <img src="http://127.0.0.1:8502/stream" /> renders at hardware 30+ FPS.
+    """
+    def __init__(self, pipeline: EviGuardPipeline, host: str = "127.0.0.1", port: int = 8502):
+        self.pipeline = pipeline
+        self.host = host
+        self.port = port
+        self.camera: Optional[ThreadedCamera] = None
+        self.camera_src: int = -1
+        self.is_active = False
+        self.lock = threading.Lock()
+        self.cond = threading.Condition(self.lock)
+        self.session_id: str = "DEFAULT_SESSION"
+        self.candidate_name: str = "Candidate"
+
+        # Shared atomic state
+        self.shared_state: Dict[str, Any] = {
+            "latest_output": None,
+            "latest_jpeg": None,
+            "frame_seq": 0,
+        }
+
+        # Standby placeholder JPEG matching #090A0F dark viewport background
+        standby_img = np.zeros((480, 640, 3), dtype=np.uint8)
+        standby_img[:] = (9, 10, 15)
+        cv2.putText(standby_img, "EviGuard AI - Vision Active", (160, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (220, 225, 235), 2)
+        cv2.putText(standby_img, "Connecting to camera sensor...", (180, 265), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 135, 150), 1)
+        _, standby_buf = cv2.imencode('.jpg', standby_img, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+        self.standby_jpeg = standby_buf.tobytes()
+
+        # Dedicated background processing worker loop
+        self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self.worker_thread.start()
+
+        # Start HTTP server
+        self.server = None
+        self._start_http_server()
+
+    def _worker_loop(self):
+        """Single background worker loop: pulls freshest frame, runs pipeline, and encodes JPEG."""
+        self.pipeline.inference_stride = 1
+        while True:
+            if not self.is_active or self.camera is None:
+                time.sleep(0.04)
+                continue
+
+            frame = self.camera.get_frame()
+            if frame is None:
+                time.sleep(0.01)
+                continue
+
+            try:
+                output = self.pipeline.process_frame(
+                    frame=frame,
+                    session_id=self.session_id,
+                    candidate_name=self.candidate_name
+                )
+                _, buf = cv2.imencode('.jpg', output.annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                jpeg_bytes = buf.tobytes()
+
+                with self.lock:
+                    self.shared_state["latest_output"] = output
+                    self.shared_state["latest_jpeg"] = jpeg_bytes
+                    self.shared_state["frame_seq"] += 1
+                    self.cond.notify_all()
+            except Exception:
+                time.sleep(0.01)
+
+            time.sleep(0.005) # Yield GIL
+
+    def _start_http_server(self):
+        streamer_ref = self
+
+        class StreamHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path in ('/stream', '/video_feed'):
+                    try:
+                        self.request.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    except Exception:
+                        pass
+
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
+                    self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                    self.send_header('Pragma', 'no-cache')
+                    self.send_header('Expires', '0')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+
+                    last_seq = -1
+                    try:
+                        while True:
+                            with streamer_ref.lock:
+                                current_seq = streamer_ref.shared_state["frame_seq"]
+                                if current_seq == last_seq:
+                                    streamer_ref.cond.wait(timeout=0.035)
+                                    current_seq = streamer_ref.shared_state["frame_seq"]
+
+                                if not streamer_ref.is_active or streamer_ref.camera is None:
+                                    jpg = streamer_ref.standby_jpeg
+                                    last_seq = -1
+                                else:
+                                    jpg = streamer_ref.shared_state.get("latest_jpeg")
+                                    if jpg is None:
+                                        jpg = streamer_ref.standby_jpeg
+                                    else:
+                                        last_seq = current_seq
+
+                            self.wfile.write(b"--frame\r\n")
+                            self.send_header('Content-Type', 'image/jpeg')
+                            self.send_header('Content-Length', str(len(jpg)))
+                            self.end_headers()
+                            self.wfile.write(jpg)
+                            self.wfile.write(b"\r\n")
+                            time.sleep(0.008)
+                    except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
+                        pass
+                    except Exception:
+                        pass
+                else:
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'text/plain')
+                    self.end_headers()
+                    self.wfile.write(b"EviGuard Single-Pipeline Streamer Active")
+
+            def log_message(self, format, *args):
+                return
+
+        class ReusableServer(ThreadingHTTPServer):
+            allow_reuse_address = True
+            daemon_threads = True
+
+        for attempt in range(5):
+            try:
+                self.server = ReusableServer((self.host, self.port), StreamHandler)
+                server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+                server_thread.start()
+                break
+            except Exception:
+                time.sleep(0.5)
+
+    def set_active(self, active: bool, cam_src: int = 0, session_id: str = "DEFAULT_SESSION", candidate_name: str = "Candidate"):
+        with self.lock:
+            self.session_id = session_id
+            self.candidate_name = candidate_name
+            self.is_active = active
+            if active:
+                if self.camera is None or self.camera_src != cam_src or not self.camera.running:
+                    if self.camera is not None:
+                        self.camera.stop()
+                    self.camera_src = cam_src
+                    self.camera = ThreadedCamera(src=cam_src, width=640, height=480).start()
+            else:
+                if self.camera is not None:
+                    self.camera.stop()
+                    self.camera = None
+                    self.camera_src = -1
+                self.shared_state["latest_output"] = None
+                self.shared_state["latest_jpeg"] = None
+                self.shared_state["frame_seq"] = 0
+
+    def get_latest_output(self) -> Optional[PipelineOutput]:
+        with self.lock:
+            return self.shared_state.get("latest_output")
+
+
+@st.cache_resource(show_spinner=False)
+def get_streamer(_pipeline: EviGuardPipeline) -> SinglePipelineStreamer:
+    return SinglePipelineStreamer(_pipeline, host="127.0.0.1", port=8502)
+
+streamer = get_streamer(pipeline)
 
 
 # ==============================================================================
@@ -1332,118 +1521,97 @@ with tab_vision:
             telemetry_rows_v_holder = st.empty()
 
     if start_stream:
-        camera = ThreadedCamera(src=cam_src, width=640, height=480).start()
-        
+        streamer.set_active(True, cam_src=cam_src, session_id=session_id, candidate_name=candidate_name)
+
+        with video_placeholder:
+            components.html(
+                """
+                <div style="width: 100%; border-radius: 8px; overflow: hidden; background: #090A0F;">
+                    <img src="http://127.0.0.1:8502/stream" style="width:100%; height:auto; border-radius:8px; display:block; background:#090A0F;" />
+                </div>
+                """,
+                height=490,
+                scrolling=False
+            )
+
         loop_frame = 0
         last_flagged_state = None
         last_risk_bin = -1
-        init_attempts = 0
 
         try:
             while True:
-                # Buffer Flush: Drop buffered stale frames if the processing loop falls behind
-                if camera.cap is not None and hasattr(camera.cap, "grab"):
-                    camera.cap.grab()
+                output = streamer.get_latest_output()
+                if output is not None:
+                    loop_frame += 1
+                    risk_score = float(output.risk.smoothed_score)
+                    risk_level = str(output.risk.risk_level)
+                    active_violations = list(output.risk.active_violations)
+                    person_count = int(output.pose_gaze.face_count if output.pose_gaze.face_detected else len(output.detections))
+                    yaw_val = float(output.pose_gaze.yaw)
+                    pitch_val = float(output.pose_gaze.pitch)
+                    gaze_status = str(output.pose_gaze.gaze_direction) if output.pose_gaze.face_detected else "Candidate Absent"
+                    is_flagged = bool(output.risk.is_incident_triggered or len(active_violations) > 0 or risk_score >= 70.0)
 
-                frame = camera.read()
-                if frame is None:
-                    init_attempts += 1
-                    if init_attempts <= 25:
-                        video_placeholder.info("🔄 Connecting to hardware camera sensor and initializing vision pipeline...")
-                        time.sleep(0.08)
-                        continue
-                    else:
-                        video_placeholder.warning("⚠️ Waiting for webcam stream. If camera does not appear, select a different camera index above or ensure no other app (e.g. Zoom/Teams) is using the webcam.")
-                        time.sleep(0.2)
-                        continue
+                    current_risk_bin = int(risk_score // 5)
+                    state_changed = (is_flagged != last_flagged_state) or (current_risk_bin != last_risk_bin)
 
-                loop_frame += 1
+                    if loop_frame % 2 == 0 or state_changed or output.incident_logged:
+                        last_flagged_state = is_flagged
+                        last_risk_bin = current_risk_bin
 
-                try:
-                    output: PipelineOutput = pipeline.process_frame(
-                        frame=frame,
-                        session_id=session_id,
-                        candidate_name=candidate_name
-                    )
-                except Exception as frame_err:
-                    time.sleep(0.001)
-                    continue
-
-                # 1. Fast JPEG Byte Encoding instead of Heavy Raw PNG (prevents Streamlit internal PNG conversion bottleneck)
-                _, buffer = cv2.imencode('.jpg', output.annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
-                video_placeholder.image(buffer.tobytes(), use_container_width=True)
-
-                # 2. Extract metrics
-                risk_score = float(output.risk.smoothed_score)
-                risk_level = str(output.risk.risk_level)
-                active_violations = list(output.risk.active_violations)
-                person_count = int(output.pose_gaze.face_count if output.pose_gaze.face_detected else len(output.detections))
-                yaw_val = float(output.pose_gaze.yaw)
-                pitch_val = float(output.pose_gaze.pitch)
-                gaze_status = str(output.pose_gaze.gaze_direction) if output.pose_gaze.face_detected else "Candidate Absent"
-                is_flagged = bool(output.risk.is_incident_triggered or len(active_violations) > 0 or risk_score >= 70.0)
-
-                # Rate-throttle UI updates to avoid Streamlit websocket queue congestion
-                current_risk_bin = int(risk_score // 5)
-                state_changed = (is_flagged != last_flagged_state) or (current_risk_bin != last_risk_bin)
-
-                if loop_frame % 5 == 0 or state_changed or output.incident_logged:
-                    last_flagged_state = is_flagged
-                    last_risk_bin = current_risk_bin
-
-                    if is_flagged or active_violations:
-                        has_unauth_banner = any(
-                            "UNAUTHORIZED" in v.upper() or "PHONE" in v.upper() or "BOOK" in v.upper() or "NOTES" in v.upper() or "CHIT" in v.upper() or "PAPER" in v.upper()
-                            for v in active_violations
-                        )
-                        if has_unauth_banner:
-                            alert_str = "UNAUTHORIZED EXAM MATERIAL DETECTED"
+                        if is_flagged or active_violations:
+                            has_unauth_banner = any(
+                                "UNAUTHORIZED" in v.upper() or "PHONE" in v.upper() or "BOOK" in v.upper() or "NOTES" in v.upper() or "CHIT" in v.upper() or "PAPER" in v.upper()
+                                for v in active_violations
+                            )
+                            if has_unauth_banner:
+                                alert_str = "UNAUTHORIZED EXAM MATERIAL DETECTED"
+                            else:
+                                clean_v = [v[11:] if v.startswith("VIOLATION: ") else (v[7:] if v.startswith("ALERT: ") else v) for v in active_violations]
+                                alert_str = ' • '.join(clean_v) if clean_v else "ELEVATED RISK DETECTED"
+                            vision_banner_holder.markdown(f"""
+                            <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(220, 38, 38, 0.08);">
+                                <span style="font-size: 1.3rem;">🚨</span>
+                                <span style="color: #B91C1C; font-weight: 700; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: 0.02em;">SECURITY ALERT: {alert_str}</span>
+                            </div>
+                            """, unsafe_allow_html=True)
                         else:
-                            clean_v = [v[11:] if v.startswith("VIOLATION: ") else (v[7:] if v.startswith("ALERT: ") else v) for v in active_violations]
-                            alert_str = ' • '.join(clean_v) if clean_v else "ELEVATED RISK DETECTED"
-                        vision_banner_holder.markdown(f"""
-                        <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(220, 38, 38, 0.08);">
-                            <span style="font-size: 1.3rem;">🚨</span>
-                            <span style="color: #B91C1C; font-weight: 700; font-size: 14px; font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: 0.02em;">SECURITY ALERT: {alert_str}</span>
+                            vision_banner_holder.markdown("""
+                            <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(4, 120, 87, 0.08);">
+                                <span style="font-size: 1.3rem;">✅</span>
+                                <span style="color: #047857; font-weight: 700; font-size: 14px; font-family: 'Inter', sans-serif;">COMPLIANCE VERIFIED: Candidate within normal proctoring tolerances</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                        threat_gauge_v_holder.markdown(get_threat_meter_html(risk_score, risk_level), unsafe_allow_html=True)
+
+                        telemetry_rows_v_holder.markdown(f"""
+                        <div style="margin-top: 4px;">
+                            <div class="enterprise-telemetry-row">
+                                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
+                                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#047857' if person_count == 1 else '#DC2626'};">{person_count} Detected</span>
+                            </div>
+                            <div class="enterprise-telemetry-row">
+                                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
+                                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">{yaw_val:+.1f}°</span>
+                            </div>
+                            <div class="enterprise-telemetry-row">
+                                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
+                                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">{pitch_val:+.1f}°</span>
+                            </div>
+                            <div class="enterprise-telemetry-row">
+                                <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
+                                <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#047857' if not output.pose_gaze.is_looking_away else '#DC2626'};">{gaze_status}</span>
+                            </div>
                         </div>
                         """, unsafe_allow_html=True)
-                    else:
-                        vision_banner_holder.markdown("""
-                        <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(4, 120, 87, 0.08);">
-                            <span style="font-size: 1.3rem;">✅</span>
-                            <span style="color: #047857; font-weight: 700; font-size: 14px; font-family: 'Inter', sans-serif;">COMPLIANCE VERIFIED: Candidate within normal proctoring tolerances</span>
-                        </div>
-                        """, unsafe_allow_html=True)
 
-                    threat_gauge_v_holder.markdown(get_threat_meter_html(risk_score, risk_level), unsafe_allow_html=True)
-
-                    telemetry_rows_v_holder.markdown(f"""
-                    <div style="margin-top: 4px;">
-                        <div class="enterprise-telemetry-row">
-                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👥 Candidate Count</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#047857' if person_count == 1 else '#DC2626'};">{person_count} Detected</span>
-                        </div>
-                        <div class="enterprise-telemetry-row">
-                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">🔄 Head Yaw (L/R)</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">{yaw_val:+.1f}°</span>
-                        </div>
-                        <div class="enterprise-telemetry-row">
-                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">📐 Head Pitch (U/D)</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: #0F172A;">{pitch_val:+.1f}°</span>
-                        </div>
-                        <div class="enterprise-telemetry-row">
-                            <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#047857' if not output.pose_gaze.is_looking_away else '#DC2626'};">{gaze_status}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-        except Exception as e:
-            st.error(f"Live stream error: {e}")
-        finally:
-            camera.stop()
+                time.sleep(0.5)
+        except Exception:
+            pass
 
     else:
+        streamer.set_active(False)
         vision_banner_holder.markdown("""
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);">
             <span style="font-size: 1.3rem;">🛡️</span>
