@@ -384,9 +384,19 @@ class EviGuardRobustEngine:
         """
         Isolated LAB-Space Paper Chit Detector:
         Runs only when MediaPipe Hands detects a hand and no YOLO phone/book violation is already active on that hand.
-        Uses lighting-invariant CIE LAB color-space (L > 148, shade tolerant), quadrilateral polygon check (4-7 vertices),
-        internal Canny edge density inside eroded contour mask (>= 0.035), and strict finger-contact verification (>= 2 landmarks).
+        Uses lighting-invariant CIE LAB color-space (L > 145, neutral chroma: |A-128| < 16, B < 146),
+        adaptive contour area (110 - 9000 px) & aspect ratio (0.15 - 6.5), polygon check (4-8 vertices),
+        fingertip-proximity contact verification (18px margin with fingertip/DIP landmarks or >= 2 hand landmarks),
+        outer boundary contrast check against local hand/skin ring (paper_L - ring_L >= 22.0),
+        and fast 2-frame trigger with 1-frame grace period.
         """
+        # Initialize internal streak and grace attributes if not already present
+        if not hasattr(self, "_chit_detected_streak"):
+            self._chit_detected_streak = 0
+            self._chit_grace_counter = 0
+            self._chit_last_result = None
+            self._chit_last_frame = 0
+
         if hand_landmarks is None or not hasattr(hand_landmarks, "landmark"):
             return None
 
@@ -398,11 +408,11 @@ class EviGuardRobustEngine:
         xs = [p[0] for p in hand_pts_full]
         ys = [p[1] for p in hand_pts_full]
 
-        # 1. Tight Hand ROI Extraction with 15px padding
-        min_x = max(0, min(xs) - 15)
-        max_x = min(w, max(xs) + 15)
-        min_y = max(0, min(ys) - 15)
-        max_y = min(h, max(ys) + 15)
+        # 1. Hand ROI Extraction with 25px padding to prevent clipping pinched chits extending beyond fingertips
+        min_x = max(0, min(xs) - 25)
+        max_x = min(w, max(xs) + 25)
+        min_y = max(0, min(ys) - 25)
+        max_y = min(h, max(ys) + 25)
 
         if (max_x - min_x) < 30 or (max_y - min_y) < 30:
             return None
@@ -411,13 +421,13 @@ class EviGuardRobustEngine:
         if crop.size == 0 or crop.shape[0] < 30 or crop.shape[1] < 30:
             return None
 
-        # 2. Shade-Tolerant Luminance for Real Paper in CIE LAB (L > 148)
+        # 2. Lighting-Invariant Real Paper in CIE LAB (L > 145, neutral chroma)
         lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
         L, A, B = cv2.split(lab)
 
         # White/ruled paper has high L and neutral A/B (~128), unlike skin
         paper_mask = (
-            (L > 148) & (np.abs(A.astype(int) - 128) < 15) & (B.astype(int) < 145)
+            (L > 145) & (np.abs(A.astype(int) - 128) < 16) & (B.astype(int) < 146)
         ).astype(np.uint8) * 255
 
         # Single 3x3 morphological close to connect ink lines across the paper
@@ -426,98 +436,140 @@ class EviGuardRobustEngine:
 
         # 3. Contour Extraction & Filtering
         contours, _ = cv2.findContours(paper_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if not contours:
+        detected_candidate = None
+
+        if contours:
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                # Lower minimum contour area: 110 to 9000 pixels
+                if area < 110 or area > 9000:
+                    continue
+
+                rx, ry, rw, rh = cv2.boundingRect(cnt)
+                if rw <= 0 or rh <= 0:
+                    continue
+
+                # Bounding aspect ratio between 0.15 and 6.5 (supports narrow horizontal or vertical folded slips)
+                ar = float(rw) / float(rh)
+                if ar < 0.15 or ar > 6.5:
+                    continue
+
+                # Contour solidity (area / hull_area) >= 0.55
+                hull = cv2.convexHull(cnt)
+                hull_area = cv2.contourArea(hull)
+                solidity = float(area) / hull_area if hull_area > 0 else 0.0
+                if solidity < 0.55:
+                    continue
+
+                # Polygon approximation has between 4 and 8 vertices (rejects irregular wall gaps)
+                peri = cv2.arcLength(cnt, True)
+                approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
+                if len(approx) < 4 or len(approx) > 8:
+                    continue
+
+                # Map back to full-frame coordinates
+                gx1 = min_x + rx
+                gy1 = min_y + ry
+                gx2 = gx1 + rw
+                gy2 = gy1 + rh
+
+                # Fingertip-Proximity Contact (18px Margin — Still Blocks Background Wall)
+                exp_x1 = max(0, gx1 - 18)
+                exp_y1 = max(0, gy1 - 18)
+                exp_x2 = min(w, gx2 + 18)
+                exp_y2 = min(h, gy2 + 18)
+
+                fingertip_dip_indices = {3, 4, 7, 8, 11, 12, 15, 16, 19, 20}
+                fingertip_touch = any(
+                    exp_x1 <= hand_pts_full[idx][0] <= exp_x2 and exp_y1 <= hand_pts_full[idx][1] <= exp_y2
+                    for idx in fingertip_dip_indices
+                    if idx < len(hand_pts_full)
+                )
+                total_touching = sum(
+                    1 for (lx, ly) in hand_pts_full
+                    if exp_x1 <= lx <= exp_x2 and exp_y1 <= ly <= exp_y2
+                )
+                if not (fingertip_touch or total_touching >= 2):
+                    continue
+
+                # Boundary Contrast Check (Replaces Internal Canny Density)
+                # Dilate candidate contour by ~12px (25x25 ellipse) to create surrounding boundary ring
+                paper_cnt_mask = np.zeros(crop.shape[:2], dtype=np.uint8)
+                cv2.drawContours(paper_cnt_mask, [cnt], -1, 255, -1)
+
+                ring_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
+                dilated_mask = cv2.dilate(paper_cnt_mask, ring_kernel)
+                ring_mask = cv2.subtract(dilated_mask, paper_cnt_mask)
+
+                paper_pixels = paper_cnt_mask > 0
+                ring_pixels = ring_mask > 0
+
+                if np.count_nonzero(paper_pixels) == 0 or np.count_nonzero(ring_pixels) == 0:
+                    continue
+
+                paper_L_mean = float(np.mean(L[paper_pixels]))
+                ring_L_mean = float(np.mean(L[ring_pixels]))
+
+                # Paper candidate must be at least +22 lightness units brighter than surrounding ring
+                if (paper_L_mean - ring_L_mean) < 22.0:
+                    continue
+
+                # Valid paper slip detected
+                detected_candidate = {
+                    "label": "VIOLATION: UNAUTHORIZED_EXAM_MATERIAL (PAPER CHIT)",
+                    "box": (gx1, gy1, gx2, gy2),
+                    "conf": 0.92,
+                    "class_name": "unauthorized_exam_material",
+                    "secondary_tag": "notes",
+                    "threat": self.UNIFIED_THREAT,
+                    "category": "notes",
+                    "color": self.UNIFIED_COLOR
+                }
+                break
+
+        # Fast 2-Frame Trigger (with 1-Frame Grace)
+        if detected_candidate is not None:
+            self._chit_detected_streak += 1
+            self._chit_grace_counter = 0
+            self._chit_last_result = detected_candidate
+            self._chit_last_frame = self.frame_count
+
+            # 2-frame trigger: on frame 2+, set lab_chit_streak = 2 so process() increments to 3
+            if self._chit_detected_streak >= 2:
+                self.lab_chit_streak = 2
+
+            return detected_candidate
+
+        # Candidate not detected on this hand: check 1-frame grace for active confirmed chit detections
+        is_relevant_hand = True
+        if self._chit_last_result is not None and "box" in self._chit_last_result:
+            bx1, by1, bx2, by2 = self._chit_last_result["box"]
+            hand_cx = float(np.mean(xs))
+            hand_cy = float(np.mean(ys))
+            is_relevant_hand = (bx1 - 90 <= hand_cx <= bx2 + 90) and (by1 - 90 <= hand_cy <= by2 + 90)
+
+        frame_diff = self.frame_count - self._chit_last_frame
+        if (
+            is_relevant_hand
+            and self._chit_detected_streak >= 2
+            and self._chit_grace_counter < 1
+            and frame_diff <= 2
+            and self._chit_last_result is not None
+        ):
+            self._chit_grace_counter += 1
+            self._chit_last_frame = self.frame_count
+            self.lab_chit_streak = 2
+            return self._chit_last_result
+
+        # If empty second hand was evaluated while chit is in first hand, don't reset streak
+        if not is_relevant_hand:
             return None
 
-        for cnt in contours:
-            area = cv2.contourArea(cnt)
-            # Area between 280 and 8500 pixels
-            if area < 280 or area > 8500:
-                continue
-
-            rx, ry, rw, rh = cv2.boundingRect(cnt)
-            if rw <= 0 or rh <= 0:
-                continue
-
-            # Bounding aspect ratio between 0.25 and 4.0
-            ar = float(rw) / float(rh)
-            if ar < 0.25 or ar > 4.0:
-                continue
-
-            # Contour solidity (area / hull_area) >= 0.60
-            hull = cv2.convexHull(cnt)
-            hull_area = cv2.contourArea(hull)
-            solidity = float(area) / hull_area if hull_area > 0 else 0.0
-            if solidity < 0.60:
-                continue
-
-            # Polygon approximation has between 4 and 7 vertices (rejects irregular wall gaps)
-            peri = cv2.arcLength(cnt, True)
-            approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
-            if len(approx) < 4 or len(approx) > 7:
-                continue
-
-            # Map back to full-frame coordinates
-            gx1 = min_x + rx
-            gy1 = min_y + ry
-            gx2 = gx1 + rw
-            gy2 = gy1 + rh
-
-            # Strict Finger-Contact Requirement (Blocks Background Wall Gaps)
-            # Contour box expanded by 10px must overlap with at least 2 hand landmarks
-            exp_x1 = max(0, gx1 - 10)
-            exp_y1 = max(0, gy1 - 10)
-            exp_x2 = min(w, gx2 + 10)
-            exp_y2 = min(h, gy2 + 10)
-
-            touching_landmarks = sum(
-                1 for (lx, ly) in hand_pts_full
-                if exp_x1 <= lx <= exp_x2 and exp_y1 <= ly <= exp_y2
-            )
-            if touching_landmarks < 2:
-                continue
-
-            # Reject Smooth Painted Walls via Internal Edge Density Check
-            cnt_crop = crop[ry:ry + rh, rx:rx + rw]
-            if cnt_crop.size == 0:
-                continue
-
-            cnt_shifted = cnt - np.array([rx, ry])
-            mask = np.zeros((rh, rw), dtype=np.uint8)
-            cv2.drawContours(mask, [cnt_shifted], -1, 255, -1)
-
-            erode_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-            eroded_mask = cv2.erode(mask, erode_kernel, iterations=2)
-            if np.count_nonzero(eroded_mask) < 25:
-                eroded_mask = cv2.erode(mask, erode_kernel, iterations=1)
-            if np.count_nonzero(eroded_mask) == 0:
-                eroded_mask = mask
-
-            total_internal_pixels = np.count_nonzero(eroded_mask)
-            if total_internal_pixels <= 0:
-                continue
-
-            gray_crop = cv2.cvtColor(cnt_crop, cv2.COLOR_BGR2GRAY)
-            canny_edges = cv2.Canny(gray_crop, 50, 150)
-            internal_edge_pixels = np.count_nonzero((canny_edges > 0) & (eroded_mask > 0))
-            edge_density = float(internal_edge_pixels) / float(total_internal_pixels)
-
-            # Flat painted walls produce 0.0 or < 0.01; written paper chits produce >= 0.035
-            if edge_density < 0.035:
-                continue
-
-            # Valid finger-held paper slip detected
-            return {
-                "label": "VIOLATION: UNAUTHORIZED_EXAM_MATERIAL (PAPER CHIT)",
-                "box": (gx1, gy1, gx2, gy2),
-                "conf": 0.92,
-                "class_name": "unauthorized_exam_material",
-                "secondary_tag": "notes",
-                "threat": self.UNIFIED_THREAT,
-                "category": "notes",
-                "color": self.UNIFIED_COLOR
-            }
-
+        # Reset counters when grace period expires or streak is broken on relevant hand
+        self._chit_detected_streak = 0
+        self._chit_grace_counter = 0
+        self._chit_last_result = None
+        self.lab_chit_streak = 0
         return None
 
     def process(
