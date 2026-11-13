@@ -35,11 +35,9 @@ import backend.scoring
 import backend.tracking
 
 from datetime import datetime
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import json
 import math
 import shutil
-import socket
 import threading
 import time
 from typing import Dict, Any, List, Optional
@@ -889,20 +887,19 @@ class ThreadedCamera:
 
     def _capture_worker(self):
         # Always initialize VideoCapture inside the capture thread on Windows
-        backends = [cv2.CAP_DSHOW, cv2.CAP_ANY] if os.name == 'nt' else [cv2.CAP_ANY]
+        # Fall back to default cv2.VideoCapture(device_idx) if CAP_DSHOW fails
+        backends = [cv2.CAP_DSHOW, cv2.CAP_ANY, None] if os.name == 'nt' else [cv2.CAP_ANY, None]
         indices_to_try = [self.src, 0, 1] if self.src not in (0, 1) else [self.src, 1 if self.src == 0 else 0]
 
         for b in backends:
             for idx in indices_to_try:
                 try:
-                    cap = cv2.VideoCapture(idx, b)
+                    cap = cv2.VideoCapture(idx, b) if b is not None else cv2.VideoCapture(idx)
                     if cap.isOpened():
-                        # Force hardware MJPEG decompression on Windows, 640x480, 30 FPS, buffer 1
-                        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+                        # Minimize OpenCV hardware buffer to 1 and lock resolution to 640x480
+                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                        cap.set(cv2.CAP_PROP_FPS, 30)
-                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                         ret, test_frame = cap.read()
                         if ret and test_frame is not None and test_frame.size > 0:
                             self.cap = cap
@@ -937,10 +934,6 @@ class ThreadedCamera:
         with self.lock:
             return self.frame.copy() if self.frame is not None else None
 
-    def get_frame(self) -> Optional[np.ndarray]:
-        with self.lock:
-            return self.frame.copy() if self.frame is not None else None
-
     def stop(self):
         self.running = False
         if self.cap is not None:
@@ -950,201 +943,6 @@ class ThreadedCamera:
             except Exception:
                 pass
         self.cap = None
-
-
-# ==============================================================================
-# 4B. LIGHTWEIGHT BACKGROUND MJPEG HTTP STREAMER (DECOUPLED ASYNC 35-40 FPS)
-# ==============================================================================
-class MJPEGStreamer:
-    """
-    Decoupled Asynchronous AI Vision Engine:
-    - Dedicated background AI inference thread continuously processes frames without blocking video stream.
-    - Zero-wait MJPEG HTTP handler streams camera frames directly at 35-40 FPS with TCP_NODELAY.
-    - Thread-safe state sharing prevents GIL starvation and frame stutters.
-    """
-
-    def __init__(self, pipeline: EviGuardPipeline, host: str = "127.0.0.1", port: int = 8502):
-        self.pipeline = pipeline
-        self.host = host
-        self.port = port
-        self.camera: Optional[ThreadedCamera] = None
-        self.camera_src: int = -1
-        self.is_active = False
-        self.lock = threading.Lock()
-        self.session_id: str = "DEFAULT_SESSION"
-        self.candidate_name: str = "Candidate"
-
-        # Shared atomic state dict
-        self.state: Dict[str, Any] = {
-            "latest_output": None,
-            "latest_annotated": None,
-            "latest_detections": [],
-            "latest_telemetry": None
-        }
-
-        # Standby placeholder JPEG
-        standby_img = np.zeros((480, 640, 3), dtype=np.uint8)
-        standby_img[:] = (20, 24, 33)
-        cv2.putText(standby_img, "EviGuard AI - Camera Standby", (130, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
-        cv2.putText(standby_img, "Activate vision stream toggle in dashboard", (110, 270), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (140, 150, 160), 1)
-        _, standby_buf = cv2.imencode('.jpg', standby_img, [int(cv2.IMWRITE_JPEG_QUALITY), 68])
-        self.standby_jpeg = standby_buf.tobytes()
-
-        # Dedicated background AI inference worker thread
-        self.ai_thread = threading.Thread(target=self._ai_inference_worker, daemon=True)
-        self.ai_thread.start()
-
-        # Start HTTP server
-        self.server = None
-        self._start_http_server()
-
-    def _start_http_server(self):
-        streamer_ref = self
-
-        class MJPEGHandler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                if self.path == '/video_feed':
-                    try:
-                        self.request.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                    except Exception:
-                        pass
-
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
-                    self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
-                    self.send_header('Pragma', 'no-cache')
-                    self.send_header('Expires', '0')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    try:
-                        while True:
-                            if not streamer_ref.is_active or streamer_ref.camera is None:
-                                jpg = streamer_ref.standby_jpeg
-                            else:
-                                frame = streamer_ref.camera.get_frame()
-                                if frame is None:
-                                    jpg = streamer_ref.standby_jpeg
-                                else:
-                                    with streamer_ref.lock:
-                                        annotated = streamer_ref.state.get("latest_annotated")
-                                        cached_detections = streamer_ref.state.get("latest_detections", [])
-
-                                    # Restore Full Clean HUD: serve the complete HUD annotated frame whenever available
-                                    if annotated is not None:
-                                        display_frame = annotated
-                                    elif cached_detections:
-                                        display_frame = streamer_ref.pipeline.detector.draw_violations(frame, cached_detections)
-                                    else:
-                                        display_frame = frame
-
-                                    _, buffer = cv2.imencode('.jpg', display_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 68])
-                                    jpg = buffer.tobytes()
-
-                            self.wfile.write(b"--frame\r\n")
-                            self.send_header('Content-Type', 'image/jpeg')
-                            self.send_header('Content-Length', str(len(jpg)))
-                            self.end_headers()
-                            self.wfile.write(jpg)
-                            self.wfile.write(b"\r\n")
-                            time.sleep(0.025) # Steady ~35-40 FPS pacing
-                    except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
-                        pass
-                    except Exception:
-                        pass
-                else:
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'text/plain')
-                    self.end_headers()
-                    self.wfile.write(b"EviGuard MJPEG Server Active")
-
-            def log_message(self, format, *args):
-                return
-
-        class ReusableServer(ThreadingHTTPServer):
-            allow_reuse_address = True
-            daemon_threads = True
-
-        for attempt in range(5):
-            try:
-                self.server = ReusableServer((self.host, self.port), MJPEGHandler)
-                server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-                server_thread.start()
-                break
-            except Exception:
-                time.sleep(0.5)
-
-    def set_session_info(self, session_id: str, candidate_name: str):
-        self.session_id = session_id
-        self.candidate_name = candidate_name
-
-    def set_active(self, active: bool, cam_src: int = 0):
-        with self.lock:
-            self.is_active = active
-            if active:
-                if self.camera is None or self.camera_src != cam_src or not self.camera.running:
-                    if self.camera is not None:
-                        self.camera.stop()
-                    self.camera_src = cam_src
-                    self.camera = ThreadedCamera(src=cam_src, width=640, height=480).start()
-            else:
-                if self.camera is not None:
-                    self.camera.stop()
-                    self.camera = None
-                    self.camera_src = -1
-                self.state["latest_output"] = None
-                self.state["latest_annotated"] = None
-                self.state["latest_detections"] = []
-                self.state["latest_telemetry"] = None
-
-    def get_telemetry(self) -> Optional[Dict[str, Any]]:
-        with self.lock:
-            return self.state.get("latest_telemetry")
-
-    def _ai_inference_worker(self):
-        """Dedicated background AI inference thread: continuously reads frame, runs pipeline, and updates shared state."""
-        self.pipeline.inference_stride = 1
-        while True:
-            if not self.is_active or self.camera is None:
-                time.sleep(0.05)
-                continue
-
-            frame = self.camera.get_frame()
-            if frame is None:
-                time.sleep(0.01)
-                continue
-
-            try:
-                output: PipelineOutput = self.pipeline.process_frame(
-                    frame=frame,
-                    session_id=self.session_id,
-                    candidate_name=self.candidate_name
-                )
-                with self.lock:
-                    self.state["latest_output"] = output
-                    self.state["latest_annotated"] = output.annotated_frame
-                    self.state["latest_detections"] = list(output.detections)
-                    self.state["latest_telemetry"] = {
-                        "risk_score": float(output.risk.smoothed_score),
-                        "risk_level": str(output.risk.risk_level),
-                        "active_violations": list(output.risk.active_violations),
-                        "person_count": int(output.pose_gaze.face_count if output.pose_gaze.face_detected else len(output.detections)),
-                        "yaw": float(output.pose_gaze.yaw),
-                        "pitch": float(output.pose_gaze.pitch),
-                        "gaze_status": str(output.pose_gaze.gaze_direction) if output.pose_gaze.face_detected else "Candidate Absent",
-                        "is_flagged": bool(output.risk.is_incident_triggered or len(output.risk.active_violations) > 0 or float(output.risk.smoothed_score) >= 70.0),
-                        "is_looking_away": bool(output.pose_gaze.is_looking_away)
-                    }
-            except Exception:
-                pass
-
-            time.sleep(0.005) # Yield GIL so video stream & UI never starve
-
-
-@st.cache_resource(show_spinner=False)
-def get_mjpeg_streamer(_pipeline: EviGuardPipeline) -> MJPEGStreamer:
-    return MJPEGStreamer(_pipeline, host="127.0.0.1", port=8502)
-
-mjpeg_streamer = get_mjpeg_streamer(pipeline)
 
 
 # ==============================================================================
@@ -1518,7 +1316,7 @@ with tab_vision:
             </div>
             """, unsafe_allow_html=True)
             t_c1, t_c2 = st.columns([3, 2])
-            start_stream = t_c1.toggle("▶ Enable Live AI Vision Stream", value=False, key="vision_tab_stream_toggle")
+            start_stream = t_c1.toggle("▶ Enable Live AI Vision Stream", value=True, key="vision_tab_stream_toggle")
             cam_src = t_c2.selectbox("Select Camera Device Index", [0, 1, 2], index=0, key="vision_cam_src_select")
             video_placeholder = st.empty()
 
@@ -1534,29 +1332,64 @@ with tab_vision:
             telemetry_rows_v_holder = st.empty()
 
     if start_stream:
-        mjpeg_streamer.set_session_info(session_id, candidate_name)
-        mjpeg_streamer.set_active(True, cam_src=cam_src)
-
-        # Native hardware-decoded 30+ FPS MJPEG stream over HTTP port 8502
-        video_placeholder.markdown(
-            '<img src="http://127.0.0.1:8502/video_feed" style="width:100%; border-radius:8px;" />',
-            unsafe_allow_html=True
-        )
+        camera = ThreadedCamera(src=cam_src, width=640, height=480).start()
+        
+        loop_frame = 0
+        last_flagged_state = None
+        last_risk_bin = -1
+        init_attempts = 0
 
         try:
             while True:
-                telemetry = mjpeg_streamer.get_telemetry()
-                if telemetry is not None:
-                    # Extract metrics
-                    risk_score = telemetry["risk_score"]
-                    risk_level = telemetry["risk_level"]
-                    active_violations = telemetry["active_violations"]
-                    person_count = telemetry["person_count"]
-                    yaw_val = telemetry["yaw"]
-                    pitch_val = telemetry["pitch"]
-                    gaze_status = telemetry["gaze_status"]
-                    is_flagged = telemetry["is_flagged"]
-                    is_looking_away = telemetry.get("is_looking_away", False)
+                # Buffer Flush: Drop buffered stale frames if the processing loop falls behind
+                if camera.cap is not None and hasattr(camera.cap, "grab"):
+                    camera.cap.grab()
+
+                frame = camera.read()
+                if frame is None:
+                    init_attempts += 1
+                    if init_attempts <= 25:
+                        video_placeholder.info("🔄 Connecting to hardware camera sensor and initializing vision pipeline...")
+                        time.sleep(0.08)
+                        continue
+                    else:
+                        video_placeholder.warning("⚠️ Waiting for webcam stream. If camera does not appear, select a different camera index above or ensure no other app (e.g. Zoom/Teams) is using the webcam.")
+                        time.sleep(0.2)
+                        continue
+
+                loop_frame += 1
+
+                try:
+                    output: PipelineOutput = pipeline.process_frame(
+                        frame=frame,
+                        session_id=session_id,
+                        candidate_name=candidate_name
+                    )
+                except Exception as frame_err:
+                    time.sleep(0.001)
+                    continue
+
+                # 1. Fast JPEG Byte Encoding instead of Heavy Raw PNG (prevents Streamlit internal PNG conversion bottleneck)
+                _, buffer = cv2.imencode('.jpg', output.annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                video_placeholder.image(buffer.tobytes(), use_container_width=True)
+
+                # 2. Extract metrics
+                risk_score = float(output.risk.smoothed_score)
+                risk_level = str(output.risk.risk_level)
+                active_violations = list(output.risk.active_violations)
+                person_count = int(output.pose_gaze.face_count if output.pose_gaze.face_detected else len(output.detections))
+                yaw_val = float(output.pose_gaze.yaw)
+                pitch_val = float(output.pose_gaze.pitch)
+                gaze_status = str(output.pose_gaze.gaze_direction) if output.pose_gaze.face_detected else "Candidate Absent"
+                is_flagged = bool(output.risk.is_incident_triggered or len(active_violations) > 0 or risk_score >= 70.0)
+
+                # Rate-throttle UI updates to avoid Streamlit websocket queue congestion
+                current_risk_bin = int(risk_score // 5)
+                state_changed = (is_flagged != last_flagged_state) or (current_risk_bin != last_risk_bin)
+
+                if loop_frame % 5 == 0 or state_changed or output.incident_logged:
+                    last_flagged_state = is_flagged
+                    last_risk_bin = current_risk_bin
 
                     if is_flagged or active_violations:
                         has_unauth_banner = any(
@@ -1600,17 +1433,17 @@ with tab_vision:
                         </div>
                         <div class="enterprise-telemetry-row">
                             <span class="body-text" style="color: #475569; font-size: 13.5px; font-weight: 600;">👀 Gaze Tracker</span>
-                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#047857' if not is_looking_away else '#DC2626'};">{gaze_status}</span>
+                            <span style="font-family: 'JetBrains Mono'; font-weight: 700; font-size: 13.5px; color: {'#047857' if not output.pose_gaze.is_looking_away else '#DC2626'};">{gaze_status}</span>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
 
-                time.sleep(0.4)
-        except Exception:
-            pass
+        except Exception as e:
+            st.error(f"Live stream error: {e}")
+        finally:
+            camera.stop()
 
     else:
-        mjpeg_streamer.set_active(False)
         vision_banner_holder.markdown("""
         <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);">
             <span style="font-size: 1.3rem;">🛡️</span>
