@@ -182,6 +182,10 @@ class EviGuardPipeline:
         self.current_fps = 30.0
         self.last_forensic_log_time: float = 0.0
         
+        # Violation Deduplication Cooldown & State-Transition Tracking
+        self._last_logged_violation: Dict[str, float] = {}
+        self._compliant_since: Optional[float] = time.time()
+        
         # Multi-Student Round-Robin State
         self.active_student_ids: List[int] = [1]
         self.student_round_robin_idx = 0
@@ -208,13 +212,8 @@ class EviGuardPipeline:
         except Exception:
             pass
 
-    def _log_forensic_entry(self, secondary_tag: str, box: List[float], pose_gaze: Any):
+    def _log_forensic_entry(self, secondary_tag: str, box: List[float], pose_gaze: Any, threat_score: float = 95.0):
         """Append lightweight forensic audit log to violations_log.json."""
-        now = time.time()
-        if (now - self.last_forensic_log_time) < 1.0:
-            return
-        self.last_forensic_log_time = now
-
         entry = {
             "timestamp": datetime.now().isoformat(),
             "head_pose": {
@@ -224,7 +223,7 @@ class EviGuardPipeline:
             "gaze": str(pose_gaze.gaze_direction) if (pose_gaze and pose_gaze.face_detected) else "UNKNOWN",
             "secondary_tag": str(secondary_tag),
             "box": [round(float(c), 1) for c in box],
-            "threat_score": 95.0
+            "threat_score": float(threat_score)
         }
 
         try:
@@ -336,9 +335,6 @@ class EviGuardPipeline:
                 )
                 setattr(det_res, "secondary_tag", sec_tag)
                 detections.append(det_res)
-
-                # Forensic Logging (throttled to 1s)
-                self._log_forensic_entry(sec_tag, v_box, pose_gaze_result)
 
             # Suppress hand gesture signalling flags whenever unauthorized exam material is active
             has_unauthorized_material = len(verified_viols) > 0 or any(
@@ -491,68 +487,113 @@ class EviGuardPipeline:
             except Exception:
                 pass
 
-        # 6. Incident Handling & Evidence Recording
+        # 6. Incident Handling & Evidence Recording with Cooldown & State-Transition Deduplication
         logged_incident_dict = None
-        if risk_result.is_incident_triggered:
-            explanation = self.reason_gen.generate_explanation(
-                risk=risk_result,
-                detections=tracked_detections,
-                pose_gaze=pose_gaze_result,
-                candidate_name=candidate_name,
-                timestamp_str=datetime.now().strftime("%H:%M:%S")
-            )
+        current_threat = float(risk_result.smoothed_score)
 
-            snapshot_filename = f"{session_id}_f{self.frame_index}_{int(now)}.jpg"
-            snapshot_path = os.path.join(self.evidence_dir, snapshot_filename)
-            try:
-                cv2.imwrite(snapshot_path, frame)
-            except Exception:
-                snapshot_path = None
+        # State-transition tracking: monitor continuous normal/compliant duration (threat_score < 50.0)
+        if current_threat < 50.0:
+            if self._compliant_since is None:
+                self._compliant_since = now
+            returned_to_compliant_2s = False
+        else:
+            compliant_duration = (now - self._compliant_since) if self._compliant_since is not None else 0.0
+            returned_to_compliant_2s = (compliant_duration >= 2.0)
+            self._compliant_since = None
 
-            clip_filename = f"{session_id}_f{self.frame_index}_{int(now)}.mp4"
-            clip_path = os.path.join(self.evidence_dir, clip_filename)
-            self._save_evidence_clip_async(clip_path)
+        has_active_violation = bool(
+            risk_result.is_incident_triggered or
+            current_threat >= 70.0 or
+            len(risk_result.active_violations) > 0
+        )
 
-            details = {
-                "active_violations": risk_result.active_violations,
-                "violation_factors": risk_result.violation_factors,
-                "factor_attribution": explanation.factor_attribution,
-                "pose_gaze": {
-                    "yaw": pose_gaze_result.yaw,
-                    "pitch": pose_gaze_result.pitch,
-                    "roll": pose_gaze_result.roll,
-                    "gaze_direction": pose_gaze_result.gaze_direction
-                },
-                "detections": [d.to_dict() for d in tracked_detections],
-                "recommended_action": explanation.recommended_action
-            }
+        if has_active_violation and risk_result.primary_violation and risk_result.primary_violation != "NORMAL":
+            primary_v = risk_result.primary_violation
+            v_key = str(primary_v).upper().replace("VIOLATION: ", "").replace(" DETECTED", "").replace(" ", "_").strip()
 
-            try:
-                primary_v = risk_result.primary_violation or "SUSPICIOUS_BEHAVIOR"
-                inc_obj = self.db.log_incident(
-                    session_id=session_id,
-                    frame_index=self.frame_index,
-                    violation_type=primary_v.upper(),
-                    severity=explanation.severity,
-                    risk_score=risk_result.smoothed_score,
-                    confidence=explanation.confidence_score,
-                    reason_summary=explanation.summary_headline,
-                    reason_narrative=explanation.narrative_report,
-                    evidence_clip_path=clip_path,
-                    evidence_snapshot_path=snapshot_path,
-                    details=details
+            last_logged = self._last_logged_violation.get(v_key, 0.0)
+            time_since_last = now - last_logged
+
+            # Cooldown check:
+            # (1) >= 10.0s elapsed for this violation type, OR
+            # (2) returned to compliant/normal state (threat_score < 50) for at least 2.0s
+            should_log_incident = (time_since_last >= 10.0) or returned_to_compliant_2s
+
+            if should_log_incident:
+                self._last_logged_violation[v_key] = now
+
+                explanation = self.reason_gen.generate_explanation(
+                    risk=risk_result,
+                    detections=tracked_detections,
+                    pose_gaze=pose_gaze_result,
+                    candidate_name=candidate_name,
+                    timestamp_str=datetime.now().strftime("%H:%M:%S")
                 )
-                logged_incident_dict = inc_obj.to_dict()
-            except Exception:
-                logged_incident_dict = {
-                    "violation_type": risk_result.primary_violation or "SECURITY_ALERT",
-                    "severity": explanation.severity,
-                    "risk_score": risk_result.smoothed_score,
-                    "reason_summary": explanation.summary_headline,
-                    "reason_narrative": explanation.narrative_report,
-                    "evidence_clip_path": clip_path,
-                    "evidence_snapshot_path": snapshot_path,
+
+                snapshot_filename = f"{session_id}_f{self.frame_index}_{int(now)}.jpg"
+                snapshot_path = os.path.join(self.evidence_dir, snapshot_filename)
+                try:
+                    cv2.imwrite(snapshot_path, frame)
+                except Exception:
+                    snapshot_path = None
+
+                clip_filename = f"{session_id}_f{self.frame_index}_{int(now)}.mp4"
+                clip_path = os.path.join(self.evidence_dir, clip_filename)
+                self._save_evidence_clip_async(clip_path)
+
+                details = {
+                    "active_violations": risk_result.active_violations,
+                    "violation_factors": risk_result.violation_factors,
+                    "factor_attribution": explanation.factor_attribution,
+                    "pose_gaze": {
+                        "yaw": pose_gaze_result.yaw,
+                        "pitch": pose_gaze_result.pitch,
+                        "roll": pose_gaze_result.roll,
+                        "gaze_direction": pose_gaze_result.gaze_direction
+                    },
+                    "detections": [d.to_dict() for d in tracked_detections],
+                    "recommended_action": explanation.recommended_action
                 }
+
+                try:
+                    inc_obj = self.db.log_incident(
+                        session_id=session_id,
+                        frame_index=self.frame_index,
+                        violation_type=primary_v.upper(),
+                        severity=explanation.severity,
+                        risk_score=risk_result.smoothed_score,
+                        confidence=explanation.confidence_score,
+                        reason_summary=explanation.summary_headline,
+                        reason_narrative=explanation.narrative_report,
+                        evidence_clip_path=clip_path,
+                        evidence_snapshot_path=snapshot_path,
+                        details=details
+                    )
+                    logged_incident_dict = inc_obj.to_dict()
+                except Exception:
+                    logged_incident_dict = {
+                        "violation_type": primary_v.upper(),
+                        "severity": explanation.severity,
+                        "risk_score": risk_result.smoothed_score,
+                        "reason_summary": explanation.summary_headline,
+                        "reason_narrative": explanation.narrative_report,
+                        "evidence_clip_path": clip_path,
+                        "evidence_snapshot_path": snapshot_path,
+                    }
+
+                # Also log deduplicated forensic entry to violations_log.json
+                v_box = [0.0, 0.0, 0.0, 0.0]
+                sec_tag = "unauthorized_material"
+                for d in tracked_detections:
+                    if getattr(d, "secondary_tag", None):
+                        sec_tag = d.secondary_tag
+                        v_box = [float(c) for c in d.box]
+                        break
+                    elif "unauthorized" in d.class_name.lower() or d.class_name.lower() in ("cell phone", "phone", "book"):
+                        sec_tag = d.class_name.lower()
+                        v_box = [float(c) for c in d.box]
+                        break
+                self._log_forensic_entry(sec_tag, v_box, pose_gaze_result, threat_score=risk_result.smoothed_score)
 
         # 7. Render Visual Annotations and HUD Overlay
         annotated_frame = self._render_hud(
